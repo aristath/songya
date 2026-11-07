@@ -145,35 +145,33 @@ func (s *Store) TypeConfiguration(ctx context.Context, user string) (TypeConfigu
 	err := s.lockedContext(ctx, func(root *os.Root) error {
 		var err error
 		cfg, _, err = s.typeConfigurationRoot(ctx, root, user, true)
-		if err != nil {
-			return err
-		}
-		cfg.Usage = map[Destination]map[string]int{}
-		for _, kind := range destinations {
-			cfg.Usage[kind] = map[string]int{}
-			entries, err := fs.ReadDir(root.FS(), string(kind))
-			if err != nil {
-				cfg.Diagnostics = append(cfg.Diagnostics, err.Error())
-				continue
-			}
-			for _, entry := range entries {
-				if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
-					continue
-				}
-				id := strings.TrimSuffix(entry.Name(), ".md")
-				doc, err := readCopy(root, id, filepath.Join(string(kind), entry.Name()))
-				if err != nil {
-					cfg.Diagnostics = append(cfg.Diagnostics, err.Error())
-					continue
-				}
-				if typ := documentTypes(doc)[cfg.User]; typ != "" {
-					cfg.Usage[kind][typ]++
-				}
-			}
-		}
-		return nil
+		return err
 	})
-	return cfg, err
+	if err != nil {
+		return cfg, err
+	}
+	// Usage is a display hint. Read the catalogue after releasing the write lock;
+	// otherwise each record read sees our own lock as an overlapping writer and
+	// needlessly rechecks the entire retained batch history. Saves check actual
+	// current assignments under their write lock before removing a type.
+	cfg.Usage = map[Destination]map[string]int{}
+	for _, kind := range destinations {
+		cfg.Usage[kind] = map[string]int{}
+	}
+	catalog, err := s.Scan(ctx)
+	if err != nil {
+		cfg.Diagnostics = append(cfg.Diagnostics, "Type usage could not be counted: "+err.Error())
+		return cfg, nil
+	}
+	for _, issue := range catalog.Diagnostics {
+		cfg.Diagnostics = append(cfg.Diagnostics, issue.Path+": "+issue.Message)
+	}
+	for _, record := range catalog.Records {
+		if typ := record.Types[cfg.User]; typ != "" {
+			cfg.Usage[record.Kind][typ]++
+		}
+	}
+	return cfg, nil
 }
 
 var typeIDPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
@@ -252,7 +250,7 @@ func typeConfigurationRequest(cfg TypeConfiguration, version string, replacement
 					continue
 				}
 				id := strings.TrimSuffix(entry.Name(), ".md")
-				doc, err := readCopy(root, id, filepath.Join(string(kind), entry.Name()))
+				doc, err := readLockedCopy(root, id, filepath.Join(string(kind), entry.Name()))
 				if err != nil {
 					return nil, err
 				}

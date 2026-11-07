@@ -296,3 +296,54 @@ func TestSettingsEditsPreserveUnrecognizedAndDamagedAssignments(t *testing.T) {
 		t.Fatal("unrecognized metadata discarded")
 	}
 }
+
+func TestTypeSettingsLockedReadsKeepInterruptedBatchPriorView(t *testing.T) {
+	s, _ := Open(t.TempDir())
+	ctx := context.Background()
+	doc, err := s.Create(Entities, map[string]any{"name": "Clara", "types": map[string]string{"ari": "person"}}, "Earlier words.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := BatchRequest{Key: "settings-locked-read", Changes: []Change{{ID: doc.ID, Revision: doc.Revision, Body: textValue("Accepted new words.")}}}
+	digest, err := requestRevision(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(s.Directory())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	journal, err := prepareBatch(ctx, root, request, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistJournal(t, root, journal)
+	entry := journal.Entries[0]
+	if err := root.Mkdir(pendingName(entry.Source), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := syncNew(root, filepath.Join(pendingName(entry.Source), "batch"), []byte(filepath.Base(batchDirectory(request.Key)))); err != nil {
+		t.Fatal(err)
+	}
+	if err := root.WriteFile(entry.Source, entry.After, 0600); err != nil {
+		t.Fatal(err)
+	}
+	err = s.lockedContext(ctx, func(locked *os.Root) error {
+		read, err := readLockedCopy(locked, doc.ID, entry.Source)
+		if err != nil || read.Body != doc.Body || read.TypeFor("ari") != "person" {
+			t.Fatalf("partial publication became visible: %+v %v", read, err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Recover(); err != nil {
+		t.Fatal(err)
+	}
+	after, err := s.Read(doc.ID)
+	if err != nil || after.Body != "Accepted new words." {
+		t.Fatal(after, err)
+	}
+}

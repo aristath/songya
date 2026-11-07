@@ -355,7 +355,20 @@ func (s *Store) Read(id string) (*Document, error) {
 // One policy for every read: committed content wins; staged bytes stay useful
 // even when incomplete. Recheck the committed name after concurrent cleanup.
 func readCopy(root *os.Root, id, name string) (*Document, error) {
-	data, err := readRecordFile(root, name)
+	return readCopyWith(root, id, name, readRecordFile)
+}
+
+// The caller already holds the exclusive store lock. No writer can overlap
+// this snapshot; retained pre-batch views and staged data still apply.
+func readLockedCopy(root *os.Root, id, name string) (*Document, error) {
+	return readCopyWith(root, id, name, func(root *os.Root, name string) ([]byte, error) {
+		data, err := readFile(root, name)
+		return batchView(root, name, data, err)
+	})
+}
+
+func readCopyWith(root *os.Root, id, name string, read func(*os.Root, string) ([]byte, error)) (*Document, error) {
+	data, err := read(root, name)
 	pending := false
 	var warning string
 	if err != nil {
@@ -372,7 +385,7 @@ func readCopy(root *os.Root, id, name string) (*Document, error) {
 			}
 		} else {
 			stagedErr := err
-			data, err = readRecordFile(root, name)
+			data, err = read(root, name)
 			if err != nil {
 				if errors.Is(stagedErr, fs.ErrNotExist) {
 					return nil, committedErr
