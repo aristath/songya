@@ -79,7 +79,11 @@ The top-right header theme selector offers **Device** (default), **Light**, and
 **Dark**. Native `color-scheme` and `light-dark()` follow device changes without
 layout queries; an explicit selection is saved locally and applied before styles
 load to avoid a flash of the wrong theme. The choice covers chat, library,
-dialogs and editor surfaces. The graph keeps its dark canvas in either theme.
+dialogs and editor surfaces. Source editing uses a dedicated YAML/Markdown
+syntax palette for each theme, including selection, matching text, line numbers,
+cursor and search controls. Device-theme changes update these colors without
+rebuilding the editor or replacing its draft, selection or undo history.
+The graph keeps its dark canvas in either theme.
 
 **Chat settings** saves an OpenAI-compatible API base URL, optional API key and
 model name in `chat-settings.json` at the store root. Use the API base (for example

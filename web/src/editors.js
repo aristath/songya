@@ -1,5 +1,7 @@
 import { EditorView as CodeView, basicSetup } from "codemirror";
 import { EditorState } from "@codemirror/state";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { tags } from "@lezer/highlight";
 import { markdown } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import { EditorState as RichState } from "prosemirror-state";
@@ -12,6 +14,28 @@ import {
 } from "prosemirror-markdown";
 import { Schema } from "prosemirror-model";
 import MarkdownIt from "markdown-it";
+
+// CSS variables follow the app's explicit or device theme without rebuilding
+// the editor, changing its document, or losing its selection and undo history.
+const sourceHighlighting = HighlightStyle.define([
+  { tag: [tags.name, tags.propertyName], color: "var(--code-key)" },
+  { tag: [tags.string, tags.inserted], color: "var(--code-string)" },
+  { tag: tags.number, color: "var(--code-number)" },
+  {
+    tag: [tags.keyword, tags.atom, tags.bool, tags.null],
+    color: "var(--code-keyword)",
+  },
+  { tag: [tags.comment, tags.meta], color: "var(--code-comment)" },
+  { tag: tags.heading, color: "var(--code-markup)", fontWeight: "700" },
+  {
+    tag: [tags.link, tags.url],
+    color: "var(--code-key)",
+    textDecoration: "underline",
+  },
+  { tag: tags.emphasis, fontStyle: "italic" },
+  { tag: tags.strong, fontWeight: "700" },
+  { tag: [tags.invalid, tags.deleted], color: "var(--error)" },
+]);
 const rawSpec = (inline) => ({
   inline,
   group: inline ? "inline" : "block",
@@ -81,6 +105,7 @@ export function codeEditor(
       doc: source,
       extensions: [
         basicSetup,
+        syntaxHighlighting(sourceHighlighting),
         EditorState.readOnly.of(readOnly),
         CodeView.editable.of(!readOnly),
         yamlFrontmatter({ content: markdown() }),

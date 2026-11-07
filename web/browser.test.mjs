@@ -3056,3 +3056,190 @@ test("entity lifetime dates use start/end and preserve content on desktop and ph
   }
   assert.deepEqual(errors, []);
 });
+
+test("source editor syntax and controls remain readable in explicit and device themes", async () => {
+  await save(
+    source(
+      "Source color palette",
+      "# Notes about John\n\n**Strong words** and *gentle words*.\n\n[A link](https://example.invalid) and `inline code`.\n\nMary remembers an afternoon.",
+      'message: "Hello Mary"\ncount: 42\nactive: true\nempty: null\n# A source comment\n',
+    ),
+  );
+  const { page, context } = await pageFor();
+  try {
+    let draft;
+    for (const [preference, device, expected] of [
+      ["dark", "light", "dark"],
+      ["light", "dark", "light"],
+      ["system", "dark", "dark"],
+      ["system", "light", "light"],
+    ]) {
+      await page.emulateMedia({ colorScheme: device });
+      await page
+        .getByLabel("Color theme", { exact: true })
+        .selectOption(preference);
+      await editRecord(page, "Source color palette");
+      await page.getByRole("tab", { name: "Source", exact: true }).click();
+      const content = page.locator(".cm-content");
+      if (!draft) {
+        await content.fill(
+          (await content.innerText()).replace(
+            "Mary remembers an afternoon.",
+            "Mary remembers an afternoon by the lake.",
+          ),
+        );
+        draft = await content.innerText();
+      }
+      assert.equal(
+        await content.innerText(),
+        draft,
+        "Theme changes preserve the unsaved source",
+      );
+      await content.focus();
+      await page.keyboard.press("ControlOrMeta+a");
+      await page.locator(".cm-selectionBackground").first().waitFor();
+      const report = await page.evaluate(() => {
+        const canvas = document.createElement("canvas"),
+          ctx = canvas.getContext("2d");
+        canvas.width = canvas.height = 1;
+        const rgba = (color) => {
+          ctx.clearRect(0, 0, 1, 1);
+          ctx.fillStyle = color;
+          ctx.fillRect(0, 0, 1, 1);
+          return [...ctx.getImageData(0, 0, 1, 1).data].map((n) => n / 255);
+        };
+        const lum = (rgb) =>
+          rgb
+            .slice(0, 3)
+            .map((c) =>
+              c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4,
+            )
+            .reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i], 0);
+        const ratio = (a, b) => {
+          const x = lum(a),
+            y = lum(b);
+          return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+        };
+        const background = (el) => {
+          const layers = [];
+          for (let node = el; node; node = node.parentElement)
+            layers.unshift(rgba(getComputedStyle(node).backgroundColor));
+          return layers.reduce(
+            (base, color) =>
+              color.map((c, i) =>
+                i === 3 ? 1 : c * color[3] + base[i] * (1 - color[3]),
+              ),
+            [1, 1, 1, 1],
+          );
+        };
+        const selection = rgba(
+          getComputedStyle(document.querySelector(".cm-selectionBackground"))
+            .backgroundColor,
+        );
+        const samples = [
+          document.querySelector(".cm-content"),
+          ...document.querySelectorAll(".cm-content span"),
+        ].filter((el) => el.textContent.trim());
+        const colors = samples.map((el) => getComputedStyle(el).color);
+        const failures = samples.flatMap((el) => {
+          const color = rgba(getComputedStyle(el).color),
+            normal = ratio(color, background(el)),
+            selected = ratio(color, selection);
+          return normal < 4.5 || selected < 4.5
+            ? [
+                {
+                  text: el.textContent.slice(0, 36),
+                  normal,
+                  selected,
+                  color: getComputedStyle(el).color,
+                },
+              ]
+            : [];
+        });
+        const gutter = document.querySelector(".cm-gutters");
+        return {
+          failures,
+          colors: [...new Set(colors)],
+          background: getComputedStyle(document.querySelector(".cm-editor"))
+            .backgroundColor,
+          gutterContrast: ratio(
+            rgba(getComputedStyle(gutter).color),
+            background(gutter),
+          ),
+        };
+      });
+      assert.deepEqual(
+        report.failures,
+        [],
+        JSON.stringify({ preference, device, failures: report.failures }),
+      );
+      assert.ok(
+        report.colors.length >= 5,
+        "YAML and Markdown retain distinct syntax colors",
+      );
+      assert.ok(report.gutterContrast >= 4.5, "Line numbers remain visible");
+      assert.equal(
+        report.background,
+        expected === "dark" ? "rgb(23, 30, 37)" : "rgb(255, 255, 255)",
+      );
+      await page.keyboard.press("ArrowRight");
+      assert.equal(
+        await page
+          .locator(".cm-cursor")
+          .first()
+          .evaluate((el) => getComputedStyle(el).borderLeftColor),
+        expected === "dark" ? "rgb(224, 232, 238)" : "rgb(37, 42, 46)",
+        "The drawn cursor remains visible",
+      );
+      if (preference !== "system")
+        await page.locator('dialog[x-ref="editorDialog"]').screenshot({
+          path: "/tmp/songya-ui-review/source-palette-" + expected + ".png",
+        });
+      await page.keyboard.press("ControlOrMeta+f");
+      const search = page.locator(".cm-panel.cm-search");
+      await search.waitFor();
+      const surfaces = await search.evaluate((el) => ({
+        panel: getComputedStyle(el.parentElement).backgroundColor,
+        input: getComputedStyle(el.querySelector("input")).backgroundColor,
+        foreground: getComputedStyle(el.querySelector("input")).color,
+      }));
+      assert.equal(
+        surfaces.panel,
+        expected === "dark" ? "rgb(32, 42, 51)" : "rgb(242, 245, 247)",
+      );
+      assert.equal(
+        surfaces.input,
+        expected === "dark" ? "rgb(23, 30, 37)" : "rgb(255, 255, 255)",
+      );
+      assert.equal(
+        surfaces.foreground,
+        expected === "dark" ? "rgb(224, 232, 238)" : "rgb(37, 42, 46)",
+      );
+      await search.locator('button[name="close"]').click();
+      if (preference === "system" && device === "dark") {
+        await content.focus();
+        await page.keyboard.press("ControlOrMeta+End");
+        await page.keyboard.insertText(" Extra words.");
+        await page.emulateMedia({ colorScheme: "light" });
+        await page.waitForFunction(
+          () =>
+            getComputedStyle(document.querySelector(".cm-editor"))
+              .backgroundColor === "rgb(255, 255, 255)",
+        );
+        assert.match(await content.innerText(), /Extra words\./);
+        await page.keyboard.press("ControlOrMeta+z");
+        assert.equal(
+          await content.innerText(),
+          draft,
+          "Device changes preserve undo history",
+        );
+      }
+      await page
+        .getByRole("button", { name: "Close record", exact: true })
+        .click();
+    }
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});

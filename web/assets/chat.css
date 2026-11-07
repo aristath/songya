@@ -363,21 +363,86 @@ body.chat-expanded {
 .chat-composer button {
   border-radius: 9px;
 }
+.source-editor {
+  --code-key: light-dark(#275c7a, #8fc4e4);
+  --code-string: light-dark(#27643f, #a5d6a7);
+  --code-number: light-dark(#8b4c14, #e8bd82);
+  --code-keyword: light-dark(#7046a6, #c9b2f3);
+  --code-comment: light-dark(#596773, #a3b1bd);
+  --code-markup: light-dark(#9b315f, #f0abc7);
+  --code-selection: light-dark(#e7f0f6, #2b4255);
+}
 .source-editor .cm-editor {
   color: var(--ink);
   background: var(--paper);
 }
-.source-editor .cm-gutters,
-.source-editor .cm-activeLineGutter {
+.source-editor .cm-editor.cm-focused {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.source-editor .cm-editor .cm-content {
+  color: var(--ink);
+  caret-color: var(--ink);
+}
+.source-editor .cm-editor .cm-gutters {
   color: var(--muted);
   background: var(--surface);
   border-color: var(--line);
 }
-.source-editor .cm-activeLine {
+.source-editor .cm-editor .cm-activeLineGutter {
+  color: var(--ink);
+  background: var(--selected);
+}
+.source-editor .cm-editor .cm-activeLine {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
-.source-editor .cm-cursor {
+.source-editor .cm-editor .cm-cursor,
+.source-editor .cm-editor .cm-dropCursor {
   border-left-color: var(--ink);
+}
+.source-editor .cm-editor .cm-selectionBackground,
+.source-editor
+  .cm-editor.cm-focused
+  > .cm-scroller
+  > .cm-selectionLayer
+  .cm-selectionBackground {
+  background: var(--code-selection);
+}
+.source-editor .cm-content ::selection,
+.source-editor .cm-content::selection {
+  background: var(--code-selection);
+  color: var(--ink);
+}
+.source-editor .cm-editor .cm-selectionMatch,
+.source-editor .cm-editor .cm-searchMatch,
+.source-editor .cm-editor .cm-searchMatch-selected,
+.source-editor .cm-editor .cm-matchingBracket {
+  background: var(--code-selection);
+}
+.source-editor .cm-editor .cm-searchMatch-selected,
+.source-editor .cm-editor .cm-matchingBracket {
+  outline: 1px solid var(--accent);
+}
+.source-editor .cm-editor .cm-nonmatchingBracket {
+  color: var(--error);
+  text-decoration: underline;
+}
+.source-editor .cm-editor .cm-panels,
+.source-editor .cm-editor .cm-tooltip,
+.source-editor .cm-editor .cm-foldPlaceholder {
+  color: var(--ink);
+  background: var(--surface);
+  border-color: var(--line);
+}
+.source-editor .cm-editor .cm-button,
+.source-editor .cm-editor .cm-textfield {
+  color: var(--ink);
+  background: var(--paper);
+  border-color: var(--line);
+}
+.source-editor .cm-editor .cm-tooltip-autocomplete [aria-selected="true"] {
+  color: var(--accent-ink);
+  background: var(--accent);
 }
 .ProseMirror-menubar,
 .ProseMirror-menu-dropdown-menu,
