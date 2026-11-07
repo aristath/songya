@@ -11,8 +11,7 @@ body.chat-expanded {
   overflow: hidden;
 }
 .chat-view {
-  max-width: 1440px;
-  margin: 0 auto;
+  min-width: 0;
 }
 .chat-view.expanded {
   position: fixed;
@@ -27,8 +26,8 @@ body.chat-expanded {
   display: grid;
   grid-template-columns: var(--history-width) minmax(0, 1fr);
   position: relative;
-  height: min(80dvh, 850px);
-  min-height: min(580px, 90dvh);
+  height: var(--workspace-height);
+  min-height: 0;
   border: 1px solid var(--line);
   border-radius: 12px;
   overflow: hidden;
@@ -391,17 +390,6 @@ body.chat-expanded {
   background: var(--selected);
 }
 
-.workspace-tabs .type-settings-button {
-  margin-left: auto;
-  font-size: 0.85rem;
-}
-.workspace-tabs .recall-settings-button {
-  margin-left: 0;
-}
-.workspace-tabs {
-  gap: clamp(0.5rem, 2%, 1.5rem);
-  flex-wrap: wrap;
-}
 .type-settings-dialog {
   width: min(65rem, calc(100% - 1rem));
 }

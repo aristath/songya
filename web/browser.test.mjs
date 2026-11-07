@@ -85,7 +85,7 @@ after(async () => {
 async function pageFor(
   viewport = { width: 1320, height: 900 },
   init,
-  tab = "list",
+  view = "list",
 ) {
   const context = await browser.newContext({ viewport });
   if (init) await context.addInitScript(init);
@@ -104,9 +104,9 @@ async function pageFor(
     errors.push(e.message);
   });
   await page.goto(url);
-  if (tab === "list") {
-    await page.getByRole("tab", { name: "List", exact: true }).click();
+  if (view === "list") {
     await page.getByRole("heading", { name: "Library", exact: true }).waitFor();
+    await page.locator("#list-panel").scrollIntoViewIfNeeded();
   } else
     await page
       .getByRole("heading", { name: "Chat with your memories", exact: true })
@@ -1014,7 +1014,7 @@ test("graph views render, preserve search when switching, and open safe hover la
   await page.waitForTimeout(3000); // Let the force layout settle and the camera fit.
   const graph = page.getByRole("region", { name: "Memory graph", exact: true });
   const bounds = await graph.boundingBox();
-  assert.equal(bounds.height, 450);
+  assert.ok(bounds.height > 0 && bounds.height < 450);
   const views = page.getByRole("group", { name: "Graph view", exact: true });
   assert.equal(
     await views
@@ -1039,14 +1039,23 @@ test("graph views render, preserve search when switching, and open safe hover la
     height: 900,
   });
   assert.equal(await page.evaluate(() => document.fullscreenElement), null);
-  assert.equal(await page.locator("main").evaluate((el) => el.inert), true);
+  assert.equal(
+    await page.locator("#chat-panel").evaluate((el) => el.inert),
+    true,
+  );
   await page.keyboard.press("Escape");
   await page.waitForFunction(
-    () =>
-      document.querySelector(".graph-canvas canvas").getBoundingClientRect()
-        .height === 450,
+    (height) =>
+      Math.abs(
+        document.querySelector(".graph-canvas canvas").getBoundingClientRect()
+          .height - height,
+      ) < 1,
+    bounds.height,
   );
-  assert.equal(await page.locator("main").evaluate((el) => el.inert), false);
+  assert.equal(
+    await page.locator("#chat-panel").evaluate((el) => el.inert),
+    false,
+  );
   await expand.click();
   await page.waitForFunction(
     () =>
@@ -1188,7 +1197,7 @@ test("graph views render, preserve search when switching, and open safe hover la
       await page.waitForFunction(
         () =>
           document.querySelector(".graph-canvas canvas").getBoundingClientRect()
-            .width === 390,
+            .width === document.querySelector(".graph-canvas").clientWidth,
       );
       const input = await search.boundingBox();
       const toggle = await views.boundingBox();
@@ -1219,7 +1228,7 @@ test("graph views render, preserve search when switching, and open safe hover la
       await page.waitForFunction(
         () =>
           document.querySelector(".graph-canvas canvas").getBoundingClientRect()
-            .height === 422,
+            .height === document.querySelector(".graph-canvas").clientHeight,
       );
       await page.screenshot({
         path: "/tmp/songya-ui-review/graph-2d-phone.png",
@@ -1234,9 +1243,12 @@ test("graph views render, preserve search when switching, and open safe hover la
   await page.waitForFunction(
     () =>
       document.querySelector(".graph-canvas canvas").getBoundingClientRect()
-        .width === 390,
+        .width === document.querySelector(".graph-canvas").clientWidth,
   );
-  assert.equal((await graph.boundingBox()).height, 422);
+  assert.ok(
+    (await graph.boundingBox()).height > 0 &&
+      (await graph.boundingBox()).height < 422,
+  );
   await page.screenshot({
     path: "/tmp/songya-ui-review/graph-phone.png",
     fullPage: true,
@@ -1772,13 +1784,12 @@ test("chat defaults on, streams real MCP writes, follows replies and restores us
   });
   const { page, context } = await pageFor(undefined, undefined, "chat");
   t.after(() => context.close());
+  assert.equal(await page.locator("#chat-panel").isVisible(), true);
+  assert.equal(await page.locator("#list-panel").isVisible(), true);
   assert.equal(
-    await page
-      .getByRole("tab", { name: "Chat", exact: true })
-      .getAttribute("aria-selected"),
-    "true",
+    await page.getByRole("tablist", { name: "Memory workspace" }).count(),
+    0,
   );
-  assert.equal(await page.locator("#list-panel").isVisible(), false);
   await setupBrowserChat(page, provider.base, "browser-chat-person");
   await page
     .getByLabel("Message Songya", { exact: true })
@@ -1828,6 +1839,9 @@ test("chat defaults on, streams real MCP writes, follows replies and restores us
     await page.getByLabel("Talking as", { exact: true }).inputValue(),
     "browser-chat-person",
   );
+  await page
+    .getByRole("button", { name: "Conversations", exact: true })
+    .click();
   assert.equal(
     await page
       .getByRole("button", {
@@ -1838,6 +1852,9 @@ test("chat defaults on, streams real MCP writes, follows replies and restores us
     "page",
   );
   assert.equal(provider.calls(), 3);
+  await page
+    .getByRole("button", { name: "Close conversations", exact: true })
+    .click();
   await page
     .locator("#chat-panel")
     .screenshot({ path: "/tmp/songya-ui-review/chat-desktop.png" });
@@ -1877,7 +1894,7 @@ test("chat defaults on, streams real MCP writes, follows replies and restores us
     "0",
   );
   await page.keyboard.press("Escape");
-  await page.getByRole("tab", { name: "List", exact: true }).click();
+  await page.locator("#list-panel").scrollIntoViewIfNeeded();
   await page.getByRole("heading", { name: "Library", exact: true }).waitFor();
   assert.deepEqual(errors, []);
 });
@@ -2073,7 +2090,11 @@ test(
       });
       streamFinish(res);
     });
-    const { page, context } = await pageFor(undefined, undefined, "chat");
+    const { page, context } = await pageFor(
+      { width: 1920, height: 900 },
+      undefined,
+      "chat",
+    );
     t.after(() => context.close());
     await setupBrowserChat(page, provider.base, "history-person");
     const input = page.getByLabel("Message Songya", { exact: true });
@@ -2254,7 +2275,7 @@ test("color theme follows the device by default and persists explicit choices", 
   assert.equal(await background(), "rgb(255, 255, 255)");
   await theme.selectOption("dark");
   assert.equal(await background(), "rgb(23, 30, 37)");
-  await page.getByRole("tab", { name: "List", exact: true }).click();
+  await page.locator("#list-panel").scrollIntoViewIfNeeded();
   assert.equal(
     await page.locator("main").evaluate((el) => getComputedStyle(el).color),
     "rgb(224, 232, 238)",
@@ -2560,7 +2581,7 @@ test("type settings preserve per-user choices, stable IDs and saved drafts", asy
     await dialog
       .getByRole("button", { name: "Close type settings", exact: true })
       .click();
-    await page.getByRole("tab", { name: "List", exact: true }).click();
+    await page.locator("#list-panel").scrollIntoViewIfNeeded();
     await page.getByLabel("Types for", { exact: true }).selectOption("cook");
     await editRecord(page, "Bulgur type test");
     const editor = page.locator('dialog[x-ref="editorDialog"]');
@@ -2578,6 +2599,160 @@ test("type settings preserve per-user choices, stable IDs and saved drafts", asy
     assert.match(edited.source, /cook: plant/);
     assert.match(edited.source, /life: food/);
     assert.match(edited.source, /A shared food description\./);
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
+
+test("chat leads the intrinsic workspace and keeps scrolling and expansion independent", async () => {
+  for (let i = 0; i < 20; i++)
+    await save(
+      source("Layout memory " + i, "A fictional afternoon with John."),
+    );
+  const { page, context } = await pageFor(
+    { width: 1320, height: 900 },
+    undefined,
+    "chat",
+  );
+  try {
+    assert.equal(
+      await page.getByRole("tablist", { name: "Memory workspace" }).count(),
+      0,
+    );
+    assert.deepEqual(
+      await page
+        .locator(".workspace > *")
+        .evaluateAll((els) => els.map((el) => el.id || el.className)),
+      ["chat-panel", "record-browser"],
+    );
+    const log = page.getByRole("log", { name: "Chat messages" });
+    await log.evaluate((el) => {
+      const account = document.createElement("p");
+      account.textContent = "John remembered an afternoon by the lake. ".repeat(
+        500,
+      );
+      el.append(account);
+    });
+    for (const width of [1920, 1320, 1000, 960, 940, 900, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(
+        () =>
+          new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve)),
+          ),
+      );
+      const geometry = await page.evaluate(() => {
+        const rect = (selector) => {
+          const { x, y, width, height } = document
+            .querySelector(selector)
+            .getBoundingClientRect();
+          return { x, y, width, height };
+        };
+        const style = getComputedStyle(document.querySelector(".workspace"));
+        return {
+          chat: rect("#chat-panel"),
+          graph: rect(".memory-graph"),
+          list: rect("#list-panel"),
+          composer: rect(".chat-composer"),
+          available:
+            document.querySelector(".workspace").clientWidth -
+            parseFloat(style.paddingLeft) -
+            parseFloat(style.paddingRight),
+          gap: parseFloat(style.columnGap),
+          rem: parseFloat(getComputedStyle(document.documentElement).fontSize),
+          overflow: document.documentElement.scrollWidth > innerWidth,
+        };
+      });
+      const { chat, graph, list, composer, available, gap, rem } = geometry;
+      if (available >= 64 * rem + gap) {
+        assert.ok(
+          chat.width >= 32 * rem && graph.width >= 32 * rem,
+          "Each side-by-side column keeps its minimum reading width",
+        );
+        assert.ok(
+          chat.x + chat.width <= graph.x && Math.abs(chat.y - graph.y) < 1,
+          "Chat is left of the graph",
+        );
+      } else {
+        assert.ok(
+          chat.y + chat.height <= graph.y,
+          "Chat comes before the stacked browser",
+        );
+        assert.ok(
+          Math.abs(chat.width - available) < 1 &&
+            Math.abs(graph.width - available) < 1,
+          "Stacked columns fill the available width",
+        );
+      }
+      assert.ok(
+        graph.y + graph.height <= list.y,
+        "The graph stays above the library",
+      );
+      assert.ok(
+        Math.abs(graph.x - list.x) < 1 &&
+          Math.abs(graph.width - list.width) < 1,
+        "The graph and library share one column",
+      );
+      assert.ok(
+        composer.y >= chat.y &&
+          composer.y + composer.height <= chat.y + chat.height + 1,
+        "The composer stays inside the chat pane",
+      );
+      assert.equal(
+        geometry.overflow,
+        false,
+        "The page does not scroll horizontally at " + width,
+      );
+      await log.evaluate((el) => {
+        el.scrollTop = el.scrollHeight;
+      });
+      assert.ok(
+        await log.evaluate((el) => el.scrollTop > 0),
+        "Message history scrolls independently",
+      );
+      const table = page.getByRole("region", { name: "Records table" });
+      await table.evaluate((el) => {
+        el.scrollTop = el.scrollHeight;
+        el.scrollLeft = 100;
+      });
+      assert.ok(
+        await table.evaluate((el) => el.scrollTop > 0),
+        "The record list scrolls independently",
+      );
+      assert.deepEqual(
+        await page.locator(".chat-composer").boundingBox(),
+        composer,
+        "Scrolling either pane does not move the composer",
+      );
+      if (width === 1320 || width === 390)
+        await page.screenshot({
+          path: "/tmp/songya-ui-review/workspace-" + width + ".png",
+          fullPage: true,
+        });
+    }
+    await page
+      .getByRole("button", { name: "Expand chat", exact: true })
+      .click();
+    assert.deepEqual(await page.locator("#chat-panel").boundingBox(), {
+      x: 0,
+      y: 0,
+      width: 320,
+      height: 900,
+    });
+    assert.equal(
+      await page.locator(".record-browser").evaluate((el) => el.inert),
+      true,
+    );
+    assert.equal(
+      await page.locator("#chat-panel").evaluate((el) => el.inert),
+      false,
+    );
+    await page.keyboard.press("Escape");
+    assert.equal(
+      await page.locator(".record-browser").evaluate((el) => el.inert),
+      false,
+    );
     assert.deepEqual(errors, []);
   } finally {
     await context.close();

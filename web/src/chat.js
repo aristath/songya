@@ -31,7 +31,6 @@ export function chatUI(request) {
     historyTimer,
     historyListing = 0;
   return {
-    tab: "chat",
     chatUser: local.get("songya-chat-user"),
     chatSessions: [],
     chatSessionID: "",

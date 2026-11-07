@@ -5,7 +5,13 @@ Go's standard HTTP server. `web.Handler` is also available to Go applications.
 The library and centralized recall endpoint call the Songya engine directly. Chat connects to the same Songya MCP
 server through an in-process MCP client session.
 
-The front page starts with a 50vh 2D graph on a black background. Its 2D / 3D toggle
+Chat is the main interface in the left column. The right column has a bounded
+2D graph above the record library, with both visible at the same time. CSS Grid
+fits two columns when each can be at least `32rem` wide; otherwise they stack as
+chat, graph, library. A container narrower than `32rem` stays within its available
+width. This uses intrinsic sizing without media/container queries or breakpoints.
+Chat history and the library scroll independently, and the composer stays inside
+the conversation pane. The graph has a black background. Its 2D / 3D toggle
 switches between locally bundled [3d-force-graph](https://github.com/vasturiano/3d-force-graph)
 and [force-graph](https://github.com/vasturiano/force-graph). Entities are
 green, memories amber, topics white and stories red; nodes grow with their incoming
@@ -29,8 +35,8 @@ browser's own controls visible. Search and view switching remain available. Use
 the same button or Escape to restore the normal graph; Escape closes an open
 record first. Background controls are inert while the graph is expanded.
 
-Below the graph, **Chat** is the default tab; **List** opens the sortable,
-filterable table with title, description, record
+Below the graph, the **Library** holds the sortable, filterable table with
+title, description, record
 kind, metadata type, aliases, owner and row actions. The Go catalogue supplies
 metadata and the exact revision used for row deletion. Full-content search and
 ownership selection use engine queries; column filters and sorting refine the
@@ -81,7 +87,7 @@ the saved key; the checkbox explicitly clears it. Credentials are kept on the
 server in a file with mode `0600`; browser responses report only whether a key is
 set. No process-environment configuration is used.
 
-**Retrieval settings** beside Chat/List controls the shared recall service and provides a saved-policy tester. See [the recall API and policy contract](recall.md). Songya Chat automatically retrieves evidence through this engine before calling the model; deliberate MCP tools remain available.
+**Retrieval settings** in the library heading controls the shared recall service and provides a saved-policy tester. See [the recall API and policy contract](recall.md). Songya Chat automatically retrieves evidence through this engine before calling the model; deliberate MCP tools remain available.
 
 The client is the official `openai-go/v3` SDK, using streamed Chat Completions and
 function calling. The provider/model must support both. Songya supplies the actual
@@ -237,7 +243,7 @@ other records remain usable. Repair that file's encoding before editing it here.
 
 ## Type settings
 
-The header's **Type settings** opens a per-user editor. Each record kind has its
+The library heading's **Type settings** opens a per-user editor. Each record kind has its
 own list. Edit names and short definitions, add choices, or remove a choice.
 Removing an in-use choice requires selecting a replacement or explicitly
 clearing that user's assignments. Stable IDs do not change when names change.

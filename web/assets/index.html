@@ -34,156 +34,10 @@
         >
       </div>
     </header>
-    <div class="graph-slot" :inert="chatExpanded">
-      <section
-        class="memory-graph"
-        :class="{expanded:graphExpanded}"
-        aria-label="Memory graph"
-      >
-        <div class="graph-canvas" x-ref="graph"></div>
-        <div class="graph-toolbar">
-          <div class="graph-tools">
-            <select
-              aria-label="Graph memory owner"
-              title="Whose memories to show"
-              x-model="graphOwner"
-              @change="renderGraph()"
-            >
-              <option value="">Any</option>
-              <template x-for="user in graphOwners" :key="user">
-                <option :value="user" x-text="user"></option>
-              </template>
-            </select>
-            <div class="graph-view" role="group" aria-label="Graph view">
-              <button
-                :aria-pressed="graphMode==='2d'"
-                @click="switchGraph('2d')"
-              >
-                2D
-              </button>
-              <button
-                :aria-pressed="graphMode==='3d'"
-                @click="switchGraph('3d')"
-              >
-                3D
-              </button>
-            </div>
-            <button
-              class="graph-expand"
-              x-ref="graphExpand"
-              @click="toggleGraphExpanded()"
-              :aria-pressed="graphExpanded"
-              :aria-label="graphExpanded ? 'Exit full-screen graph' : 'Expand graph to full screen'"
-              :title="graphExpanded ? 'Exit full-screen graph (Escape)' : 'Expand graph to full screen'"
-            >
-              <svg
-                x-show="!graphExpanded"
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.7"
-              >
-                <path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6" />
-              </svg>
-              <svg
-                x-show="graphExpanded"
-                x-cloak
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.7"
-              >
-                <path d="M3 9h6V3m6 0v6h6M9 21v-6H3m18 0h-6v6" />
-              </svg>
-            </button>
-          </div>
-          <div
-            class="graph-search"
-            role="search"
-            aria-label="Search graph"
-            @click.outside="graphSearchOpen=false"
-          >
-            <input
-              type="search"
-              aria-label="Search graph"
-              aria-controls="graph-matches"
-              placeholder="Find a name, title or alias…"
-              x-model="graphQuery"
-              @input="searchGraph()"
-              @focus="graphSearchOpen=true"
-              @keydown.enter.prevent="focusGraph(graphMatches[0]?.id)"
-              @keydown.escape.prevent.stop="graphQuery=''; searchGraph()"
-              :disabled="!!graphStatus"
-            />
-            <div
-              id="graph-matches"
-              x-show="graphQuery.trim()&&graphSearchOpen"
-              x-cloak
-            >
-              <p
-                aria-live="polite"
-                x-text="graphMatches.length ? graphMatches.length+' matches · select to locate' : 'No matches'"
-              ></p>
-              <div class="graph-results">
-                <template x-for="record in graphMatches" :key="record.id">
-                  <button @click="focusGraph(record.id)">
-                    <span x-text="record.title||record.id"></span>
-                    <small x-text="record.kind"></small>
-                  </button>
-                </template>
-              </div>
-            </div>
-          </div>
-        </div>
-        <p class="graph-status" x-show="graphStatus" x-text="graphStatus"></p>
-        <div class="graph-legend" aria-label="Graph colors">
-          <span><i class="entity-dot"></i>Entities</span>
-          <span><i class="memory-dot"></i>Memories</span>
-          <span><i class="topic-dot"></i>Topics</span>
-          <span><i class="story-dot"></i>Stories</span>
-        </div>
-      </section>
-    </div>
-    <nav
-      class="workspace-tabs"
-      role="tablist"
-      aria-label="Memory workspace"
+    <div
+      x-show="!dialogOpen&&(notice||failure)"
       :inert="graphExpanded||chatExpanded"
     >
-      <button
-        id="chat-tab"
-        x-ref="chatTab"
-        role="tab"
-        aria-controls="chat-panel"
-        :aria-selected="tab==='chat'"
-        :tabindex="tab==='chat'?0:-1"
-        @click="tab='chat';$nextTick(()=>{if(chatFollow)scrollChat()})"
-        @keydown.arrow-right.prevent="tab='list';$refs.listTab.focus()"
-      >
-        Chat
-      </button>
-      <button
-        id="list-tab"
-        x-ref="listTab"
-        role="tab"
-        aria-controls="list-panel"
-        :aria-selected="tab==='list'"
-        :tabindex="tab==='list'?0:-1"
-        @click="tab='list'"
-        @keydown.arrow-left.prevent="tab='chat';$refs.chatTab.focus()"
-      >
-        List
-      </button>
-      <button class="type-settings-button" @click="openTypeSettings()">
-        Type settings
-      </button>
-      <button class="recall-settings-button" @click="openRecallSettings()">
-        Retrieval settings
-      </button>
-    </nav>
-    <div x-show="!dialogOpen" :inert="graphExpanded||chatExpanded">
       <div class="messages" aria-live="polite">
         <p class="success" x-show="notice" x-text="notice" x-cloak></p>
         <p
@@ -195,14 +49,13 @@
         ></p>
       </div>
     </div>
-    <main :inert="graphExpanded">
+    <main class="workspace">
       <section
         id="chat-panel"
         class="chat-view"
         :class="{expanded:chatExpanded}"
-        role="tabpanel"
-        aria-labelledby="chat-tab"
-        x-show="tab==='chat'"
+        aria-labelledby="chat-heading"
+        :inert="graphExpanded"
       >
         <div
           class="chat-workspace"
@@ -296,7 +149,10 @@
           <div class="chat-pane">
             <div class="chat-heading chat-main-heading">
               <div class="chat-title">
-                <h1 x-text="chatState?.title||'Chat with your memories'"></h1>
+                <h1
+                  id="chat-heading"
+                  x-text="chatState?.title||'Chat with your memories'"
+                ></h1>
                 <span class="muted" x-show="chatState?.archived"
                   >Archived conversation</span
                 >
@@ -547,180 +403,299 @@
         </div>
       </section>
 
-      <section
-        id="list-panel"
-        class="library"
-        aria-label="Record library"
-        role="tabpanel"
-        aria-labelledby="list-tab"
-        x-show="tab==='list'"
-        x-cloak
-      >
-        <div class="library-heading">
-          <h1>Library</h1>
-          <span x-text="rows().length+' records'"></span>
-        </div>
-        <div class="filters">
-          <label class="global-search"
-            >Search<input
-              aria-label="Search records"
-              type="search"
-              placeholder="Search all record content"
-              x-model="q"
-              @input.debounce.200ms="refresh()"
-          /></label>
-          <label
-            >Title<input
-              aria-label="Filter title"
-              type="search"
-              x-model="filters.title"
-          /></label>
-          <label
-            >Description<input
-              aria-label="Filter description"
-              type="search"
-              x-model="filters.description"
-          /></label>
-          <label
-            >Record type<select
-              aria-label="Record type filter"
-              x-model="kind"
-              @change="refresh()"
-            >
-              <option value="">All records</option>
-              <option value="memories">Memories</option>
-              <option value="entities">Entities</option>
-              <option value="topics">Topics</option>
-              <option value="stories">Stories</option>
-            </select></label
+      <div class="record-browser" :inert="chatExpanded">
+        <div class="graph-slot">
+          <section
+            class="memory-graph"
+            :class="{expanded:graphExpanded}"
+            aria-label="Memory graph"
           >
-          <label
-            >Types for<select
-              aria-label="Types for"
-              x-model="classificationUser"
-              @change="changeClassificationUser()"
-            >
-              <option value="">Choose a user</option>
-              <template x-for="user in classificationUsers()" :key="user"
-                ><option :value="user" x-text="user"></option
-              ></template></select
-          ></label>
-          <label
-            >Type<select
-              aria-label="Metadata type filter"
-              x-model="filters.type"
-            >
-              <option value="">All types</option>
-              <template x-for="type in Object.keys(types).sort()" :key="type"
-                ><option :value="type" x-text="type"></option
-              ></template></select
-          ></label>
-          <label
-            >Aliases<input
-              aria-label="Filter aliases"
-              type="search"
-              x-model="filters.aliases"
-          /></label>
-          <label
-            >Owner<select
-              aria-label="Owner"
-              x-model="owner"
-              @change="refresh()"
-            >
-              <option value="">Everyone</option>
-              <template x-for="user in Object.keys(owners).sort()" :key="user"
-                ><option :value="user" x-text="user"></option
-              ></template></select
-          ></label>
-        </div>
-        <details x-show="diagnostics.length">
-          <summary>Sources needing attention</summary>
-          <template x-for="(issue,index) in diagnostics" :key="index"
-            ><p x-text="issue.path+': '+issue.message"></p
-          ></template>
-        </details>
-        <div
-          class="table-scroll"
-          tabindex="0"
-          role="region"
-          aria-label="Records table"
-        >
-          <table>
-            <colgroup>
-              <col />
-              <col />
-              <col />
-              <col />
-              <col />
-              <col />
-              <col />
-            </colgroup>
-            <thead>
-              <tr>
-                <template
-                  x-for="column in [{key:'title',label:'Title'},{key:'description',label:'Description'},{key:'kind',label:'Record type'},{key:'type',label:'Type'},{key:'aliases',label:'Aliases'},{key:'user',label:'Owner'}]"
-                  :key="column.key"
-                  ><th scope="col" :aria-sort="sortOrder(column.key)">
-                    <button
-                      @click="sort(column.key)"
-                      :aria-label="'Sort by '+column.label"
-                    >
-                      <span x-text="column.label"></span
-                      ><span
-                        aria-hidden="true"
-                        x-text="sortKey===column.key ? ascending ? '↑' : '↓' : '↕'"
-                      ></span>
-                    </button></th
-                ></template>
-                <th scope="col">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <template x-for="record in rows()" :key="record.source"
-                ><tr class="record">
-                  <td class="title-cell">
-                    <button
-                      class="text-button"
-                      @click="open(record.id, false, true)"
-                      :disabled="!record.id||busy||loading"
-                      x-text="label(record)"
-                    ></button
-                    ><small x-text="record.id||record.source"></small>
-                  </td>
-                  <td
-                    class="description-cell"
-                    x-text="record.description||'—'"
-                  ></td>
-                  <td x-text="record.kind"></td>
-                  <td x-text="typeLabel(record.type,record.kind)||'—'"></td>
-                  <td
-                    class="aliases-cell"
-                    x-text="(record.aliases||[]).join(', ')||'—'"
-                  ></td>
-                  <td x-text="record.user||'Shared'"></td>
-                  <td class="row-actions">
-                    <button
-                      @click="open(record.id)"
-                      :aria-label="'Edit '+label(record)"
-                      :disabled="!record.id||busy||loading"
-                    >
-                      Edit</button
-                    ><button
-                      class="danger"
-                      @click="remove(record)"
-                      :aria-label="'Delete '+label(record)"
-                      :disabled="!record.id||record.pending||busy||loading"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr></template
+            <div class="graph-canvas" x-ref="graph"></div>
+            <div class="graph-toolbar">
+              <div class="graph-tools">
+                <select
+                  aria-label="Graph memory owner"
+                  title="Whose memories to show"
+                  x-model="graphOwner"
+                  @change="renderGraph()"
+                >
+                  <option value="">Any</option>
+                  <template x-for="user in graphOwners" :key="user">
+                    <option :value="user" x-text="user"></option>
+                  </template>
+                </select>
+                <div class="graph-view" role="group" aria-label="Graph view">
+                  <button
+                    :aria-pressed="graphMode==='2d'"
+                    @click="switchGraph('2d')"
+                  >
+                    2D
+                  </button>
+                  <button
+                    :aria-pressed="graphMode==='3d'"
+                    @click="switchGraph('3d')"
+                  >
+                    3D
+                  </button>
+                </div>
+                <button
+                  class="graph-expand"
+                  x-ref="graphExpand"
+                  @click="toggleGraphExpanded()"
+                  :aria-pressed="graphExpanded"
+                  :aria-label="graphExpanded ? 'Exit full-screen graph' : 'Expand graph to full screen'"
+                  :title="graphExpanded ? 'Exit full-screen graph (Escape)' : 'Expand graph to full screen'"
+                >
+                  <svg
+                    x-show="!graphExpanded"
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.7"
+                  >
+                    <path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6" />
+                  </svg>
+                  <svg
+                    x-show="graphExpanded"
+                    x-cloak
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.7"
+                  >
+                    <path d="M3 9h6V3m6 0v6h6M9 21v-6H3m18 0h-6v6" />
+                  </svg>
+                </button>
+              </div>
+              <div
+                class="graph-search"
+                role="search"
+                aria-label="Search graph"
+                @click.outside="graphSearchOpen=false"
               >
-            </tbody>
-          </table>
-          <p class="empty" x-show="!rows().length">No matching records.</p>
+                <input
+                  type="search"
+                  aria-label="Search graph"
+                  aria-controls="graph-matches"
+                  placeholder="Find a name, title or alias…"
+                  x-model="graphQuery"
+                  @input="searchGraph()"
+                  @focus="graphSearchOpen=true"
+                  @keydown.enter.prevent="focusGraph(graphMatches[0]?.id)"
+                  @keydown.escape.prevent.stop="graphQuery=''; searchGraph()"
+                  :disabled="!!graphStatus"
+                />
+                <div
+                  id="graph-matches"
+                  x-show="graphQuery.trim()&&graphSearchOpen"
+                  x-cloak
+                >
+                  <p
+                    aria-live="polite"
+                    x-text="graphMatches.length ? graphMatches.length+' matches · select to locate' : 'No matches'"
+                  ></p>
+                  <div class="graph-results">
+                    <template x-for="record in graphMatches" :key="record.id">
+                      <button @click="focusGraph(record.id)">
+                        <span x-text="record.title||record.id"></span>
+                        <small x-text="record.kind"></small>
+                      </button>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p
+              class="graph-status"
+              x-show="graphStatus"
+              x-text="graphStatus"
+            ></p>
+            <div class="graph-legend" aria-label="Graph colors">
+              <span><i class="entity-dot"></i>Entities</span>
+              <span><i class="memory-dot"></i>Memories</span>
+              <span><i class="topic-dot"></i>Topics</span>
+              <span><i class="story-dot"></i>Stories</span>
+            </div>
+          </section>
         </div>
-      </section>
+        <section
+          id="list-panel"
+          class="library"
+          aria-label="Record library"
+          :inert="graphExpanded"
+        >
+          <div class="library-heading">
+            <h2>Library</h2>
+            <span x-text="rows().length+' records'"></span>
+            <div class="library-settings">
+              <button @click="openTypeSettings()">Type settings</button>
+              <button @click="openRecallSettings()">Retrieval settings</button>
+            </div>
+          </div>
+          <div class="filters">
+            <label class="global-search"
+              >Search<input
+                aria-label="Search records"
+                type="search"
+                placeholder="Search all record content"
+                x-model="q"
+                @input.debounce.200ms="refresh()"
+            /></label>
+            <label
+              >Title<input
+                aria-label="Filter title"
+                type="search"
+                x-model="filters.title"
+            /></label>
+            <label
+              >Description<input
+                aria-label="Filter description"
+                type="search"
+                x-model="filters.description"
+            /></label>
+            <label
+              >Record type<select
+                aria-label="Record type filter"
+                x-model="kind"
+                @change="refresh()"
+              >
+                <option value="">All records</option>
+                <option value="memories">Memories</option>
+                <option value="entities">Entities</option>
+                <option value="topics">Topics</option>
+                <option value="stories">Stories</option>
+              </select></label
+            >
+            <label
+              >Types for<select
+                aria-label="Types for"
+                x-model="classificationUser"
+                @change="changeClassificationUser()"
+              >
+                <option value="">Choose a user</option>
+                <template x-for="user in classificationUsers()" :key="user"
+                  ><option :value="user" x-text="user"></option
+                ></template></select
+            ></label>
+            <label
+              >Type<select
+                aria-label="Metadata type filter"
+                x-model="filters.type"
+              >
+                <option value="">All types</option>
+                <template x-for="type in Object.keys(types).sort()" :key="type"
+                  ><option :value="type" x-text="type"></option
+                ></template></select
+            ></label>
+            <label
+              >Aliases<input
+                aria-label="Filter aliases"
+                type="search"
+                x-model="filters.aliases"
+            /></label>
+            <label
+              >Owner<select
+                aria-label="Owner"
+                x-model="owner"
+                @change="refresh()"
+              >
+                <option value="">Everyone</option>
+                <template x-for="user in Object.keys(owners).sort()" :key="user"
+                  ><option :value="user" x-text="user"></option
+                ></template></select
+            ></label>
+          </div>
+          <details x-show="diagnostics.length">
+            <summary>Sources needing attention</summary>
+            <template x-for="(issue,index) in diagnostics" :key="index"
+              ><p x-text="issue.path+': '+issue.message"></p
+            ></template>
+          </details>
+          <div
+            class="table-scroll"
+            tabindex="0"
+            role="region"
+            aria-label="Records table"
+          >
+            <table>
+              <colgroup>
+                <col />
+                <col />
+                <col />
+                <col />
+                <col />
+                <col />
+                <col />
+              </colgroup>
+              <thead>
+                <tr>
+                  <template
+                    x-for="column in [{key:'title',label:'Title'},{key:'description',label:'Description'},{key:'kind',label:'Record type'},{key:'type',label:'Type'},{key:'aliases',label:'Aliases'},{key:'user',label:'Owner'}]"
+                    :key="column.key"
+                    ><th scope="col" :aria-sort="sortOrder(column.key)">
+                      <button
+                        @click="sort(column.key)"
+                        :aria-label="'Sort by '+column.label"
+                      >
+                        <span x-text="column.label"></span
+                        ><span
+                          aria-hidden="true"
+                          x-text="sortKey===column.key ? ascending ? '↑' : '↓' : '↕'"
+                        ></span>
+                      </button></th
+                  ></template>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="record in rows()" :key="record.source"
+                  ><tr class="record">
+                    <td class="title-cell">
+                      <button
+                        class="text-button"
+                        @click="open(record.id, false, true)"
+                        :disabled="!record.id||busy||loading"
+                        x-text="label(record)"
+                      ></button
+                      ><small x-text="record.id||record.source"></small>
+                    </td>
+                    <td
+                      class="description-cell"
+                      x-text="record.description||'—'"
+                    ></td>
+                    <td x-text="record.kind"></td>
+                    <td x-text="typeLabel(record.type,record.kind)||'—'"></td>
+                    <td
+                      class="aliases-cell"
+                      x-text="(record.aliases||[]).join(', ')||'—'"
+                    ></td>
+                    <td x-text="record.user||'Shared'"></td>
+                    <td class="row-actions">
+                      <button
+                        @click="open(record.id)"
+                        :aria-label="'Edit '+label(record)"
+                        :disabled="!record.id||busy||loading"
+                      >
+                        Edit</button
+                      ><button
+                        class="danger"
+                        @click="remove(record)"
+                        :aria-label="'Delete '+label(record)"
+                        :disabled="!record.id||record.pending||busy||loading"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr></template
+                >
+              </tbody>
+            </table>
+            <p class="empty" x-show="!rows().length">No matching records.</p>
+          </div>
+        </section>
+      </div>
     </main>
     <dialog
       x-ref="editorDialog"
