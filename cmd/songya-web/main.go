@@ -40,6 +40,9 @@ func main() {
 	go func() {
 		defer close(done)
 		<-ctx.Done()
+		// Stop persistent event streams and retain unfinished chat work before
+		// waiting for the HTTP server to drain.
+		_ = application.Close()
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = server.Shutdown(shutdown)

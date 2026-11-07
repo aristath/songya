@@ -622,6 +622,7 @@ test("owner and type filters preserve shared identities without adding access re
   await save(source("Ownership Ari"), "memories");
   await save(source("Ownership shared"), "entities");
   const { page, context } = await pageFor();
+  await page.locator(".library-filters > summary").click();
   await page
     .getByRole("searchbox", { name: "Search records", exact: true })
     .fill("Ownership");
@@ -778,12 +779,17 @@ test("the front page is a sortable metadata table with independent column filter
       kind,
     );
   const { page, context } = await pageFor();
+  await page.locator(".library-filters > summary").click();
   await page.getByLabel("Filter title", { exact: true }).fill("Table ");
   assert.equal(await page.locator(".record").count(), 3);
   assert.equal(await page.locator("aside").count(), 0);
   assert.equal(await page.locator("dialog:modal").count(), 0);
   const titles = () =>
     page.locator(".title-cell .text-button").allTextContents();
+  assert.deepEqual(await titles(), ["Table 1", "Table 10", "Table 2"]);
+  await page
+    .getByRole("button", { name: "Sort by Title", exact: true })
+    .click();
   assert.deepEqual(await titles(), ["Table 1", "Table 2", "Table 10"]);
   await page
     .getByRole("button", { name: "Sort by Title", exact: true })
@@ -1760,6 +1766,7 @@ test("chat defaults on, streams real MCP writes, follows replies and restores us
       });
     if (n === 2)
       return streamTool(res, "save_memory", {
+        title: "Move to the island on 12 June 2001",
         text: "I moved to the island on 12 June 2001.",
         time: { date: "2001-06-12" },
       });
@@ -1791,12 +1798,54 @@ test("chat defaults on, streams real MCP writes, follows replies and restores us
     0,
   );
   await setupBrowserChat(page, provider.base, "browser-chat-person");
+  const observer = await pageFor(undefined, undefined, "chat");
+  t.after(() => observer.context.close());
+  await observer.page.locator(".graph-canvas canvas").waitFor();
+  let failedGraphRefresh = false,
+    failedListRefresh = false;
+  await observer.page.route("**/api/graph", (route) => {
+    if (!failedGraphRefresh) {
+      failedGraphRefresh = true;
+      return route.abort();
+    }
+    return route.continue();
+  });
+  await observer.page.route("**/api/records?**", (route) => {
+    if (!failedListRefresh) {
+      failedListRefresh = true;
+      return route.abort();
+    }
+    return route.continue();
+  });
   await page
     .getByLabel("Message Songya", { exact: true })
     .fill("Remember that I moved to the island on 12 June 2001.");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   const log = page.getByRole("log", { name: "Chat messages", exact: true });
   await log.getByText("Saved your move.", { exact: true }).waitFor();
+  // The provider is still held open: both the current chat and another open
+  // view must see the committed memory before the reply finishes.
+  for (const target of [page, observer.page]) {
+    await target.waitForFunction(() =>
+      window.Alpine.$data(document.body).records.some(
+        (record) => record.title === "Move to the island on 12 June 2001",
+      ),
+    );
+    await target
+      .getByRole("searchbox", { name: "Search graph", exact: true })
+      .fill("island on 12 June 2001");
+    await target.locator("#graph-matches button").first().waitFor();
+  }
+  assert.equal(
+    await page.evaluate(
+      () => window.Alpine.$data(document.body).chatState.status,
+    ),
+    "running",
+  );
+  assert.ok(
+    failedGraphRefresh && failedListRefresh,
+    "A transient refresh failure was retried in the other view",
+  );
   await page.waitForFunction(() => {
     const el = document.querySelector(".chat-log");
     return el.scrollHeight - el.clientHeight - el.scrollTop < 10;
@@ -2582,6 +2631,7 @@ test("type settings preserve per-user choices, stable IDs and saved drafts", asy
       .getByRole("button", { name: "Close type settings", exact: true })
       .click();
     await page.locator("#list-panel").scrollIntoViewIfNeeded();
+    await page.locator(".library-filters > summary").click();
     await page.getByLabel("Types for", { exact: true }).selectOption("cook");
     await editRecord(page, "Bulgur type test");
     const editor = page.locator('dialog[x-ref="editorDialog"]');
@@ -2600,6 +2650,188 @@ test("type settings preserve per-user choices, stable IDs and saved drafts", asy
     assert.match(edited.source, /life: food/);
     assert.match(edited.source, /A shared food description\./);
     assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
+
+test("a background chat edit updates both views without replacing an unsaved editor draft", async (t) => {
+  const record = await save(
+    source("Live edit before", "John walked by the lake."),
+  );
+  await save(source("Live draft to keep", "An earlier account."));
+  let allowWrite, finishReply;
+  const write = new Promise((resolve) => {
+    allowWrite = resolve;
+  });
+  const finish = new Promise((resolve) => {
+    finishReply = resolve;
+  });
+  t.after(() => {
+    allowWrite();
+    finishReply();
+  });
+  const provider = await chatProvider(t, async (res, body, n) => {
+    if (n === 1) {
+      await write;
+      return streamTool(res, "save_memory", {
+        id: record.id,
+        title: "Live edit after",
+        text: "John walked by the lake with Mary.",
+      });
+    }
+    streamChunk(res, {
+      role: "assistant",
+      content: "The correction is saved. Still replying.",
+    });
+    await finish;
+    streamFinish(res);
+  });
+  const writer = await pageFor(undefined, undefined, "chat");
+  const observer = await pageFor();
+  t.after(() => writer.context.close());
+  t.after(() => observer.context.close());
+  await setupBrowserChat(writer.page, provider.base, "live-editor");
+  await observer.page.locator(".library-filters > summary").click();
+  await observer.page.getByLabel("Filter title", { exact: true }).fill("Live ");
+  await observer.page
+    .getByRole("button", { name: "Sort by Title", exact: true })
+    .click();
+  await editRecord(observer.page, "Live draft to keep");
+  await observer.page
+    .locator(".ProseMirror")
+    .fill("My unsaved account must stay here.");
+  await writer.page
+    .getByLabel("Message Songya", { exact: true })
+    .fill("Add Mary to John's account.");
+  await writer.page.getByRole("button", { name: "Send", exact: true }).click();
+  const id = await writer.page.evaluate(
+    () => window.Alpine.$data(document.body).chatSessionID,
+  );
+  await writer.page
+    .getByRole("button", { name: "New chat", exact: true })
+    .click();
+  allowWrite();
+  for (const target of [writer.page, observer.page])
+    await target.waitForFunction(
+      (id) =>
+        window.Alpine.$data(document.body).records.some(
+          (r) => r.id === id && r.title === "Live edit after",
+        ),
+      record.id,
+    );
+  const state = await (await fetch(url + "/api/chat/sessions/" + id)).json();
+  assert.equal(
+    state.status,
+    "running",
+    "The update reaches the UI before the background reply completes",
+  );
+  assert.equal(
+    await writer.page.evaluate(
+      () => window.Alpine.$data(document.body).chatSessionID,
+    ),
+    "",
+  );
+  assert.equal(
+    await observer.page.locator(".ProseMirror").innerText(),
+    "My unsaved account must stay here.",
+  );
+  assert.equal(
+    await observer.page.evaluate(
+      () => window.Alpine.$data(document.body).dirty,
+    ),
+    true,
+  );
+  assert.deepEqual(
+    await observer.page.evaluate(() => ({
+      key: window.Alpine.$data(document.body).sortKey,
+      ascending: window.Alpine.$data(document.body).ascending,
+    })),
+    { key: "title", ascending: true },
+  );
+  await observer.page
+    .getByRole("button", { name: "Close record", exact: true })
+    .click();
+  assert.equal(
+    await observer.page
+      .getByLabel("Filter title", { exact: true })
+      .inputValue(),
+    "Live ",
+  );
+  await observer.page
+    .getByRole("searchbox", { name: "Search graph", exact: true })
+    .fill("Live edit after");
+  await observer.page.locator("#graph-matches button").first().waitFor();
+  finishReply();
+  assert.deepEqual(errors, []);
+});
+
+test("last updated sorts real timestamps newest first and filters start collapsed", async () => {
+  for (const [title, stamp] of [
+    ["Updated oldest", "2020-01-01T00:00:00Z"],
+    ["Updated newest", "2025-01-01T00:00:00Z"],
+    ["Updated offset", "2025-01-01T02:00:00+03:00"],
+    ["Updated unknown", "unreadable"],
+  ]) {
+    const record = await save(source(title));
+    writeFileSync(
+      join(root, "store", "memories", record.id + ".md"),
+      record.source.replace(/updated_at: [^\n]+/, "updated_at: " + stamp),
+    );
+  }
+  const { page, context } = await pageFor();
+  try {
+    const filters = page.locator(".library-filters");
+    assert.equal(await filters.evaluate((el) => el.open), false);
+    assert.equal(
+      await page.getByLabel("Filter title", { exact: true }).isVisible(),
+      false,
+    );
+    await filters.locator("summary").click();
+    await page.getByLabel("Filter title", { exact: true }).fill("Updated ");
+    const titles = () =>
+      page.locator(".title-cell .text-button").allTextContents();
+    assert.deepEqual(await titles(), [
+      "Updated newest",
+      "Updated offset",
+      "Updated oldest",
+      "Updated unknown",
+    ]);
+    const column = page.getByRole("columnheader").filter({
+      has: page.getByRole("button", {
+        name: "Sort by Last updated",
+        exact: true,
+      }),
+    });
+    assert.equal(await column.getAttribute("aria-sort"), "descending");
+    const first = page.locator("tr.record").first().locator("time");
+    assert.equal(await first.getAttribute("datetime"), "2025-01-01T00:00:00Z");
+    assert.equal(
+      await page.locator("tr.record").last().locator("time").innerText(),
+      "Unknown",
+    );
+    await page
+      .getByRole("button", { name: "Sort by Last updated", exact: true })
+      .click();
+    assert.deepEqual(await titles(), [
+      "Updated oldest",
+      "Updated offset",
+      "Updated newest",
+      "Updated unknown",
+    ]);
+    assert.equal(await column.getAttribute("aria-sort"), "ascending");
+    await filters.locator("summary").click();
+    assert.deepEqual(await titles(), [
+      "Updated oldest",
+      "Updated offset",
+      "Updated newest",
+      "Updated unknown",
+    ]);
+    await filters.locator("summary").click();
+    assert.equal(
+      await page.getByLabel("Filter title", { exact: true }).inputValue(),
+      "Updated ",
+    );
   } finally {
     await context.close();
   }
@@ -2688,6 +2920,10 @@ test("chat leads the intrinsic workspace and keeps scrolling and expansion indep
       assert.ok(
         graph.y + graph.height <= list.y,
         "The graph stays above the library",
+      );
+      assert.ok(
+        Math.abs(graph.height - list.height) < 1,
+        "Graph and library split the right column equally",
       );
       assert.ok(
         Math.abs(graph.x - list.x) < 1 &&

@@ -25,6 +25,8 @@ const newID = () =>
 
 export function chatUI(request) {
   let events,
+    recordEvents,
+    recordsTimer,
     watch = 0,
     settingsGeneration = 0,
     historyObserver,
@@ -70,6 +72,7 @@ export function chatUI(request) {
     chatSettingsNotice: "",
     chatModels: [],
     async initChat() {
+      this.watchRecords();
       const generation = settingsGeneration;
       await Promise.allSettled([
         request("/api/chat/settings")
@@ -238,8 +241,28 @@ export function chatUI(request) {
     },
     destroy() {
       clearTimeout(historyTimer);
+      clearTimeout(recordsTimer);
+      recordEvents?.close();
       historyObserver?.disconnect();
       events?.close();
+    },
+    watchRecords() {
+      recordEvents?.close();
+      recordEvents = new EventSource("/api/records/events");
+      recordEvents.onmessage = () => this.refreshChatRecords();
+    },
+    async refreshChatRecords() {
+      clearTimeout(recordsTimer);
+      const results = await Promise.allSettled([
+        this.refreshGraph(),
+        this.refresh(),
+      ]);
+      if (
+        results.some(
+          (result) => result.status === "rejected" || result.value === false,
+        )
+      )
+        recordsTimer = setTimeout(() => this.refreshChatRecords(), 1000);
     },
     async changeChatUser() {
       this.keepChatDraft();
@@ -346,7 +369,6 @@ export function chatUI(request) {
         this.chatState.revision > value.revision
       )
         return;
-      const wasBusy = this.chatBusy();
       const follow = this.chatFollow;
       this.chatState = value;
       this.chatSessionID = value.id;
@@ -384,10 +406,6 @@ export function chatUI(request) {
       if (!this.chatBusy()) {
         events?.close();
         this.refreshChatSessions();
-        if (wasBusy) {
-          this.refreshGraph();
-          this.refresh();
-        }
       }
     },
     scrollChat() {

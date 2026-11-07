@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const indexFormat = 10
+const indexFormat = 11
 
 // Diagnostic identifies a recoverable problem without hiding healthy records.
 type Diagnostic struct {
@@ -35,6 +35,7 @@ type Record struct {
 	Source      string            `json:"source"`
 	Kind        Destination       `json:"kind"`
 	Revision    string            `json:"-"`
+	UpdatedAt   string            `json:"updated_at,omitempty"`
 	Pending     bool              `json:"pending,omitempty"`
 	Unconfirmed bool              `json:"unconfirmed,omitempty"`
 	Title       string            `json:"title"`
@@ -89,6 +90,9 @@ func recordFromDocument(source string, d *Document, kind Destination) Record {
 	d = &view
 	metadata := d.Metadata()
 	r := Record{ID: d.ID, Source: source, Kind: kind, Revision: d.Revision, Pending: d.Pending, Unconfirmed: d.Unconfirmed, Title: metadata.Title, Body: d.Body, Relations: metadata.Relations, Diagnostics: d.Diagnostics()}
+	if !metadata.UpdatedAt.IsZero() {
+		r.UpdatedAt = metadata.UpdatedAt.UTC().Format(time.RFC3339Nano)
+	}
 	if userOwned(kind) {
 		r.User = metadata.User
 	}

@@ -534,79 +534,86 @@
               <button @click="openRecallSettings()">Retrieval settings</button>
             </div>
           </div>
-          <div class="filters">
-            <label class="global-search"
-              >Search<input
-                aria-label="Search records"
-                type="search"
-                placeholder="Search all record content"
-                x-model="q"
-                @input.debounce.200ms="refresh()"
-            /></label>
-            <label
-              >Title<input
-                aria-label="Filter title"
-                type="search"
-                x-model="filters.title"
-            /></label>
-            <label
-              >Description<input
-                aria-label="Filter description"
-                type="search"
-                x-model="filters.description"
-            /></label>
-            <label
-              >Record type<select
-                aria-label="Record type filter"
-                x-model="kind"
-                @change="refresh()"
+          <details class="library-filters">
+            <summary>Filters</summary>
+            <div class="filters">
+              <label class="global-search"
+                >Search<input
+                  aria-label="Search records"
+                  type="search"
+                  placeholder="Search all record content"
+                  x-model="q"
+                  @input.debounce.200ms="refresh()"
+              /></label>
+              <label
+                >Title<input
+                  aria-label="Filter title"
+                  type="search"
+                  x-model="filters.title"
+              /></label>
+              <label
+                >Description<input
+                  aria-label="Filter description"
+                  type="search"
+                  x-model="filters.description"
+              /></label>
+              <label
+                >Record type<select
+                  aria-label="Record type filter"
+                  x-model="kind"
+                  @change="refresh()"
+                >
+                  <option value="">All records</option>
+                  <option value="memories">Memories</option>
+                  <option value="entities">Entities</option>
+                  <option value="topics">Topics</option>
+                  <option value="stories">Stories</option>
+                </select></label
               >
-                <option value="">All records</option>
-                <option value="memories">Memories</option>
-                <option value="entities">Entities</option>
-                <option value="topics">Topics</option>
-                <option value="stories">Stories</option>
-              </select></label
-            >
-            <label
-              >Types for<select
-                aria-label="Types for"
-                x-model="classificationUser"
-                @change="changeClassificationUser()"
-              >
-                <option value="">Choose a user</option>
-                <template x-for="user in classificationUsers()" :key="user"
-                  ><option :value="user" x-text="user"></option
-                ></template></select
-            ></label>
-            <label
-              >Type<select
-                aria-label="Metadata type filter"
-                x-model="filters.type"
-              >
-                <option value="">All types</option>
-                <template x-for="type in Object.keys(types).sort()" :key="type"
-                  ><option :value="type" x-text="type"></option
-                ></template></select
-            ></label>
-            <label
-              >Aliases<input
-                aria-label="Filter aliases"
-                type="search"
-                x-model="filters.aliases"
-            /></label>
-            <label
-              >Owner<select
-                aria-label="Owner"
-                x-model="owner"
-                @change="refresh()"
-              >
-                <option value="">Everyone</option>
-                <template x-for="user in Object.keys(owners).sort()" :key="user"
-                  ><option :value="user" x-text="user"></option
-                ></template></select
-            ></label>
-          </div>
+              <label
+                >Types for<select
+                  aria-label="Types for"
+                  x-model="classificationUser"
+                  @change="changeClassificationUser()"
+                >
+                  <option value="">Choose a user</option>
+                  <template x-for="user in classificationUsers()" :key="user"
+                    ><option :value="user" x-text="user"></option
+                  ></template></select
+              ></label>
+              <label
+                >Type<select
+                  aria-label="Metadata type filter"
+                  x-model="filters.type"
+                >
+                  <option value="">All types</option>
+                  <template
+                    x-for="type in Object.keys(types).sort()"
+                    :key="type"
+                    ><option :value="type" x-text="type"></option
+                  ></template></select
+              ></label>
+              <label
+                >Aliases<input
+                  aria-label="Filter aliases"
+                  type="search"
+                  x-model="filters.aliases"
+              /></label>
+              <label
+                >Owner<select
+                  aria-label="Owner"
+                  x-model="owner"
+                  @change="refresh()"
+                >
+                  <option value="">Everyone</option>
+                  <template
+                    x-for="user in Object.keys(owners).sort()"
+                    :key="user"
+                    ><option :value="user" x-text="user"></option
+                  ></template></select
+              ></label>
+            </div>
+          </details>
           <details x-show="diagnostics.length">
             <summary>Sources needing attention</summary>
             <template x-for="(issue,index) in diagnostics" :key="index"
@@ -628,11 +635,12 @@
                 <col />
                 <col />
                 <col />
+                <col />
               </colgroup>
               <thead>
                 <tr>
                   <template
-                    x-for="column in [{key:'title',label:'Title'},{key:'description',label:'Description'},{key:'kind',label:'Record type'},{key:'type',label:'Type'},{key:'aliases',label:'Aliases'},{key:'user',label:'Owner'}]"
+                    x-for="column in [{key:'title',label:'Title'},{key:'updated_at',label:'Last updated'},{key:'description',label:'Description'},{key:'kind',label:'Record type'},{key:'type',label:'Type'},{key:'aliases',label:'Aliases'},{key:'user',label:'Owner'}]"
                     :key="column.key"
                     ><th scope="col" :aria-sort="sortOrder(column.key)">
                       <button
@@ -660,6 +668,13 @@
                         x-text="label(record)"
                       ></button
                       ><small x-text="record.id||record.source"></small>
+                    </td>
+                    <td class="updated-cell">
+                      <time
+                        :datetime="record.updated_at||null"
+                        :title="record.updated_at||'No update date recorded'"
+                        x-text="updatedLabel(record.updated_at)"
+                      ></time>
                     </td>
                     <td
                       class="description-cell"

@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aristath/songya"
@@ -85,13 +86,14 @@ func chatFingerprint(user, text string) string {
 }
 
 type chatApp struct {
-	store  *songya.Store
-	ctx    context.Context
-	cancel context.CancelFunc
-	mu     sync.Mutex
-	active map[string]context.CancelFunc
-	wg     sync.WaitGroup
-	closed bool
+	store           *songya.Store
+	ctx             context.Context
+	cancel          context.CancelFunc
+	mu              sync.Mutex
+	active          map[string]context.CancelFunc
+	wg              sync.WaitGroup
+	closed          bool
+	recordsRevision atomic.Uint64
 }
 
 func newChatApp(store *songya.Store) *chatApp {

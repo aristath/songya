@@ -30,6 +30,7 @@ Alpine.data("songya", () => {
     base = "",
     body = "",
     metadataStamp = "";
+  let listingFailure = "";
   const drafts = new Map();
   return {
     ...chatUI(request),
@@ -48,8 +49,8 @@ Alpine.data("songya", () => {
     owners: {},
     types: {},
     filters: { title: "", description: "", type: "", aliases: "" },
-    sortKey: "title",
-    ascending: true,
+    sortKey: "updated_at",
+    ascending: false,
     dialogOpen: false,
     inspecting: false,
     q: "",
@@ -114,10 +115,12 @@ Alpine.data("songya", () => {
           ]),
         ].sort();
         this.renderGraph();
+        return true;
       } catch {
         if (ticket === graphListing)
           this.graphStatus =
             "Graph unavailable. You can still browse the library.";
+        return false;
       }
     },
     renderGraph() {
@@ -220,8 +223,13 @@ Alpine.data("songya", () => {
         this.owners = result.owners;
         this.types = result.types || {};
         this.diagnostics = result.diagnostics || [];
+        if (listingFailure && this.failure === listingFailure)
+          this.failure = "";
+        listingFailure = "";
+        return true;
       } catch (e) {
-        if (ticket === listing) this.failure = e.message;
+        if (ticket === listing) this.failure = listingFailure = e.message;
+        return false;
       }
     },
     rows() {
@@ -241,19 +249,40 @@ Alpine.data("songya", () => {
                   .includes(value.toLocaleLowerCase()),
           ),
         )
-        .sort(
-          (a, b) =>
+        .sort((a, b) => {
+          if (this.sortKey === "updated_at") {
+            const left = Date.parse(a.updated_at),
+              right = Date.parse(b.updated_at);
+            if (!Number.isFinite(left) || !Number.isFinite(right))
+              return Number.isFinite(left)
+                ? -1
+                : Number.isFinite(right)
+                  ? 1
+                  : a.id.localeCompare(b.id);
+            return (
+              (this.ascending ? left - right : right - left) ||
+              a.id.localeCompare(b.id)
+            );
+          }
+          return (
             (this.ascending ? 1 : -1) *
             (text(a, this.sortKey).localeCompare(
               text(b, this.sortKey),
               undefined,
               { numeric: true, sensitivity: "base" },
-            ) || a.id.localeCompare(b.id)),
-        );
+            ) || a.id.localeCompare(b.id))
+          );
+        });
     },
     sort(key) {
-      this.ascending = this.sortKey === key ? !this.ascending : true;
+      this.ascending =
+        this.sortKey === key ? !this.ascending : key !== "updated_at";
       this.sortKey = key;
+    },
+    updatedLabel(value) {
+      return Number.isFinite(Date.parse(value))
+        ? new Date(value).toLocaleString()
+        : "Unknown";
     },
     sortOrder(key) {
       return this.sortKey === key

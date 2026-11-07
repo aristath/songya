@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aristath/songya"
 )
@@ -98,7 +99,7 @@ func TestTableProjectsMetadataAndRevisionFromTheCatalog(t *testing.T) {
 			t.Fatal(result)
 		}
 		row := rows[0].(map[string]any)
-		if row["title"] != "Cedar" || row["description"] != "A tree" || row["type"] != "plant" || row["version"] != record.Revision || len(row["aliases"].([]any)) != 2 || result["types"].(map[string]any)["plant"] != true {
+		if row["title"] != "Cedar" || row["description"] != "A tree" || row["type"] != "plant" || row["version"] != record.Revision || row["updated_at"] != record.Metadata().UpdatedAt.UTC().Format(time.RFC3339Nano) || len(row["aliases"].([]any)) != 2 || result["types"].(map[string]any)["plant"] != true {
 			t.Fatal("table lost metadata or revision", result)
 		}
 	}

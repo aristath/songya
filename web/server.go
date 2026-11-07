@@ -36,6 +36,7 @@ func Handler(store *songya.Store) *Application {
 	chat.register(mux)
 	chat.registerRecall(mux)
 	chat.registerTypes(mux)
+	mux.HandleFunc("GET /api/records/events", chat.recordEventsHTTP)
 	files, _ := fs.Sub(assets, "assets")
 	page := template.Must(template.ParseFS(assets, "assets/index.html"))
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
@@ -100,7 +101,7 @@ func Handler(store *songya.Store) *Application {
 			}
 		}
 		for _, record := range records {
-			summaries = append(summaries, map[string]any{"id": record.ID, "source": record.Source, "title": record.Title, "description": record.Description, "type": record.Type, "types": record.Types, "aliases": record.Aliases, "kind": record.Kind, "user": record.User, "version": record.Revision, "pending": record.Pending || record.Unconfirmed})
+			summaries = append(summaries, map[string]any{"id": record.ID, "source": record.Source, "title": record.Title, "description": record.Description, "type": record.Type, "types": record.Types, "aliases": record.Aliases, "kind": record.Kind, "user": record.User, "updated_at": record.UpdatedAt, "version": record.Revision, "pending": record.Pending || record.Unconfirmed})
 		}
 		write(w, map[string]any{"records": summaries, "owners": owners, "types": types, "diagnostics": catalog.Diagnostics})
 	})
@@ -250,6 +251,9 @@ func Handler(store *songya.Store) *Application {
 			return
 		}
 		receipt, err := store.SaveSource(songya.WithTypeUser(r.Context(), input.ClassificationUser), input.Key, input.ID, input.Kind, input.Version, input.Source)
+		if receipt.Status != "not_accepted" && receipt.Status != "" {
+			chat.recordsRevision.Add(1)
+		}
 		if err != nil {
 			if receipt.Status == "not_accepted" {
 				status := 422
@@ -285,6 +289,7 @@ func Handler(store *songya.Store) *Application {
 			fail(w, err)
 			return
 		}
+		chat.recordsRevision.Add(1)
 		write(w, map[string]any{"deleted": true})
 	})
 	// Requests from other sites must not mutate a locally running store.

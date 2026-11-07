@@ -6,7 +6,7 @@ The library and centralized recall endpoint call the Songya engine directly. Cha
 server through an in-process MCP client session.
 
 Chat is the main interface in the left column. The right column has a bounded
-2D graph above the record library, with both visible at the same time. CSS Grid
+2D graph above the record library, sharing the right column equally. CSS Grid
 fits two columns when each can be at least `32rem` wide; otherwise they stack as
 chat, graph, library. A container narrower than `32rem` stays within its available
 width. This uses intrinsic sizing without media/container queries or breakpoints.
@@ -38,7 +38,10 @@ record first. Background controls are inert while the graph is expanded.
 Below the graph, the **Library** holds the sortable, filterable table with
 title, description, record
 kind, metadata type, aliases, owner and row actions. The Go catalogue supplies
-metadata and the exact revision used for row deletion. Full-content search and
+metadata and the exact revision used for row deletion. **Last updated** shows
+its saved update time in the browser's local time zone; newest updates sort first
+by default. Unknown timestamps remain at the bottom. **Filters** is collapsed
+initially and retains its values when closed and reopened. Full-content search and
 ownership selection use engine queries; column filters and sorting refine the
 returned rows without changing the records.
 Entity and topic descriptions come from their Markdown bodies, so edits update
@@ -147,7 +150,11 @@ also remain in the browser, including further sends made while the request is
 pending. **Retry pending messages** resends these without submitting the draft.
 An acknowledgement never clears a newer draft. Replies scroll automatically while
 following the latest text; scrolling up pauses following, and **Jump to latest**
-restores it. Memory operations refresh the graph and library after the turn ends.
+restores it. The graph and library subscribe to record-change events. Each completed write
+in any embedded chat refreshes both views, even while the reply continues or a
+different conversation is selected. Web-editor saves and deletions also notify
+open views. Reconnecting refreshes the saved state, and failed refresh requests
+retry automatically. Refreshes preserve the chosen filters, sort and editor drafts.
 Damaged conversation files are retained and reported independently, so other
 conversations and the memory library remain available.
 
