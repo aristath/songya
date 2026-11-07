@@ -556,6 +556,23 @@ Alpine.data("songya", () => {
     },
     setKind(kind) {
       this.selected.kind = kind;
+      const timing = this.fields.find((field) => field.key === "time");
+      if (timing?.type === "time") {
+        if (Object.values(timing.time).every((value) => !value)) {
+          timing.time =
+            kind === "entities"
+              ? { start: null, end: null }
+              : { date: null, earliest: null, latest: null };
+          timing.value = JSON.stringify(timing.time);
+        } else if (
+          (kind === "entities") !==
+          Object.hasOwn(timing.time, "start")
+        ) {
+          timing.type = "yaml";
+          this.failure =
+            "The existing time values are retained. Entities use start/end; other records use date/earliest/latest. Choose the intended dates before saving.";
+        }
+      }
       const owned = kind === "memories" || kind === "stories";
       if (!owned) this.fields = this.fields.filter((f) => f.key !== "user");
       else if (!this.fields.some((f) => f.key === "user"))
@@ -578,10 +595,27 @@ Alpine.data("songya", () => {
         });
       this.metadataChanged();
     },
+    addLifetimeDates() {
+      this.fields.push({
+        index: -1,
+        key: "time",
+        type: "time",
+        time: { start: null, end: null },
+        value: '{"start":null,"end":null}',
+        text: "",
+        system: false,
+      });
+      this.metadataChanged();
+    },
     timeChanged(field, exact) {
-      if (exact) field.time.earliest = field.time.latest = null;
-      else field.time.date = null;
-      for (const key of ["date", "earliest", "latest"])
+      const lifetime = this.selected?.kind === "entities";
+      if (!lifetime) {
+        if (exact) field.time.earliest = field.time.latest = null;
+        else field.time.date = null;
+      }
+      for (const key of lifetime
+        ? ["start", "end"]
+        : ["date", "earliest", "latest"])
         field.time[key] ||= null;
       field.value = JSON.stringify(field.time);
       this.metadataChanged();

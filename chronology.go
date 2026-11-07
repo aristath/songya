@@ -13,14 +13,14 @@ type TemporalConstraint struct {
 	Reason string `json:"reason,omitempty"`
 }
 type TemporalRecord struct {
-	User             string      `json:"user,omitempty"`
-	ID               string      `json:"id"`
-	Title            string      `json:"title"`
-	Time             EpisodeTime `json:"time"`
-	Relations        []Relation  `json:"relations,omitempty"`
-	Unordered        bool        `json:"unordered"`
-	Unconfirmed      bool        `json:"unconfirmed,omitempty"`
-	DetailsTruncated bool        `json:"details_truncated,omitempty"`
+	User             string     `json:"user,omitempty"`
+	ID               string     `json:"id"`
+	Title            string     `json:"title"`
+	Time             RecordTime `json:"time"`
+	Relations        []Relation `json:"relations,omitempty"`
+	Unordered        bool       `json:"unordered"`
+	Unconfirmed      bool       `json:"unconfirmed,omitempty"`
+	DetailsTruncated bool       `json:"details_truncated,omitempty"`
 }
 type Timeline struct {
 	Groups      map[string][]string  `json:"groups,omitempty"`

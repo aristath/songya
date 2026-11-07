@@ -31,6 +31,7 @@ type NamedInput struct {
 	Name        string          `json:"name,omitempty"`
 	Type        *string         `json:"type,omitempty"`
 	User        string          `json:"user,omitempty"`
+	Time        any             `json:"time,omitempty"`
 	Aliases     []string        `json:"aliases,omitempty"`
 	Description *string         `json:"description,omitempty"`
 	Append      string          `json:"append,omitempty"`
@@ -83,7 +84,7 @@ func (s *Store) SaveMemory(ctx context.Context, input MemoryInput) (Receipt, err
 	}
 	request := BatchRequest{Key: input.Key, User: input.User, Changes: []Change{{ID: input.ID, Fields: intent, Body: input.Text, Append: input.Append}}}
 	request.prepare = func(root *os.Root) ([]Change, error) {
-		if err := validateTimeInput(fields); err != nil {
+		if err := validateTimeInput(fields, Memories); err != nil {
 			return nil, err
 		}
 		if input.ID != "" && input.Time != nil {
@@ -95,7 +96,7 @@ func (s *Store) SaveMemory(ctx context.Context, input MemoryInput) (Receipt, err
 			if err != nil {
 				return nil, err
 			}
-			fields["time"] = patchEventTime(metadataField(&doc.Frontmatter, "time"), input.Time)
+			fields["time"] = patchRecordTime(metadataField(&doc.Frontmatter, "time"), input.Time, Memories)
 		}
 		var typeDoc *Document
 		if input.ID != "" {
@@ -129,6 +130,9 @@ func namedData(input NamedInput) map[string]any {
 	data := map[string]any{"id": input.ID, "name": input.Name, "type": stringValue(input.Type), "aliases": input.Aliases, "metadata": input.Metadata, "append": input.Append, "relations": relationData(input.Relations)}
 	if input.Type != nil {
 		data["type_user"] = input.User
+	}
+	if input.Time != nil {
+		data["time"] = input.Time
 	}
 	if input.Create {
 		data["create"] = true
@@ -224,7 +228,7 @@ func relatedRecord(ctx context.Context, root *os.Root, kind Destination, input N
 			return "", fmt.Errorf("a new named target needs create:true and name, without id")
 		}
 		change := namedChange(kind, input)
-		if err := typeFields(nil, input.User, input.Type, change.Fields); err != nil {
+		if err := namedFields(nil, input, kind, change.Fields); err != nil {
 			return "", err
 		}
 		change.Ref = fmt.Sprintf("related_%d", len(*changes))
@@ -264,7 +268,7 @@ func relatedRecord(ctx context.Context, root *os.Root, kind Destination, input N
 		return "", err
 	}
 	change := namedChange(kind, input)
-	if err := typeFields(doc, input.User, input.Type, change.Fields); err != nil {
+	if err := namedFields(doc, input, kind, change.Fields); err != nil {
 		return "", err
 	}
 	change.Ref = fmt.Sprintf("related_%d", len(*changes))
@@ -317,7 +321,7 @@ func (s *Store) SaveNamed(ctx context.Context, kind Destination, input NamedInpu
 	input.Key = writeKey(input.Key)
 	request := BatchRequest{Key: input.Key, Changes: []Change{{Kind: kind, Fields: map[string]any{"input": namedData(input)}}}}
 	request.prepare = func(root *os.Root) ([]Change, error) {
-		if err := validateTimeInput(input.Metadata); err != nil {
+		if err := validateTimeInput(input.Metadata, kind); err != nil {
 			return nil, err
 		}
 		if input.Create && input.ID != "" {
@@ -339,7 +343,7 @@ func (s *Store) SaveNamed(ctx context.Context, kind Destination, input NamedInpu
 				return nil, err
 			}
 		}
-		if err := typeFields(previous, input.User, input.Type, change.Fields); err != nil {
+		if err := namedFields(previous, input, kind, change.Fields); err != nil {
 			return nil, err
 		}
 		changes := []Change{change}
@@ -369,7 +373,7 @@ func (s *Store) SaveStory(ctx context.Context, input StoryInput) (Receipt, error
 	}
 	request := BatchRequest{Key: writeKey(input.Key), User: input.User, Changes: []Change{{ID: input.ID, Kind: Stories, Fields: intent, Body: input.Text, Append: input.Append}}}
 	request.prepare = func(root *os.Root) ([]Change, error) {
-		if err := validateTimeInput(fields); err != nil {
+		if err := validateTimeInput(fields, Stories); err != nil {
 			return nil, err
 		}
 		var typeDoc *Document
@@ -423,6 +427,7 @@ func fieldText(value any) string {
 	return fmt.Sprint(value)
 }
 func mergeParticipant(root *os.Root, change *Change, input NamedInput) error {
+	pendingTime, hasPendingTime := change.Fields["time"]
 	present := change.Append
 	if change.Body != nil {
 		present += *change.Body
@@ -446,7 +451,7 @@ func mergeParticipant(root *os.Root, change *Change, input NamedInput) error {
 	for key, value := range input.Metadata {
 		change.Fields[key] = value
 	}
-	if input.Type != nil {
+	if input.Type != nil || input.Time != nil || input.Metadata["time"] != nil {
 		doc := &Document{}
 		if change.ID != "" {
 			name, _ := recordName(change.ID)
@@ -454,7 +459,12 @@ func mergeParticipant(root *os.Root, change *Change, input NamedInput) error {
 				doc = previous
 			}
 		}
-		if err := typeFields(doc, input.User, input.Type, change.Fields); err != nil {
+		if hasPendingTime {
+			if err := doc.Set("time", pendingTime); err != nil {
+				return err
+			}
+		}
+		if err := namedFields(doc, input, change.Kind, change.Fields); err != nil {
 			return err
 		}
 	}
@@ -470,6 +480,14 @@ func mergeParticipant(root *os.Root, change *Change, input NamedInput) error {
 }
 
 func needsEnrichment(doc *Document, input NamedInput) bool {
+	if value, supplied := namedTime(input); supplied {
+		before := metadataField(&doc.Frontmatter, "time")
+		after, _ := encodeValue(patchRecordTime(before, value, doc.timeKind()))
+		if !sameFieldValue(before, after) {
+			return true
+		}
+	}
+
 	if len(input.Metadata) > 0 || input.Relations != nil {
 		return true
 	}
@@ -509,4 +527,28 @@ func stringValue(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func namedTime(input NamedInput) (any, bool) {
+	if input.Time != nil {
+		return input.Time, true
+	}
+	value, present := input.Metadata["time"]
+	return value, present
+}
+func namedFields(doc *Document, input NamedInput, kind Destination, fields map[string]any) error {
+	if err := typeFields(doc, input.User, input.Type, fields); err != nil {
+		return err
+	}
+	if value, present := namedTime(input); present {
+		if err := validateTimeInput(map[string]any{"time": value}, kind); err != nil {
+			return err
+		}
+		var before *yaml.Node
+		if doc != nil {
+			before = metadataField(&doc.Frontmatter, "time")
+		}
+		fields["time"] = patchRecordTime(before, value, kind)
+	}
+	return nil
 }

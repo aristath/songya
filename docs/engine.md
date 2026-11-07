@@ -578,3 +578,30 @@ All engine writes validate changed assignments, including source/import and
 batch writes. `WithTypeUser` restricts an operation to one user's assignments.
 Unchanged damaged metadata does not block unrelated body edits. Damaged settings
 are retained and reported; another user's settings remain usable.
+
+
+## Entity lifetime dates
+
+Entities use the existing `time` object with `start` and `end`. These are the
+start and end dates of the entity's existence. They could represent birth and
+death for a person, founding and closure for an organization, and so on. This
+meaning applies to any user-configured entity type, independently of its type ID.
+
+```yaml
+time:
+  start: "1990-04-22"
+  end: null
+```
+
+Each component accepts a real `YYYY-MM-DD` date or null. An omitted component in
+`NamedInput.Time` stays unchanged; null clears it. MCP `time:null` clears both.
+An unknown end does not prove continued existence. These dates are independent
+of automatic record creation/update timestamps and event-date uncertainty.
+
+`RecordTime` projects only start/end for entities, and date/earliest/latest for
+memories, topics and stories. The derived catalogue retains this distinction.
+Entity dates are validated on direct, source, batch and MCP writes. An end before
+a known start is rejected. Existing unreadable values remain available for
+repair, and do not block unrelated body edits. Old entity uncertainty fields are
+retained with diagnostics; they are never automatically relabelled as lifetime
+bounds. A partial repair preserves both raw damage and healthy date components.

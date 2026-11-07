@@ -233,7 +233,7 @@ func (s *Store) Recall(ctx context.Context, q RecallQuery) (RecallPage, error) {
 		if r.User != "" {
 			label["user"] = r.User
 		}
-		if r.Time != (EpisodeTime{}) {
+		if r.Time.hasDates() {
 			label["time"] = r.Time
 		}
 		if r.Pending {

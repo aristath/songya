@@ -268,3 +268,14 @@ Original testimony must match the durable receipt for the submitted message and
 current turn. A later app message cannot replace it just by using the `user`
 role or a `SYSTEM/RECOVERY MESSAGE` prefix. Real user text keeps its exact spaces
 and wording, including such a prefix when the person actually typed it.
+
+
+### Entity lifetime controls
+
+Entity metadata uses **Start** and **End** date controls. For an entity without
+recorded dates, **Add lifetime dates** adds these controls explicitly. They
+represent the start and end dates of the entity's existence, whatever its
+user-configured type. Blank means no date is recorded, not proof of continued
+existence. Memory controls retain **Exact date**, **Earliest**, and **Latest**.
+Changing a new draft's kind converts empty controls, while entered date values
+are retained for explicit review instead of being assigned a new meaning.

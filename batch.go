@@ -362,6 +362,7 @@ func prepareBatch(ctx context.Context, root *os.Root, request BatchRequest, revi
 				_ = doc.Set("created_at", created)
 			}
 		}
+		doc.Kind = kindOf(change.ID)
 		fields := batchFields(change.Fields, journal.Refs)
 		if userOwned(kindOf(change.ID)) {
 			if user, supplied := change.Fields["user"]; supplied {
@@ -433,7 +434,7 @@ func prepareBatch(ctx context.Context, root *os.Root, request BatchRequest, revi
 		if err := (&Store{path: root.Name()}).validateTypeChange(ctx, root, Parse(before), doc, kindOf(change.ID), request.typeConfiguration); err != nil {
 			return journal, fmt.Errorf("%s: %w", change.ID, err)
 		}
-		if err := validateTimeChange(metadataField(&Parse(before).Frontmatter, "time"), metadataField(&doc.Frontmatter, "time")); err != nil {
+		if err := validateTimeChange(metadataField(&Parse(before).Frontmatter, "time"), metadataField(&doc.Frontmatter, "time"), kindOf(change.ID)); err != nil {
 			return journal, fmt.Errorf("%s: %w", change.ID, err)
 		}
 		data, err := doc.Marshal()

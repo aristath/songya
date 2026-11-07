@@ -819,6 +819,13 @@
           x-show="!inspecting && showMetadata && mode==='visual'"
         >
           <legend class="sr-only">Record metadata</legend>
+          <button
+            type="button"
+            x-show="selected?.kind==='entities'&&!fields.some(field=>field.key==='time')"
+            @click="addLifetimeDates()"
+          >
+            Add lifetime dates
+          </button>
           <label x-show="!selected?.id"
             >Record type<select
               aria-label="Record type"
@@ -899,35 +906,67 @@
                   <option value="number">Number</option>
                   <option value="boolean">True / false</option>
                   <option value="yaml">YAML</option>
-                  <option value="time" x-show="field.type==='time'">
-                    Event time
-                  </option></select
+                  <option
+                    value="time"
+                    x-show="field.type==='time'"
+                    x-text="selected?.kind==='entities'?'Entity lifetime':'Event time'"
+                  ></option></select
                 ><template x-if="!field.system && field.type==='time'"
                   ><div class="event-time">
-                    <label
-                      >Exact date<input
-                        type="date"
-                        :aria-label="'Exact event date'"
-                        x-model="field.time.date"
-                        @change="timeChanged(field,true)"
-                    /></label>
-                    <label
-                      >Earliest<input
-                        type="date"
-                        aria-label="Earliest event date"
-                        x-model="field.time.earliest"
-                        @change="timeChanged(field,false)"
-                    /></label>
-                    <label
-                      >Latest<input
-                        type="date"
-                        aria-label="Latest event date"
-                        x-model="field.time.latest"
-                        @change="timeChanged(field,false)"
-                    /></label>
-                    <small
-                      >Leave unknown dates blank. Use an exact date or range
-                      bounds.</small
+                    <template x-if="selected?.kind==='entities'"
+                      ><div class="entity-lifetime">
+                        <label
+                          >Start<input
+                            type="date"
+                            aria-label="Entity start date"
+                            x-model="field.time.start"
+                            @change="timeChanged(field,false)"
+                        /></label>
+                        <label
+                          >End<input
+                            type="date"
+                            aria-label="Entity end date"
+                            x-model="field.time.end"
+                            @change="timeChanged(field,false)"
+                        /></label>
+                        <small
+                          >The start and end dates of the entity's existence.
+                          These could represent birth and death for a person,
+                          founding and closure for an organization, and so on.
+                          Use the same meaning for any entity type. Blank means
+                          no date is recorded; it does not prove continued
+                          existence.</small
+                        >
+                      </div></template
+                    >
+                    <template x-if="selected?.kind!=='entities'"
+                      ><div class="event-dates">
+                        <label
+                          >Exact date<input
+                            type="date"
+                            :aria-label="'Exact event date'"
+                            x-model="field.time.date"
+                            @change="timeChanged(field,true)"
+                        /></label>
+                        <label
+                          >Earliest<input
+                            type="date"
+                            aria-label="Earliest event date"
+                            x-model="field.time.earliest"
+                            @change="timeChanged(field,false)"
+                        /></label>
+                        <label
+                          >Latest<input
+                            type="date"
+                            aria-label="Latest event date"
+                            x-model="field.time.latest"
+                            @change="timeChanged(field,false)"
+                        /></label>
+                        <small
+                          >Leave unknown dates blank. Use an exact date or range
+                          bounds.</small
+                        >
+                      </div></template
                     >
                   </div></template
                 ><input

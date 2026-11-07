@@ -27,6 +27,7 @@ type Metadata struct {
 // Document keeps the complete YAML tree and Markdown body, including damaged
 // fields. Diagnostics reports problems without making the record unavailable.
 type Document struct {
+	Kind        Destination `yaml:"-" json:"-"`
 	source      []byte
 	ID          string `yaml:"-"`
 	Revision    string `yaml:"-"`
@@ -287,7 +288,7 @@ func (d *Document) Metadata() Metadata {
 func (d *Document) Diagnostics() []string {
 	metadata, warnings := d.metadata()
 	if node := metadataField(&d.Frontmatter, "time"); node != nil {
-		if _, issue := eventTimeNode(node); issue != "" {
+		if _, issue := recordTimeNode(node, d.timeKind()); issue != "" {
 			warnings = append(warnings, issue)
 		}
 	}
@@ -357,7 +358,7 @@ func assignNode(destination, source *yaml.Node) {
 // Marshal preserves damaged metadata as data rather than rejecting the record.
 func (d *Document) Marshal() ([]byte, error) {
 	if node := metadataField(&d.Frontmatter, "time"); node != nil {
-		value, issue := eventTimeNode(node)
+		value, issue := recordTimeNode(node, d.timeKind())
 		if issue == "" {
 			_ = d.Set("time", value)
 		} else {

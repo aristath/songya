@@ -697,7 +697,9 @@ blockquote {
   margin: 0.75rem 1.5rem;
 }
 
-.event-time {
+.event-time,
+.entity-lifetime,
+.event-dates {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;

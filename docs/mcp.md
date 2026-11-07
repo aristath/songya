@@ -13,14 +13,21 @@
 
 Before every save, call `prepare_memory` with the information to keep. Review its bounded shortlist, then save once, including any new connected entities/topics. Reuse existing records. Save snippets as information arrives; enrich an existing memory for additional information, correct its prose when facts change, and create connected memories for distinct events. Do not invent facts, identities, dates or causes.
 
+Compare new facts as well as corrections with relevant entity dates and event
+accounts. Check ages, dates, event order and stated causes. A conflict does not
+identify which claim is wrong: save independently clear new facts in the proper
+fields, leave disputed earlier claims unchanged, explain the conflict and ask
+which claim needs correcting. An explicit correction follows the correction
+rules. Uncertainty must not be silently replaced with a guessed date or age.
+
 ```json
-{"name":"prepare_memory","arguments":{"text":"Alex and Sam enjoy the soup at Cedar Café.","user":"ari"}}
-{"name":"save_memory","arguments":{"text":"Alex and Sam enjoy the soup at Cedar Café.","user":"ari","relations":[{"type":"related_to","target":"Alex"},{"type":"related_to","target":"Sam"},{"type":"related_to","target":{"kind":"entities","name":"Cedar Café","type":"place"}}]}}
+{"name":"prepare_memory","arguments":{"text":"Alex and Sam enjoy the soup at Cedar Café.","user":"example_user"}}
+{"name":"save_memory","arguments":{"text":"Alex and Sam enjoy the soup at Cedar Café.","user":"example_user","relations":[{"type":"related_to","target":"Alex"},{"type":"related_to","target":"Sam"},{"type":"related_to","target":{"kind":"entities","name":"Cedar Café","type":"place"}}]}}
 ```
 
 A target is an existing record ID, an entity name, or a named object with `kind` (`entities` or `topics`), `name`, and optional `type`, `description`, `aliases`. Unique exact names/aliases reuse existing identities; matching is case-insensitive. New IDs are assigned by the engine. Ambiguous or unusable connections remain in `unresolved_connections` with diagnostics; healthy connections and prose still save.
 
-Memories and stories require an owning `user`; Clara supplies the current user automatically. Use `user:"clara"` for Clara's experiences. Ownership selects a collection; entity connections identify participants. Reflecting on another person's experience does not make the writer a participant. Entities and topics are shared. Selection is unrestricted; `user:"all"` selects everyone. Updating without a user preserves ownership.
+Memories and stories require an owning `user`; Clara supplies the current user automatically. Use the selected collection's user ID for its accounts. Ownership selects a collection; entity connections identify participants. Reflecting on another person's experience does not make the writer a participant. Entities and topics are shared. Selection is unrestricted; `user:"all"` selects everyone. Updating without a user preserves ownership.
 
 ## Writes and connections
 
@@ -72,7 +79,7 @@ All authoritative connections use `relations: [{type, target}]`. Store one conne
 A story's `related_to` links to memories/stories define reading order. Other links associate identities or subjects. Story prose is introductory text; narrative order does not assert chronology.
 
 ```json
-{"name":"save_story","arguments":{"title":"Visits with Sam","user":"ari","relations":[{"type":"related_to","target":"FIRST_MEMORY_ID"},{"type":"related_to","target":"SECOND_MEMORY_ID"}]}}
+{"name":"save_story","arguments":{"title":"Visits with Sam","user":"example_user","relations":[{"type":"related_to","target":"FIRST_MEMORY_ID"},{"type":"related_to","target":"SECOND_MEMORY_ID"}]}}
 {"name":"save_memory","arguments":{"id":"MEMORY_ID","append":"They also enjoy the salad."}}
 ```
 
@@ -96,14 +103,12 @@ For memory updates, omitted `time` preserves it. Supplied components patch only 
 Keep separately dated events in separate, connected memories. For example:
 
 ```json
-{"name":"save_memory","arguments":{"text":"Ari was born in Thessaloniki on 6 March 1981.","user":"ari","time":{"date":"1981-03-06"}}}
-{"name":"save_memory","arguments":{"text":"Ari's family moved to Mytilene a few months after his birth, still in 1981. May is the earliest plausible month for this account; the exact date is unknown.","user":"ari","time":{"date":null,"earliest":"1981-05-01","latest":"1981-12-31"},"relations":[{"type":"after","target":"BIRTH_MEMORY_ID"}]}}
-{"name":"save_memory","arguments":{"id":"MEMORY_ID","time":{"latest":"1981-11-30"}}}
-{"name":"save_memory","arguments":{"id":"MEMORY_ID","text":"The complete corrected account, including details to keep."}}
-{"name":"save_memory","arguments":{"id":"MEMORY_ID","relations":[{"type":"related_to","target":"EXISTING_ENTITY_ID"},{"type":"related_to","target":"NEW_ENTITY_ID"}]}}
+{"name":"save_entity","arguments":{"id":"JOHN_ENTITY_ID","time":{"start":"1990-04-22"}}}
+{"name":"save_memory","arguments":{"title":"John moved to Lakeside","text":"John moved to Lakeside in May 2024. The exact day is unknown.","user":"example_user","time":{"date":null,"earliest":"2024-05-01","latest":"2024-05-31"},"relations":[{"type":"related_to","target":"JOHN_ENTITY_ID"}]}}
+{"name":"save_memory","arguments":{"id":"MEMORY_ID","time":{"latest":"2024-05-20"}}}
 ```
 
-Replace example IDs with IDs returned by the store. The May bound follows the stated interpretation of this account, not a universal definition of “a few months.” The lower bound cannot precede the known birth. The date-only update preserves the earliest bound, prose and connections.
+Replace example IDs with IDs returned by the store. The birth date is an entity start date; the move has its own event bounds. The date-only update preserves the earlier bound, prose and connections.
 
 ```json
 {"date":"2024-12-31","earliest":null,"latest":null}
@@ -116,19 +121,24 @@ The third example is the agreed “after 2024” convention. `after` orders even
 
 ## Retrieval
 
-Tool results are in `structuredContent.data`. A save returns publication `status`, ID, operation ID, `outcome`, `changed_fields`, resulting prose/time/relations and diagnostics. `status:"committed"` confirms durability, not that new facts were added. For a committed operation, `outcome` is `created`, `updated`, or `unchanged`; `changed_fields` lists changed data fields, excluding automatic timestamps and source bookkeeping. Unfinished writes retain their pending/blocked outcome and recovery receipt; they are never described as completed updates.
+Tool results are in `structuredContent.data`. A save returns publication `status`, ID, record `kind`, operation ID, `outcome`, `changed_fields`, resulting prose/time/relations and diagnostics. `status:"committed"` confirms durability, not that new facts were added or placed correctly. For a committed operation, `outcome` is `created`, `updated`, or `unchanged`; `changed_fields` lists changed data fields, excluding automatic timestamps and source bookkeeping. Unfinished writes retain their pending/blocked outcome and recovery receipt; they are never described as completed updates.
+
+Before reporting success, compare each requested fact with the saved kind, ID,
+field and value. Verify fields meant to remain unchanged too. A date in prose
+does not fill a date field; a new memory does not correct an existing record.
+Read back the source when the result omits needed values or truncates words.
 
 An ID-only call or an update supplying identical values returns `unchanged`, an empty `changed_fields`, and actionable guidance; it does not rewrite the memory or advance its timestamp. Compare the returned content and time with the facts intended for saving. Do not claim new facts were saved or repeat the same unchanged call. Previews are bounded; read the record for full content. Retrying an accepted request key returns the original saved snapshot and outcome, even after later edits, without replaying the write.
 
 ```json
-{"name":"recall_memory","arguments":{"text":"Sam","user":"ari"}}
+{"name":"recall_memory","arguments":{"text":"Sam","user":"example_user"}}
 {"name":"search_memory","arguments":{"text":"Sam","kind":"entities"}}
 {"name":"search_memory","arguments":{"kind":"topics"}}
 {"name":"search_memory","arguments":{"kind":"memories","related_to":"ENTITY_ID"}}
 {"name":"search_memory","arguments":{"mode":"semantic","text":"orchestral performer"}}
 {"name":"read_memory","arguments":{"id":"RECORD_ID","view":"source"}}
 {"name":"explore_memory","arguments":{"id":"RECORD_ID","direction":"both"}}
-{"name":"memory_timeline","arguments":{"user":"ari"}}
+{"name":"memory_timeline","arguments":{"user":"example_user"}}
 {"name":"compose_story","arguments":{"id":"STORY_ID"}}
 ```
 
@@ -174,3 +184,20 @@ Clients can request `type_configuration({user, schemas:true})` to receive
 model-facing definitions; they include allowed enums and definitions. The CLI's
 `--user` option also scopes discovery. Engine validation always uses current
 settings, even when a client's previously discovered schema is stale.
+
+
+## Entity start and end dates
+
+`save_entity.time` has `start` and `end`, not date/earliest/latest. They are the
+start and end dates of the entity's existence. They could represent birth and
+death for a person, founding and closure for an organization, and so on. Use this
+meaning for every user-configured entity type; no particular type ID is required.
+
+Send the existing ID and only the components to change. Omission preserves a
+component; null clears it; `time:null` clears both. Both values must be real
+`YYYY-MM-DD` dates or null. A missing end does not establish continued existence.
+Never substitute record creation, first mention, or uncertain date bounds.
+Date-only updates leave the description unchanged, and save feedback returns
+both lifetime components. A narrated event belongs in a linked memory with
+its own event timing. An entity start/end date alone does not need a separate
+memory record.

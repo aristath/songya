@@ -199,7 +199,7 @@ func TestVisualMetadataEditsPreserveAnchorsAndCustomValues(t *testing.T) {
 	h := Handler(store)
 	t.Cleanup(func() { _ = h.Close() })
 	original := "---\nuser: ari\ntitle: Original\ndefaults: &defaults\n  nested: [3, false, yes]\nlinked: *defaults\n---\nBody"
-	fields := describe(original).Fields
+	fields := describe(original, songya.Memories).Fields
 	for i := range fields {
 		if fields[i].Key == "title" {
 			fields[i].Value = "Changed"

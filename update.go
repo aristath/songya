@@ -38,7 +38,7 @@ func (s *Store) Update(id, revision string, fields map[string]any, body string) 
 	if doc.Pending || doc.Unconfirmed || doc.Revision != revision {
 		return doc, fmt.Errorf("update %s: %w", id, ErrConflict)
 	}
-	if err := validateTimeInput(fields); err != nil {
+	if err := validateTimeInput(fields, kindOf(id)); err != nil {
 		return doc, err
 	}
 	previousTime := metadataField(&Parse(doc.OriginalSource()).Frontmatter, "time")
@@ -46,7 +46,7 @@ func (s *Store) Update(id, revision string, fields map[string]any, body string) 
 	if err := requireUser(doc, kindOf(id)); err != nil {
 		return doc, err
 	}
-	if err := validateTimeChange(previousTime, metadataField(&doc.Frontmatter, "time")); err != nil {
+	if err := validateTimeChange(previousTime, metadataField(&doc.Frontmatter, "time"), kindOf(id)); err != nil {
 		return doc, err
 	}
 	var data []byte

@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const indexFormat = 9
+const indexFormat = 10
 
 // Diagnostic identifies a recoverable problem without hiding healthy records.
 type Diagnostic struct {
@@ -45,7 +45,7 @@ type Record struct {
 	Types       map[string]string `json:"types,omitempty"`
 	Relations   []Relation        `json:"relations,omitempty"`
 	Redirects   []string          `json:"redirects,omitempty"`
-	Time        EpisodeTime       `json:"time"`
+	Time        RecordTime        `json:"time"`
 	Body        string            `json:"body"`
 	Context     string            `json:"context,omitempty"`
 	Diagnostics []string          `json:"diagnostics,omitempty"`
@@ -84,6 +84,9 @@ func stringsFromNode(node *yaml.Node) []string {
 }
 
 func recordFromDocument(source string, d *Document, kind Destination) Record {
+	view := *d
+	view.Kind = kind
+	d = &view
 	metadata := d.Metadata()
 	r := Record{ID: d.ID, Source: source, Kind: kind, Revision: d.Revision, Pending: d.Pending, Unconfirmed: d.Unconfirmed, Title: metadata.Title, Body: d.Body, Relations: metadata.Relations, Diagnostics: d.Diagnostics()}
 	if userOwned(kind) {
@@ -102,7 +105,7 @@ func recordFromDocument(source string, d *Document, kind Destination) Record {
 	r.Types = documentTypes(d)
 	r.Type = r.Types[r.User]
 	r.Redirects = nodeStrings("redirects", d)
-	r.Time = episodeTime(metadataField(&d.Frontmatter, "time"))
+	r.Time = recordTime(metadataField(&d.Frontmatter, "time"), kind)
 	if r.Title == "" {
 		r.Title = d.ID
 		if r.Title == "" {

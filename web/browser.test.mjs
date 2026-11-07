@@ -2583,3 +2583,65 @@ test("type settings preserve per-user choices, stable IDs and saved drafts", asy
     await context.close();
   }
 });
+
+test("entity lifetime dates use start/end and preserve content on desktop and phone", async () => {
+  for (const width of [1320, 390]) {
+    const title = "John lifetime " + width;
+    const saved = await save(
+      "---\nname: " + title + "\n---\nA short identification.",
+      "entities",
+    );
+    const { page, context } = await pageFor({ width, height: 900 });
+    try {
+      await editRecord(page, title);
+      const editor = page.locator('dialog[x-ref="editorDialog"]');
+      await editor
+        .getByRole("button", { name: "Metadata", exact: true })
+        .click();
+      await editor
+        .getByRole("button", { name: "Add lifetime dates", exact: true })
+        .click();
+      await editor
+        .getByLabel("Entity start date", { exact: true })
+        .fill("1990-04-22");
+      await editor
+        .getByLabel("Entity end date", { exact: true })
+        .fill("2070-06-01");
+      assert.equal(
+        await editor.getByLabel("Exact event date", { exact: true }).count(),
+        0,
+      );
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await page.waitForFunction(
+        () => !window.Alpine.$data(document.body).dirty,
+      );
+      let record = await (await fetch(url + "/api/records/" + saved.id)).json();
+      let timing = record.draft.fields.find(
+        (field) => field.key === "time",
+      ).time;
+      assert.deepEqual(timing, { start: "1990-04-22", end: "2070-06-01" });
+      assert.ok(record.source.endsWith("A short identification."));
+      assert.doesNotMatch(record.source, /earliest:|latest:/);
+      await editor.getByLabel("Entity end date", { exact: true }).fill("");
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await page.waitForFunction(
+        () => !window.Alpine.$data(document.body).dirty,
+      );
+      record = await (await fetch(url + "/api/records/" + saved.id)).json();
+      timing = record.draft.fields.find((field) => field.key === "time").time;
+      assert.deepEqual(timing, { start: "1990-04-22", end: null });
+      assert.equal(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+        true,
+      );
+      await page.screenshot({
+        path: "/tmp/songya-entity-lifetime-" + width + ".png",
+      });
+    } finally {
+      await context.close();
+    }
+  }
+  assert.deepEqual(errors, []);
+});

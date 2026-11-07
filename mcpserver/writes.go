@@ -82,8 +82,12 @@ func savedWrite(ctx context.Context, store *songya.Store, receipt songya.Receipt
 		records[saved.ID] = doc.Record(kindFor(saved.ID))
 	}
 	if record, ok := records[id]; ok {
+		value["kind"] = record.Kind
 		value["type"] = record.Types[songya.TypeUser(ctx)]
 		value["type_user"] = songya.TypeUser(ctx)
+		if record.Kind == songya.Entities {
+			value["time"] = record.Time
+		}
 		if record.Kind == songya.Entities || record.Kind == songya.Topics {
 			value["name"], value["description"], value["aliases"] = record.Title, clipText(record.Body, 2048), record.Aliases
 			value["description_truncated"] = len(record.Body) > 2048
@@ -146,11 +150,11 @@ func memorySchema() map[string]any {
 	// Creation, append and field-only updates share these fields. Describe the
 	// modes plainly and enforce them in the handler instead of conditional schemas.
 	value["examples"] = []any{
-		map[string]any{"title": "Ari's birth", "text": "Ari was born in Thessaloniki on 6 March 1981.", "user": "ari", "time": map[string]any{"date": "1981-03-06"}},
-		map[string]any{"title": "Ari's family moved to Mytilene", "text": "Ari's family moved to Mytilene a few months after his birth, still in 1981. May is the earliest possible month in this account; the exact move day is unknown.", "user": "ari", "time": map[string]any{"date": nil, "earliest": "1981-05-01", "latest": "1981-12-31"}, "relations": []any{map[string]any{"type": "after", "target": "BIRTH_MEMORY_ID"}}},
+		map[string]any{"title": "John and Mary celebrated a birthday", "text": "John and Mary celebrated Mary's birthday at a restaurant on April 22, 2024.", "user": "example_user", "time": map[string]any{"date": "2024-04-22"}},
+		map[string]any{"title": "John moved to Lakeside", "text": "John moved to Lakeside in May 1990. The exact day is unknown.", "user": "example_user", "time": map[string]any{"date": nil, "earliest": "1990-05-01", "latest": "1990-05-31"}, "relations": []any{map[string]any{"type": "related_to", "target": "JOHN_ENTITY_ID"}}},
 		map[string]any{"id": "EXISTING_DINNER_ID", "append": "At that same dinner, Jamie also gave Sam a book about trains."},
 		map[string]any{"id": "EXISTING_DINNER_ID", "text": "On April 2, 2025, Sam had dinner with Jamie in Lyon. Jamie gave Sam a book about trains."},
-		map[string]any{"id": "EXISTING_MEMORY_ID", "time": map[string]any{"date": nil, "earliest": "1981-05-01", "latest": "1981-12-31"}},
+		map[string]any{"id": "EXISTING_MEMORY_ID", "time": map[string]any{"date": nil, "earliest": "1990-05-01", "latest": "1990-12-31"}},
 		map[string]any{"id": "EXISTING_MEMORY_ID", "relations": []any{map[string]any{"type": "related_to", "target": "EXISTING_ENTITY_ID"}, map[string]any{"type": "related_to", "target": "NEW_ENTITY_ID"}}},
 	}
 	return value
@@ -168,7 +172,11 @@ Read outcome and changed_fields. unchanged means nothing changed. Fix missing or
 func namedSchema(entity bool) map[string]any {
 	fields := map[string]any{"create": map[string]any{"type": "boolean", "description": "Set true to create a separate new record, even if its name already exists. Do not supply id with create:true"}, "id": str("Existing record ID required for an update. A name is not an update selector"), "name": str("Name, e.g. Alex Morgan or Cedar Café"), "aliases": array(str("Other known name")), "description": str("Short text saying who or what this is. This replaces ALL old description words. Put events and experiences in linked memories"), "append": str("Words to add after the old description"), "metadata": object(), "relations": relationsSchema()}
 	if entity {
-		fields["type"] = str("Type, such as person, place, or organization")
+		fields["type"] = str("Type from the selected user's configured choices")
+		timing := schema(map[string]any{"start": nullableDate("The start date of the entity's existence"), "end": nullableDate("The end date of the entity's existence. null means no date is recorded; it does not prove continued existence")})
+		timing["type"] = []string{"object", "null"}
+		timing["description"] = "The start and end dates of the entity's existence. These could represent birth and death for a person, founding and closure for an organization, and so on. Apply this meaning to any user-configured entity type. Omit to keep old dates; supplied parts patch only those parts. null clears a part; time:null clears both. Do not use creation timestamps, first mention, or uncertainty bounds as lifetime dates."
+		fields["time"] = timing
 	}
 	value := schema(fields)
 	// Keep the model-facing field list simple; the engine enforces the
@@ -176,6 +184,9 @@ func namedSchema(entity bool) map[string]any {
 	value["examples"] = []any{
 		map[string]any{"create": true, "name": "Alex", "description": "Sam's coworker, a different person from Sam's cousin Alex."},
 		map[string]any{"id": "EXISTING_RECORD_ID", "description": "The corrected short description."},
+	}
+	if entity {
+		value["examples"] = append(value["examples"].([]any), map[string]any{"id": "EXISTING_PERSON_ID", "time": map[string]any{"start": "1990-04-22"}})
 	}
 	return value
 }

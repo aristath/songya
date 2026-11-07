@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -130,7 +131,7 @@ func Handler(store *songya.Store) *Application {
 		}
 		links := catalog.Connections(doc.ID)
 
-		write(w, map[string]any{"id": doc.ID, "kind": kind, "version": doc.Revision, "source": string(source), "draft": describe(string(source)), "links": links, "diagnostics": append(doc.Diagnostics(), diagnosticText(catalog.Diagnostics)...), "pending": doc.Pending || doc.Unconfirmed})
+		write(w, map[string]any{"id": doc.ID, "kind": kind, "version": doc.Revision, "source": string(source), "draft": describe(string(source), kind), "links": links, "diagnostics": append(doc.Diagnostics(), diagnosticText(catalog.Diagnostics)...), "pending": doc.Pending || doc.Unconfirmed})
 	})
 	mux.HandleFunc("POST /api/draft", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
@@ -149,6 +150,7 @@ func Handler(store *songya.Store) *Application {
 			return
 		}
 		doc := songya.Parse([]byte(input.Source))
+		doc.ID, doc.Kind = input.ID, input.Kind
 		if input.ClassificationType != nil {
 			if err := doc.SetType(input.ClassificationUser, *input.ClassificationType); err != nil {
 				writeStatus(w, 422, map[string]any{"error": err.Error()})
@@ -160,7 +162,7 @@ func Handler(store *songya.Store) *Application {
 		}
 		if input.Fields != nil {
 			next := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", HeadComment: doc.Frontmatter.HeadComment, FootComment: doc.Frontmatter.FootComment}
-			original := describe(input.Source).Fields
+			original := describe(input.Source, input.Kind).Fields
 			for _, f := range *input.Fields {
 				if f.Key == "id" || f.System || f.Key == "created_at" || f.Key == "updated_at" {
 					continue
@@ -236,7 +238,7 @@ func Handler(store *songya.Store) *Application {
 		}
 		catalog.Records = append(kept, doc.Record(input.Kind))
 
-		write(w, map[string]any{"source": source, "draft": describe(source), "links": catalog.Connections(doc.ID)})
+		write(w, map[string]any{"source": source, "draft": describe(source, input.Kind), "links": catalog.Connections(doc.ID)})
 	})
 	mux.HandleFunc("POST /api/records", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
@@ -276,7 +278,7 @@ func Handler(store *songya.Store) *Application {
 				version = record.Revision
 			}
 		}
-		write(w, map[string]any{"id": id, "kind": kindFor(id), "version": version, "source": string(data), "draft": describe(string(data))})
+		write(w, map[string]any{"id": id, "kind": kindFor(id), "version": version, "source": string(data), "draft": describe(string(data), kindFor(id))})
 	})
 	mux.HandleFunc("DELETE /api/records/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if err := store.Delete(r.Context(), r.PathValue("id"), r.Header.Get("If-Match")); err != nil {
@@ -298,15 +300,15 @@ func Handler(store *songya.Store) *Application {
 }
 
 type Field struct {
-	Time        *songya.EpisodeTime `json:"time,omitempty"`
-	Protected   string              `json:"protected,omitempty"`
-	Index       int                 `json:"index"`
-	Text        string              `json:"text"`
-	Type        string              `json:"type"`
-	Assignments map[string]string   `json:"assignments,omitempty"`
-	Key         string              `json:"key"`
-	Value       string              `json:"value"`
-	System      bool                `json:"system"`
+	Time        *songya.RecordTime `json:"time,omitempty"`
+	Protected   string             `json:"protected,omitempty"`
+	Index       int                `json:"index"`
+	Text        string             `json:"text"`
+	Type        string             `json:"type"`
+	Assignments map[string]string  `json:"assignments,omitempty"`
+	Key         string             `json:"key"`
+	Value       string             `json:"value"`
+	System      bool               `json:"system"`
 }
 type Draft struct {
 	Body     string   `json:"body"`
@@ -314,7 +316,7 @@ type Draft struct {
 	Warnings []string `json:"warnings"`
 }
 
-func describe(source string) Draft {
+func describe(source string, kind songya.Destination) Draft {
 	doc := songya.Parse([]byte(source))
 	lines := strings.SplitAfter(source, "\n")
 	closing := len(lines)
@@ -359,13 +361,20 @@ func describe(source string) Draft {
 			f.Assignments = doc.Types()
 		}
 		if name == "time" && value.Kind == yaml.MappingNode {
-			var event songya.EpisodeTime
+			var event songya.RecordTime
 			usable := value.Decode(&event) == nil
+			keys := []string{"date", "earliest", "latest"}
+			dates := []*string{event.Date, event.Earliest, event.Latest}
+			if kind == songya.Entities {
+				event.Lifetime = true
+				keys = []string{"start", "end"}
+				dates = []*string{event.Start, event.End}
+			}
 			for j := 0; j+1 < len(value.Content); j += 2 {
 				key := value.Content[j].Value
-				usable = usable && (key == "date" || key == "earliest" || key == "latest")
+				usable = usable && slices.Contains(keys, key)
 			}
-			for _, date := range []*string{event.Date, event.Earliest, event.Latest} {
+			for _, date := range dates {
 				if date != nil {
 					_, err := time.Parse(time.DateOnly, *date)
 					usable = usable && err == nil

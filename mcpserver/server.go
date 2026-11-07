@@ -46,7 +46,12 @@ WORK IN THIS ORDER
 2. Before a save/correction, use prepare_memory to find possible matches. Compare the owner, event, people, place, and timing. A match is a suggestion, not an instruction to reuse it.
 3. Same event plus a correction/extra detail: change that memory. Different event: create a new memory even with the same people. True then but changed later: record the new state separately without overwriting the true past. Already correct: do not save again. If you cannot tell whether accounts describe the same event, ask before changing them.
 4. Before changing a record, call read_memory with its id and view="source". Read all pages. Separate the header from the body using the rules below.
-5. Send only changed fields. Check each returned value against what you meant to save. Do not claim done while a requested change is missing.
+5. Send only changed fields. Check the saved kind, ID, fields, and values against what you meant to save, using CHECK below. Do not claim done while a requested change is missing.
+
+CHECK FACTS, INCLUDING NEW INFORMATION
+Compare new facts AND corrections with related records. Read the relevant entity dates and event accounts; find a record that a date or age depends on if needed. Check dates, ages, event order, and stated causes. Do not search unrelated collections. Uncertain dates may allow both claims; do not invent an exact date or age.
+A conflict alone does not tell you which claim is wrong. If the person clearly corrects an old claim, follow the correction rules. Otherwise leave the disputed old claim unchanged, save any clear new fact in its correct field/record, explain the conflict, and ask which claim needs correcting. If the new fact itself is unclear, ask before saving that part. Continue other clear work. Do not silently rewrite old accounts to make them agree.
+Example: a saved meeting on June 1, 2010 says John was 25. The person now gives his birth date as April 22, 1990. Save the clear birth date in the entity time.start. These dates put him at 20 at the meeting; leave that old account unchanged and ask whether its age or date needs correcting.
 
 READING AND PAGES
 Use recall_memory to find a person/subject and connected accounts. Use search_memory to search/list; mode=semantic searches by meaning.
@@ -64,7 +69,7 @@ Call one tool at a time, with JSON arguments. Do not write pretend calls or XML 
 New memory: omit id; always send a short title and text. Send the selected user unless the client supplies user. New stories also need a title. Example: call save_memory with this JSON:
 {"title":"Alex and Sam's favorite soup","text":"Alex and Sam enjoy the soup at Cedar Café.","relations":[{"type":"related_to","target":"Alex"},{"type":"related_to","target":"Sam"},{"type":"related_to","target":{"kind":"entities","name":"Cedar Café"}}]}
 Change a memory/story: send id and the fields to change. text replaces ALL body words. For a correction, change only wrong claims and copy all other wording, details, names, and quotes exactly. append adds words about the SAME account after the old words; it must not add a different dated event or a conflicting claim.
-Change entity/topic words: send id and description, NOT text. For dates only, send id and time; leave text out.
+Change entity/topic words: send id and description, NOT text. For dates only, send id and time; leave text and description out.
 Omit means leave a field out: its old value stays. An empty text or description clears the words. metadata means extra named fields; it changes only supplied keys. IDs and save times are automatic.
 
 CORRECTIONS AND QUOTES
@@ -74,6 +79,13 @@ Your generated words are not the person's original words. The client attaches ex
 If wrong words are a summary, correct only the wrong claim. If they are a real quote, do not change words inside it. In that SAME memory's body, label the quote as an earlier corrected account and add a separate sentence with the corrected fact. Example body: Earlier account, now corrected: Sam said, “We moved in 2020.” Correction: Sam says the move was on December 1, 2019. Put the corrected date in time too, not just in the chat reply.
 
 DATES AND LINKS
+Entity time has start and end: the start and end dates of the entity's existence. These could represent birth and death for a person, founding and closure for an organization, and so on. Apply this meaning to any user-configured entity type; it is not limited to these examples.
+Save an entity's known start/end dates with save_entity, not as a separate memory containing only those dates. A narrated event or experience still belongs in a linked memory.
+Example arguments for an existing entity:
+{"id":"EXISTING_ENTITY_ID","time":{"start":"1990-04-22"}}
+Omit a component to keep it; null clears it. time:null clears both. Each component is a real YYYY-MM-DD date or null. null means no date is recorded; it does not prove the entity still exists. Do not use record creation time, first mention, or a range of possible start dates as a lifetime.
+Do not invent missing date parts. For a partial entity date, append the supplied words to the entity and leave the unknown date unset. Do not clear a known date because a new message is less precise.
+For memories, date/earliest/latest describe event timing and uncertainty, not the entity's existence.
 Exact day example arguments for save_memory:
 {"id":"MOVE_ID","time":{"date":"2019-12-01","earliest":null,"latest":null}}
 Month-only example arguments for save_memory:
@@ -92,7 +104,13 @@ That example leaves only one link. Do not use that list if other links must rema
 Omitted relations keep old links. Supplied relations replace ALL old links unless append is nonempty, in which case they add links. [] clears all links. Include old links to keep when replacing a link list. Reverse links are automatic.
 
 CHECK
-Read outcome, changed_fields, and the returned title/words/dates/links. A new memory/story must have a nonempty title; add a missing title with an id-and-title update. created/updated means saved changes; check they are the intended changes. unchanged means nothing changed, not a rejected save. Fix missing/wrong arguments; never repeat the same unchanged call. Read back a record if returned content is too short to check. Report errors and missing requested changes without inventing a cause. Do not claim relevant records agree unless you checked them.`
+For each fact, choose its record kind, existing ID or new record, field, and value using the rules above. Compare these choices with the actual save result, not just a successful tool call:
+1. status must be committed to confirm a finished write. Report pending/blocked work as unfinished.
+2. Check kind and id. An update must use the intended existing record. A new record does not correct the old one.
+3. Check outcome, changed_fields, and the actual field values. A date only in text does not fill a date field. A birthday-only memory does not fill the entity time.start.
+4. Check preserved words and links too. A new memory/story needs a nonempty title; add a missing title with an id-and-title update.
+5. If needed values are missing or words are cut short, use read_memory with the returned id and view="source" and read the needed pages. Missing output is not proof that a field was saved.
+created/updated means changes were made, not that they were correct. unchanged means nothing changed, not a rejected save. If the requested values were already correct, leave them alone and say so. Fix missing/wrong arguments; never repeat the same unchanged call. Report errors, missing requested changes, and unresolved conflicts without inventing a cause. Do not claim relevant records agree unless you checked them.`
 
 // App keeps import access separate from record-store access. Import roots are
 // supplied by the process owner, never accepted as arbitrary client paths.
@@ -126,8 +144,11 @@ type recordPage struct {
 	Diagnostics   []string `json:"diagnostics,omitempty"`
 }
 
-func normalize(value any, key string) any {
+func normalize(value any, key string, kind songya.Destination) any {
 	if key == "time" && value == nil {
+		if kind == songya.Entities {
+			return map[string]any{"start": nil, "end": nil}
+		}
 		return map[string]any{"date": nil, "earliest": nil, "latest": nil}
 	}
 	if key == "relations" {
@@ -159,13 +180,19 @@ func normalize(value any, key string) any {
 	}
 	switch value := value.(type) {
 	case map[string]any:
+		if key == "target" || key == "" {
+			id, _ := value["id"].(string)
+			if value["kind"] == "entities" || songya.ValidID(id) && strings.HasPrefix(id, "e_") {
+				kind = songya.Entities
+			}
+		}
 		for name, item := range value {
-			value[name] = normalize(item, name)
+			value[name] = normalize(item, name, kind)
 		}
 		return value
 	case []any:
 		for i, item := range value {
-			value[i] = normalize(item, "")
+			value[i] = normalize(item, "", kind)
 		}
 		return value
 	}
@@ -212,7 +239,8 @@ func normalize(value any, key string) any {
 	}
 	return value
 }
-func decode(raw json.RawMessage, target any) error {
+func decode(raw json.RawMessage, target any) error { return decodeRecord(raw, target, songya.Memories) }
+func decodeRecord(raw json.RawMessage, target any, kind songya.Destination) error {
 	if len(raw) == 0 {
 		raw = []byte("{}")
 	}
@@ -222,7 +250,7 @@ func decode(raw json.RawMessage, target any) error {
 	if err := decoder.Decode(&input); err != nil {
 		return err
 	}
-	data, err := json.Marshal(normalize(input, ""))
+	data, err := json.Marshal(normalize(input, "", kind))
 	if err != nil {
 		return err
 	}
@@ -266,7 +294,11 @@ func tool[T any](server *mcp.Server, name, description string, input any, readOn
 			return result(nil, fmt.Errorf("original_accounts holds the person's exact words. Do not change it. Put corrected memory words in text, or entity/topic words in description. The app saves the original message separately")), nil
 		}
 		var value T
-		if err := decode(request.Params.Arguments, &value); err != nil {
+		kind := songya.Memories
+		if name == "save_entity" {
+			kind = songya.Entities
+		}
+		if err := decodeRecord(request.Params.Arguments, &value, kind); err != nil {
 			return result(nil, fmt.Errorf("cannot interpret arguments: %w", err)), nil
 		}
 		if key, ok := request.Params.Meta["songya/request-key"].(string); ok && key != "" {
@@ -607,7 +639,7 @@ func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]
 		name        string
 		kind        songya.Destination
 		description string
-	}{{"save_entity", songya.Entities, "Save a person, place, or thing. Send id to change an existing entity. Send description to change its words; text does not work here. Put events in linked memories. For a new record, send create:true and name, without id. For an update, send its id; a name alone never updates a record."}, {"save_topic", songya.Topics, "Save a subject. Send id to change an existing topic. Send description to change its words; text does not work here. For a new record, send create:true and name, without id. For an update, send its id; a name alone never updates a record."}} {
+	}{{"save_entity", songya.Entities, "Save a named entity. time.start and time.end record the beginning and end of its existence, for any entity type. Send id to change an existing entity. Send description to change its words; text does not work here. Put events in linked memories. For a new record, send create:true and name, without id. For an update, send its id; a name alone never updates a record."}, {"save_topic", songya.Topics, "Save a subject. Send id to change an existing topic. Send description to change its words; text does not work here. For a new record, send create:true and name, without id. For an update, send its id; a name alone never updates a record."}} {
 		inputSchema := writeSchemas[item.name]
 		tool(server, item.name, item.description, inputSchema, false, func(ctx context.Context, input songya.NamedInput) (any, error) {
 			input.Key = requestKey(ctx)

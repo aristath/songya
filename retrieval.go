@@ -25,7 +25,7 @@ type Recollection struct {
 	Kind             Destination `json:"kind"`
 	User             string      `json:"user,omitempty"`
 	Title            string      `json:"title"`
-	Time             EpisodeTime `json:"time"`
+	Time             RecordTime  `json:"time"`
 	Content          string      `json:"content"`
 	Reason           string      `json:"reason"`
 	Score            *float64    `json:"score,omitempty"`
