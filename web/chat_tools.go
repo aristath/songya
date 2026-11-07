@@ -7,15 +7,14 @@ import (
 
 const toolRepair = "Your last tool call was incomplete. No tool in that reply was run. Call the tool again with every argument inside its JSON. Use description for entity/topic words and text for memory/story words. Do not write XML tool tags. Do not say the change was saved."
 
-const failedWriteReminder = "The tool replies immediately before this note include a save that did not report a completed change. Do not say that part was saved until a later tool result confirms it. Read the error and fix the arguments, or check the operation receipt if work is pending. If you cannot finish, tell the person which part was not saved."
-
-func failedToolResult(content string) bool {
-	var result struct {
-		IsError bool   `json:"isError"`
-		Error   string `json:"error"`
-	}
-	return json.Unmarshal([]byte(content), &result) == nil && (result.IsError || result.Error != "")
-}
+const toolRecoveryRules = `# Tool recovery
+Call tools using one JSON object with all arguments inside it. Text or XML tool tags do not run a tool.
+After every save, read the tool result and compare the returned values with the person's request.
+created or updated means a change was saved. unchanged means nothing changed. If the requested values are already saved, say they were already recorded. Do not edit words just to force a change.
+If the requested change is still missing, read the tool's explanation and fix the arguments. Do not repeat the same failed or empty call.
+Use description for entity/topic words and text for memory/story words. Use append to add words after the existing words.
+If a save is pending, check its operation receipt. Do not start the same work as a new save.
+Do not say a requested change was saved until the tool result confirms that exact change. If you cannot finish, say what was not saved.`
 
 // Retain malformed output as evidence. Never guess missing arguments or run XML.
 func malformedToolReply(m chatMessage) bool {
@@ -31,10 +30,12 @@ func malformedToolReply(m chatMessage) bool {
 	return false
 }
 
+// Only a message matching the durable HTTP acceptance receipt is testimony.
+// A role or a SYSTEM/RECOVERY prefix alone does not identify who wrote it.
 func originalTurnText(c chatConversation) string {
-	for i := len(c.Messages) - 1; i >= 0; i-- {
-		m := c.Messages[i]
-		if m.Role == "user" && m.TurnID == c.TurnID {
+	receipt := c.Requests[c.TurnID]
+	for _, m := range c.Messages {
+		if m.Role == "user" && m.TurnID == c.TurnID && chatFingerprint(c.User, m.Content) == receipt {
 			return m.Content
 		}
 	}

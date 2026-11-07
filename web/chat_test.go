@@ -210,7 +210,7 @@ func TestChatStartupRecoversAcceptedToolFromOriginalReceipt(t *testing.T) {
 	tool := chatToolCall{ID: "save_existing", Type: "function"}
 	tool.Function.Name = "save_memory"
 	tool.Function.Arguments = `{"text":"The original account."}`
-	c := chatConversation{ID: id, User: "ari", Status: "running", TurnID: "original", Prompt: defaultChatPrompt, Requests: map[string]string{"original": "accepted"}, Messages: []chatMessage{{Role: "user", Content: "Save this account.", TurnID: "original"}, {Role: "assistant", ToolCalls: []chatToolCall{tool}, TurnID: "original"}}}
+	c := chatConversation{ID: id, User: "ari", Status: "running", TurnID: "original", Prompt: defaultChatPrompt, Requests: map[string]string{"original": chatFingerprint("ari", "Save this account.")}, Messages: []chatMessage{{Role: "user", Content: "Save this account.", TurnID: "original"}, {Role: "assistant", ToolCalls: []chatToolCall{tool}, TurnID: "original"}}}
 	data, _ := json.Marshal(c)
 	if err := os.WriteFile(filepath.Join(root, ".chats", id+".json"), data, 0600); err != nil {
 		t.Fatal(err)

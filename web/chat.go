@@ -78,6 +78,12 @@ func (c *chatConversation) advance() {
 	c.Messages = append(c.Messages, chatMessage{Role: "user", Content: turn.Text, TurnID: turn.ID})
 }
 
+// Receipts identify the exact submitted words, independently of message roles.
+func chatFingerprint(user, text string) string {
+	hash := sha256.Sum256([]byte(user + "\x00" + text))
+	return hex.EncodeToString(hash[:])
+}
+
 type chatApp struct {
 	store  *songya.Store
 	ctx    context.Context
@@ -450,8 +456,7 @@ func (a *chatApp) sendHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	hash := sha256.Sum256([]byte(input.User + "\x00" + input.Text))
-	fingerprint := hex.EncodeToString(hash[:])
+	fingerprint := chatFingerprint(input.User, input.Text)
 	c, err := a.edit(r.Context(), input.ID, func(c *chatConversation) error {
 		if c.User != "" && c.User != input.User {
 			return fmt.Errorf("%w: this conversation belongs to another user", songya.ErrConflict)

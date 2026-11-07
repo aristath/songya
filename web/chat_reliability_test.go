@@ -208,7 +208,21 @@ func TestChatRawToolTagsRecoverWithoutExecutingText(t *testing.T) {
 			store, _ := songya.Open(t.TempDir())
 			var requests atomic.Int32
 			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var body struct {
+					Messages []chatMessage `json:"messages"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Error(err)
+				}
+				for i, m := range body.Messages {
+					if i > 0 && m.Role == "system" {
+						t.Error("late system message", body.Messages)
+					}
+				}
 				n := requests.Add(1)
+				if n == 2 && !strings.Contains(body.Messages[0].Content, toolRepair) {
+					t.Error("opening prompt lacks active repair instructions")
+				}
 				text := "I could not complete a tool call."
 				if n == 1 || repeated {
 					text = `<tool_call>{"name":"save_memory","arguments":{"text":"Do not execute this text."}}</tool_call>`
@@ -230,8 +244,13 @@ func TestChatRawToolTagsRecoverWithoutExecutingText(t *testing.T) {
 			if requests.Load() != 2 {
 				t.Fatal("unbounded tool repair", requests.Load())
 			}
-			if len(c.Messages) < 3 || c.Messages[2].Role != "system" {
-				t.Fatal("repair directions were not saved", c.Messages)
+			for _, m := range c.Messages {
+				if m.Role == "system" {
+					t.Fatal("app recovery note was added to conversation", c.Messages)
+				}
+			}
+			if originalTurnText(c) != "Hello" {
+				t.Fatal("recovery changed original testimony")
 			}
 			catalog, _ := store.Scan(context.Background())
 			if len(catalog.Records) != 0 {

@@ -27,6 +27,33 @@ func messageParam(m chatMessage) openai.ChatCompletionMessageParamUnion {
 	return param.Override[openai.ChatCompletionMessageParamUnion](json.RawMessage(data))
 }
 
+// App recovery rules belong in the opening system message. Saved app notes
+// remain in the transcript for inspection, but are never sent as later system
+// messages or relabelled as the person's words.
+func chatRequestMessages(c chatConversation, system string) []openai.ChatCompletionMessageParamUnion {
+	system += "\n\n" + toolRecoveryRules
+	for i := len(c.Messages) - 1; i >= 0; i-- {
+		m := c.Messages[i]
+		if m.Role == "system" {
+			continue
+		}
+		if m.Role == "assistant" && malformedToolReply(m) && len(m.ToolCalls) == 0 {
+			system += "\n\n" + toolRepair
+		}
+		break
+	}
+	messages := []openai.ChatCompletionMessageParamUnion{openai.SystemMessage(system)}
+	if evidence := recallContext(c); evidence != "" {
+		messages = append(messages, openai.UserMessage(evidence))
+	}
+	for _, m := range c.Messages {
+		if m.Role != "system" {
+			messages = append(messages, messageParam(m))
+		}
+	}
+	return messages
+}
+
 func pendingChatTool(c chatConversation) (int, *chatToolCall) {
 	for i, m := range c.Messages {
 		if m.Role != "assistant" {
@@ -143,16 +170,6 @@ func (a *chatApp) run(ctx context.Context, id string) error {
 					return nil
 				}
 				current.Messages = append(current.Messages, chatMessage{Role: "tool", Content: string(data), ToolCallID: call.ID, Name: call.Function.Name, TurnID: c.TurnID})
-				// Put app-authored failure guidance after all results in this batch,
-				// never between an assistant's calls and their required tool replies.
-				if _, pending := pendingChatTool(*current); pending == nil {
-					for _, reply := range current.Messages[index+1:] {
-						if reply.Role == "tool" && strings.HasPrefix(reply.Name, "save_") && failedToolResult(reply.Content) {
-							current.Messages = append(current.Messages, chatMessage{Role: "system", Content: failedWriteReminder, TurnID: c.TurnID})
-							break
-						}
-					}
-				}
 				return nil
 			})
 			if err != nil {
@@ -187,13 +204,7 @@ func (a *chatApp) run(ctx context.Context, id string) error {
 			definitions = append(definitions, param.Override[openai.ChatCompletionToolUnionParam](json.RawMessage(data)))
 		}
 		system := c.Prompt + "\n\n" + typeGuide + "\n\n# Connected Songya MCP guide\n" + session.InitializeResult().Instructions + fmt.Sprintf("\n\nThe person currently talking is user %q. This identifies ownership, not an entity.\n", c.User)
-		messages := []openai.ChatCompletionMessageParamUnion{openai.SystemMessage(system)}
-		if evidence := recallContext(c); evidence != "" {
-			messages = append(messages, openai.UserMessage(evidence))
-		}
-		for _, m := range c.Messages {
-			messages = append(messages, messageParam(m))
-		}
+		messages := chatRequestMessages(c, system)
 		client := s.client()
 		requests++
 		streamCtx, cancelStream := context.WithCancel(ctx)
@@ -303,9 +314,6 @@ func (a *chatApp) run(ctx context.Context, id string) error {
 			}
 			current.Messages = append(current.Messages, draft)
 			current.Draft = nil
-			if malformedToolReply(draft) && len(draft.ToolCalls) == 0 {
-				current.Messages = append(current.Messages, chatMessage{Role: "system", Content: toolRepair, TurnID: c.TurnID})
-			}
 			if len(draft.ToolCalls) == 0 && !malformedToolReply(draft) {
 				current.Status = "done"
 				current.advance()

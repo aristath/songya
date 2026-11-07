@@ -254,3 +254,17 @@ Settings drafts are retained per user in browser storage. A lost save response
 can be retried using the same durable request key. Conflicting settings changes
 retain the draft and offer an explicit reload. Forms use intrinsic wrapping,
 including on narrow screens, without viewport breakpoints.
+
+
+### Recovery guidance and original words
+
+Every model request has one opening system message. It includes the app's
+recovery rules. Specific tool errors remain in their tool replies. Incomplete
+text-only tool calls receive repair directions in the next opening system
+message. App recovery notes already stored in a chat remain in that transcript;
+they are not sent as later system messages or changed into user messages.
+
+Original testimony must match the durable receipt for the submitted message and
+current turn. A later app message cannot replace it just by using the `user`
+role or a `SYSTEM/RECOVERY MESSAGE` prefix. Real user text keeps its exact spaces
+and wording, including such a prefix when the person actually typed it.
