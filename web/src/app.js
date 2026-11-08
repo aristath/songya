@@ -5,6 +5,7 @@ import { chatUI } from "./chat.js";
 import { recallUI } from "./recall.js";
 import { defaultKindColors } from "./palette.js";
 import { typesUI } from "./types.js";
+import { newID } from "./ids.js";
 
 async function request(path, options = {}) {
   const response = await fetch(path, {
@@ -694,11 +695,7 @@ Alpine.data("songya", () => {
         await this.flush();
         const current = this.source;
         attempt ||= {
-          key:
-            crypto.randomUUID?.() ||
-            Array.from(crypto.getRandomValues(new Uint8Array(16)), (n) =>
-              n.toString(16).padStart(2, "0"),
-            ).join(""),
+          key: newID(),
           id: this.selected.id,
           kind: this.selected.kind,
           version: this.selected.version,

@@ -5,6 +5,7 @@ import {
   isPreset,
   defaultKindColors,
 } from "./palette.js";
+import { newID } from "./ids.js";
 const storage = {
   get(key) {
     try {
@@ -201,7 +202,7 @@ export function typesUI(request) {
     },
     addType() {
       this.typeDraft[this.typeSettingsKind].push({
-        id: "type_" + crypto.randomUUID().replaceAll("-", "").slice(0, 12),
+        id: "type_" + newID().slice(0, 12),
         name: "",
         description: "",
         color: this.typeKindColors[this.typeSettingsKind],
@@ -223,7 +224,7 @@ export function typesUI(request) {
             (entry) => entry !== type && entry.id === id,
           )
         )
-          id += "_" + crypto.randomUUID().slice(0, 6);
+          id += "_" + newID().slice(0, 6);
         type.id = id;
       }
       this.keepTypeDraft();
@@ -265,7 +266,7 @@ export function typesUI(request) {
       this.typeSettingsError = this.typeSettingsNotice = "";
       try {
         this.typePending ||= {
-          key: crypto.randomUUID(),
+          key: newID(),
           version: this.typeSettings.version,
           kinds: copy(this.typeDraft),
           kind_colors: copy(this.typeKindColors),

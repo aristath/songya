@@ -68,7 +68,10 @@ before(
         },
       }),
     );
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({
+      headless: true,
+      args: ["--host-resolver-rules=MAP songya.test 127.0.0.1"],
+    });
   },
   { timeout: 120000 },
 );
@@ -86,13 +89,14 @@ async function pageFor(
   viewport = { width: 1320, height: 900 },
   init,
   view = "list",
+  origin = url,
 ) {
   const context = await browser.newContext({ viewport });
   if (init) await context.addInitScript(init);
   const requests = [];
   context.on("request", (request) => requests.push(request.url()));
   await context.route("**/*", (route) =>
-    route.request().url().startsWith(url) ? route.continue() : route.abort(),
+    route.request().url().startsWith(origin) ? route.continue() : route.abort(),
   );
   const page = await context.newPage();
   page.setDefaultTimeout(7000);
@@ -103,7 +107,7 @@ async function pageFor(
     console.error("PAGEERROR", e.message);
     errors.push(e.message);
   });
-  await page.goto(url);
+  await page.goto(origin);
   if (view === "list") {
     await page.getByRole("heading", { name: "Library", exact: true }).waitFor();
     await page.locator("#list-panel").scrollIntoViewIfNeeded();
@@ -3252,7 +3256,7 @@ test("source editor syntax and controls remain readable in explicit and device t
   }
 });
 
-test("Catppuccin color presets and custom colors persist per user and recolor the graph", async () => {
+test("Catppuccin color presets and custom colors persist on network HTTP and recolor the graph", async () => {
   await fetch(url + "/api/types/palette_user");
   const entity = await save(
     "---\nname: Palette John\ntypes: {palette_user: person}\n---\nA fictional person.",
@@ -3262,8 +3266,22 @@ test("Catppuccin color presets and custom colors persist per user and recolor th
     source("Palette afternoon").replace("user: ari", "user: palette_user"),
   );
   const before = await (await fetch(url + "/api/records/" + entity.id)).json();
-  const { page, context } = await pageFor();
+  const { page, context } = await pageFor(
+    undefined,
+    undefined,
+    "list",
+    url.replace("127.0.0.1", "songya.test"),
+  );
   try {
+    assert.deepEqual(
+      await page.evaluate(() => ({
+        secure: isSecureContext,
+        uuid: typeof crypto.randomUUID,
+        random: typeof crypto.getRandomValues,
+      })),
+      { secure: false, uuid: "undefined", random: "function" },
+      "Exercise the same browser API restrictions as a network HTTP deployment",
+    );
     await page.getByLabel("Color theme", { exact: true }).selectOption("dark");
     await page
       .getByLabel("Graph colors for", { exact: true })
@@ -3314,13 +3332,29 @@ test("Catppuccin color presets and custom colors persist per user and recolor th
       if (route.request().method() !== "PUT") return route.continue();
       writes++;
       if (writes !== 1) return route.continue();
-      const response = await route.fetch();
+      // route.fetch runs in Node, outside Chromium's test DNS mapping.
+      const response = await route.fetch({
+        url: route.request().url().replace("songya.test", "127.0.0.1"),
+        headers: {
+          ...route.request().headers(),
+          host: new URL(route.request().url()).host,
+        },
+      });
       assert.equal(response.status(), 200);
       await route.abort("failed");
     });
     await dialog
       .getByRole("button", { name: "Save types", exact: true })
       .click();
+    await page.waitForFunction(
+      () => !window.Alpine.$data(document.body).typeSettingsBusy,
+    );
+    assert.equal(
+      writes,
+      1,
+      "The save must reach the server: " +
+        (await dialog.getByRole("alert").textContent()),
+    );
     await dialog
       .getByRole("alert")
       .filter({ hasText: "Failed to fetch" })
@@ -3381,6 +3415,9 @@ test("Catppuccin color presets and custom colors persist per user and recolor th
           ?.color === "#e84d92",
       entity.id,
     );
+    // A node still moving in the initial force layout will leave the camera's
+    // focus point. Settle it before sampling the focused node's center pixel.
+    await page.waitForTimeout(3000);
     for (const [theme, background, memoryColor] of [
       ["dark", "rgb(17, 17, 27)", "rgb(137, 180, 250)"],
       ["light", "rgb(220, 224, 232)", "rgb(30, 102, 245)"],
@@ -3469,6 +3506,29 @@ test("Catppuccin color presets and custom colors persist per user and recolor th
     await dialog.screenshot({
       path: "/tmp/songya-ui-review/palette-settings-phone.png",
     });
+    for (const name of ["Keepsake!", "Keepsake?"]) {
+      await dialog
+        .getByRole("button", { name: "Add type", exact: true })
+        .click();
+      const added = dialog.locator(".type-definition").last();
+      await added.locator("input:not([type=color])").fill(name);
+      await added.locator("textarea").fill("An object kept as a reminder.");
+    }
+    await dialog
+      .getByRole("button", { name: "Save types", exact: true })
+      .click();
+    await dialog
+      .getByText("Types saved for palette_user.", { exact: true })
+      .waitFor();
+    const edited = await (await fetch(url + "/api/types/palette_user")).json();
+    const addedTypes = edited.kinds.entities.filter((type) =>
+      type.name.startsWith("Keepsake"),
+    );
+    assert.equal(addedTypes.length, 2);
+    assert.equal(new Set(addedTypes.map((type) => type.id)).size, 2);
+    assert.ok(
+      addedTypes.every((type) => /^keepsake(_[0-9a-f]{6})?$/.test(type.id)),
+    );
     assert.deepEqual(errors, []);
   } finally {
     await context.close();

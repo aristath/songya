@@ -1,4 +1,5 @@
 import MarkdownIt from "markdown-it";
+import { newID } from "./ids.js";
 
 const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true });
 const local = {
@@ -18,11 +19,6 @@ const local = {
     }
   },
 };
-const newID = () =>
-  Array.from(crypto.getRandomValues(new Uint8Array(16)), (n) =>
-    n.toString(16).padStart(2, "0"),
-  ).join("");
-
 export function chatUI(request) {
   let events,
     recordEvents,
