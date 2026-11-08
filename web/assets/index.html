@@ -330,10 +330,25 @@
                     ></div>
                     <template
                       x-for="upload in message.uploads||[]"
-                      :key="upload.upload"
+                      :key="upload.key||upload.upload"
                       ><p class="upload-ready">
                         <span x-text="upload.filename"></span
-                        ><span x-text="chatUploadLabel(upload)"></span></p
+                        ><span x-text="chatUploadLabel(upload)"></span>
+                        <button
+                          type="button"
+                          x-show="upload.key&&upload.status==='error'&&hasChatAttachmentFile(upload)"
+                          @click="retryChatAttachment(upload)"
+                        >
+                          Retry upload
+                        </button>
+                        <label
+                          class="file-picker"
+                          x-show="upload.key&&upload.status==='error'&&!hasChatAttachmentFile(upload)"
+                          >Choose file again<input
+                            type="file"
+                            :aria-label="'Choose '+upload.filename+' again'"
+                            @change="retryChatAttachment(upload,$event.target.files[0]);$event.target.value=''"
+                        /></label></p
                     ></template>
                     <template
                       x-for="call in message.tool_calls||[]"
@@ -384,48 +399,60 @@
               >
                 Continue saved turn
               </button>
-              <div
-                class="chat-files"
-                @dragover.prevent
-                @drop.prevent="uploadChatFiles([...$event.dataTransfer.files])"
-              >
-                <label class="file-picker"
-                  >Add files<input
-                    type="file"
-                    multiple
-                    :disabled="!chatUser||chatFilesBusy||!!chatState?.archived"
-                    @change="uploadChatFiles([...$event.target.files]);$event.target.value=''"
-                /></label>
-                <span class="muted" x-show="chatFilesBusy">Uploading…</span>
-                <p
-                  class="error"
-                  x-show="chatFilesError"
-                  x-text="chatFilesError"
-                  role="alert"
-                ></p>
-                <details
-                  x-show="chatUploads.length"
-                  :open="chatUploadSelected.length>0"
-                >
-                  <summary>Uploaded files · choose which to include</summary>
-                  <template x-for="upload in chatUploads" :key="upload.upload"
-                    ><label class="upload-ready"
-                      ><input
-                        type="checkbox"
-                        x-model="chatUploadSelected"
-                        :value="upload.upload"
-                      /><span x-text="upload.filename"></span
-                      ><span>Uploaded · attachment not confirmed</span></label
-                    ></template
-                  >
-                </details>
-              </div>
               <form
                 class="chat-composer"
                 @submit.prevent="sendChat()"
                 @dragover.prevent
                 @drop.prevent="uploadChatFiles([...$event.dataTransfer.files])"
               >
+                <div
+                  class="chat-attachments"
+                  x-show="chatAttachments.length"
+                  aria-label="Message attachments"
+                  role="list"
+                >
+                  <template
+                    x-for="attachment in chatAttachments"
+                    :key="attachment.key"
+                  >
+                    <div class="chat-attachment" role="listitem">
+                      <span x-text="attachment.filename"></span>
+                      <span
+                        class="muted"
+                        x-show="attachment.status==='uploading'"
+                        >Uploading…</span
+                      >
+                      <span
+                        class="error"
+                        x-show="attachment.status==='error'"
+                        x-text="attachment.error"
+                        role="alert"
+                      ></span>
+                      <button
+                        type="button"
+                        x-show="attachment.status==='error'&&hasChatAttachmentFile(attachment)"
+                        @click="retryChatAttachment(attachment)"
+                      >
+                        Retry upload
+                      </button>
+                      <label
+                        class="file-picker"
+                        x-show="attachment.status==='error'&&!hasChatAttachmentFile(attachment)"
+                        >Choose file again<input
+                          type="file"
+                          :aria-label="'Choose '+attachment.filename+' again'"
+                          @change="retryChatAttachment(attachment,$event.target.files[0]);$event.target.value=''"
+                      /></label>
+                      <button
+                        type="button"
+                        :aria-label="'Remove '+attachment.filename"
+                        @click="removeChatAttachment(attachment.key)"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </template>
+                </div>
                 <label class="sr-only" for="chat-message-input"
                   >Message Songya</label
                 >
@@ -440,12 +467,29 @@
                   @keydown.enter="if(!$event.shiftKey&&!$event.isComposing){$event.preventDefault();sendChat()}"
                   :disabled="!chatSettings.configured||!!chatState?.archived"
                 ></textarea>
-                <button
-                  class="primary"
-                  type="submit"
-                  :disabled="!chatUser||(!chatInput.trim()&&!chatPending&&!chatUploadSelected.length)||!chatSettings.configured||!!chatState?.archived"
-                  x-text="(chatInput.trim()||chatUploadSelected.length) ? (chatBusy()||chatPending ? 'Queue message' : 'Send') : chatPending ? (chatSending ? 'Sending…' : 'Retry send') : 'Send'"
-                ></button>
+                <div class="chat-compose-actions">
+                  <label class="chat-attach"
+                    >Attach files<input
+                      class="sr-only"
+                      aria-label="Attach files"
+                      type="file"
+                      multiple
+                      :disabled="!chatUser||!!chatState?.archived"
+                      @change="uploadChatFiles([...$event.target.files]);$event.target.value=''"
+                  /></label>
+                  <button
+                    class="primary"
+                    type="submit"
+                    :disabled="!chatUser||(!chatInput.trim()&&!chatPending&&!chatAttachments.length)||!chatSettings.configured||!!chatState?.archived"
+                    x-text="(chatInput.trim()||chatAttachments.length) ? (chatBusy()||chatPending ? 'Queue message' : 'Send') : chatPending ? (chatSending ? 'Sending…' : 'Retry send') : 'Send'"
+                  ></button>
+                </div>
+                <p
+                  class="error"
+                  x-show="chatFilesError"
+                  x-text="chatFilesError"
+                  role="alert"
+                ></p>
               </form>
             </div>
           </div>

@@ -227,10 +227,13 @@ inspecting unfinished work.
 
 ### Adding files
 
-Use **Add files** or drag files onto an editor or the chat composer. Uploading and
-attaching are separate steps: a completed upload survives a failed record save.
-The editor attaches staged files after saving the record. In chat, choose the
-files to include with the next message and tell Songya which record they belong
+Use **Add files** in the editor, or **Attach files** in the chat composer. You can
+also drop files onto either one. In chat, files appear beside the current draft;
+remove any you do not want, write your message, and press **Send**. Sending waits
+for those uploads automatically while you can write the next message. Completed
+draft uploads survive reloads, and a failed send keeps the message and its files for retry.
+Completed uploads also survive a failed record save. The editor attaches staged
+files after saving the record. Tell Songya which record the chat files belong
 to. A reply must confirm a committed attachment, not only a saved memory.
 
 Images have previews; supported audio/video have controls and seeking. Plain text

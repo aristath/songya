@@ -31,75 +31,144 @@ export function chatUI(request) {
     historyTimer,
     historyListing = 0,
     uploadStamp = "";
+  const attachmentFiles = new Map(),
+    attachmentTasks = new Map();
   return {
     chatUser: local.get("songya-chat-user"),
-    chatUploads: [],
-    chatUploadSelected: [],
+    chatAttachments: [],
     chatUploadStates: {},
     chatFilesBusy: false,
     chatFilesError: "",
     async refreshChatUploads() {
       const user = this.chatUser;
       if (!user) return;
-      try {
-        const pending = await request(
-          "/api/uploads?" + new URLSearchParams({ scope: "chat:" + user }),
+      const uploads = [
+        ...this.chatAttachments,
+        ...(this.chatState?.messages || []).flatMap((m) => m.uploads || []),
+        ...(this.chatState?.queue || []).flatMap((m) => m.uploads || []),
+      ];
+      await Promise.all(
+        [...new Set(uploads.map((u) => u.upload).filter(Boolean))].map(
+          async (id) => {
+            try {
+              const state = await request(
+                "/api/uploads/" +
+                  id +
+                  "?" +
+                  new URLSearchParams({ scope: "chat:" + user }),
+              );
+              if (user === this.chatUser) this.chatUploadStates[id] = state;
+            } catch (e) {
+              if (user === this.chatUser) this.chatFilesError = e.message;
+            }
+          },
+        ),
+      );
+    },
+    saveChatAttachments() {
+      this.keepChatDraft();
+      if (this.chatPending)
+        local.set("songya-chat-pending", JSON.stringify(this.chatPending));
+    },
+    hasChatAttachmentFile(attachment) {
+      return attachmentFiles.has(attachment.key);
+    },
+    async uploadChatAttachment(attachment, user = this.chatUser) {
+      if (attachment.status === "ready") return;
+      if (attachmentTasks.has(attachment.key))
+        return attachmentTasks.get(attachment.key);
+      attachment.status = "uploading";
+      attachment.error = "";
+      const scope = "chat:" + user;
+      const lookup = () =>
+        request(
+          "/api/uploads/by-key/" +
+            attachment.key +
+            "?" +
+            new URLSearchParams({ scope }),
         );
-        if (user !== this.chatUser) return;
-        this.chatUploads = pending.uploads;
-        const ids = [
-          ...new Set([
-            ...pending.uploads.map((u) => u.upload),
-            ...(this.chatState?.messages || []).flatMap((m) =>
-              (m.uploads || []).map((u) => u.upload),
-            ),
-          ]),
-        ];
-        await Promise.all(
-          ids.map(async (id) => {
-            const state = await request(
-              "/api/uploads/" +
-                id +
-                "?" +
-                new URLSearchParams({ scope: "chat:" + user }),
-            );
-            if (user === this.chatUser) this.chatUploadStates[id] = state;
-          }),
-        );
-      } catch (e) {
-        if (user === this.chatUser) this.chatFilesError = e.message;
-      }
+      const task = (async () => {
+        try {
+          const file = attachmentFiles.get(attachment.key);
+          let receipt;
+          try {
+            receipt = file
+              ? await uploadFile(request, file, scope, attachment.key)
+              : await lookup();
+          } catch (e) {
+            // The server may have saved the bytes even if its reply was lost.
+            receipt = await lookup();
+          }
+          Object.assign(attachment, receipt, { status: "ready", error: "" });
+          if (user === this.chatUser)
+            this.chatUploadStates[receipt.upload] = receipt;
+        } catch (e) {
+          attachment.status = "error";
+          attachment.error = attachmentFiles.has(attachment.key)
+            ? "Upload failed. Retry this file."
+            : "Choose this file again to finish uploading.";
+        } finally {
+          attachmentTasks.delete(attachment.key);
+          this.chatFilesBusy = attachmentTasks.size > 0;
+          this.saveChatAttachments();
+        }
+      })();
+      attachmentTasks.set(attachment.key, task);
+      this.chatFilesBusy = true;
+      this.saveChatAttachments();
+      return task;
     },
     async uploadChatFiles(files) {
-      if (!this.chatUser || this.chatFilesBusy) return;
-      const user = this.chatUser;
-      this.chatFilesBusy = true;
+      if (!this.chatUser || this.chatState?.archived) return;
       this.chatFilesError = "";
-      try {
-        for (const file of files) {
-          try {
-            const receipt = await uploadFile(request, file, "chat:" + user);
-            if (user === this.chatUser) {
-              this.chatUploadStates[receipt.upload] = {
-                ...receipt,
-                status: "uploaded",
-              };
-              this.chatUploadSelected.push(receipt.upload);
-            }
-          } catch (e) {
-            this.chatFilesError += file.name + ": " + e.message + " ";
-          }
-        }
-        await this.refreshChatUploads();
-      } finally {
-        this.chatFilesBusy = false;
+      const tasks = [];
+      for (const file of files) {
+        this.chatAttachments.push({
+          key: newID(),
+          name: file.name,
+          filename: file.name,
+          bytes: file.size,
+          status: "uploading",
+        });
+        const attachment = this.chatAttachments.at(-1);
+        attachmentFiles.set(attachment.key, file);
+        tasks.push(this.uploadChatAttachment(attachment));
       }
+      this.$refs.chatInput?.focus();
+      await Promise.all(tasks);
+    },
+    async retryChatAttachment(attachment, file) {
+      if (file) {
+        if (file.name !== attachment.name || file.size !== attachment.bytes) {
+          this.chatFilesError = "Choose the original file: " + attachment.name;
+          return;
+        }
+        attachmentFiles.set(attachment.key, file);
+      }
+      await this.uploadChatAttachment(attachment);
+      if (
+        this.chatPending &&
+        [this.chatPending, ...(this.chatPending.next || [])].some((message) =>
+          message.attachments?.some((item) => item.key === attachment.key),
+        )
+      )
+        await this.flushChatPending();
+    },
+    removeChatAttachment(key) {
+      this.chatAttachments = this.chatAttachments.filter(
+        (attachment) => attachment.key !== key,
+      );
+      attachmentFiles.delete(key);
+      this.keepChatDraft();
+      this.$refs.chatInput?.focus();
     },
     chatUploadLabel(upload) {
+      if (upload.status === "uploading") return "Uploading…";
+      if (upload.status === "error") return upload.error;
       const state = this.chatUploadStates[upload.upload];
       return state?.status === "attached"
         ? "Attached to " + state.record_id + " as " + state.attached_filename
-        : "Uploaded · attachment not confirmed";
+        : "Included with message";
     },
     chatSessions: [],
     chatSessionID: "",
@@ -192,7 +261,12 @@ export function chatUI(request) {
       this.$nextTick(() => this.$refs.chatExpand.focus());
     },
     chatNavigationBusy() {
-      return this.chatSending || !!this.chatPending || this.chatManaging;
+      return (
+        this.chatSending ||
+        !!this.chatPending ||
+        this.chatManaging ||
+        this.chatFilesBusy
+      );
     },
     chatDraftKey() {
       return (
@@ -205,8 +279,18 @@ export function chatUI(request) {
       this.chatDraftUser = this.chatUser;
       this.chatDraftSession = this.chatSessionID;
       this.chatInput = local.get(this.chatDraftKey());
-      this.chatUploadSelected = [];
+      try {
+        this.chatAttachments = JSON.parse(
+          local.get(this.chatDraftKey() + ":files", "[]"),
+        );
+      } catch {
+        this.chatAttachments = [];
+      }
       this.chatUploadStates = {};
+      for (const attachment of this.chatAttachments) {
+        if (attachment.status !== "ready")
+          this.uploadChatAttachment(attachment);
+      }
       this.refreshChatUploads();
     },
     async openChat(id) {
@@ -409,13 +493,15 @@ export function chatUI(request) {
                       {
                         role: "user",
                         content: m.text,
-                        uploads: (m.uploads || []).map(
-                          (id) =>
-                            this.chatUploadStates[id] || {
-                              upload: id,
-                              filename: "Uploaded file",
-                            },
-                        ),
+                        uploads:
+                          m.attachments ||
+                          (m.uploads || []).map(
+                            (id) =>
+                              this.chatUploadStates[id] || {
+                                upload: id,
+                                filename: "Uploaded file",
+                              },
+                          ),
                         status: i
                           ? "Waiting to send"
                           : this.chatSending
@@ -502,7 +588,13 @@ export function chatUI(request) {
       this.scrollChat();
     },
     keepChatDraft() {
-      if (this.chatDraftUser) local.set(this.chatDraftKey(), this.chatInput);
+      if (this.chatDraftUser) {
+        local.set(this.chatDraftKey(), this.chatInput);
+        local.set(
+          this.chatDraftKey() + ":files",
+          JSON.stringify(this.chatAttachments),
+        );
+      }
     },
     watchChat() {
       events?.close();
@@ -531,13 +623,13 @@ export function chatUI(request) {
         this.chatState?.archived
       )
         return;
-      if (this.chatInput.trim() || this.chatUploadSelected.length) {
+      if (this.chatInput.trim() || this.chatAttachments.length) {
         const message = {
           id: this.chatSessionID || this.chatPending?.id || newID(),
           request_id: newID(),
           user: this.chatUser,
           text: this.chatInput,
-          uploads: [...this.chatUploadSelected],
+          attachments: [...this.chatAttachments],
         };
         this.chatPending = this.chatPending
           ? {
@@ -547,10 +639,11 @@ export function chatUI(request) {
           : message;
         local.set("songya-chat-pending", JSON.stringify(this.chatPending));
         this.chatInput = "";
-        this.chatUploadSelected = [];
+        this.chatAttachments = [];
         this.keepChatDraft();
         this.chatSessionID = message.id;
         this.chatDraftSession = message.id;
+        this.keepChatDraft();
         local.set("songya-chat-selected:" + this.chatUser, message.id);
         this.chatFollow = true;
         this.$refs.chatInput?.focus();
@@ -564,7 +657,19 @@ export function chatUI(request) {
       this.chatError = "";
       try {
         while (this.chatPending) {
-          const { next, ...message } = this.chatPending;
+          const { next, attachments, ...message } = this.chatPending;
+          if (attachments) {
+            for (const attachment of attachments) {
+              await this.uploadChatAttachment(attachment, message.user);
+              if (attachment.status !== "ready")
+                throw new Error(attachment.filename + ": " + attachment.error);
+            }
+            message.uploads = attachments.map(
+              (attachment) => attachment.upload,
+            );
+            this.chatPending.uploads = message.uploads;
+            local.set("songya-chat-pending", JSON.stringify(this.chatPending));
+          }
           const value = await request("/api/chat", {
             method: "POST",
             body: JSON.stringify(message),
@@ -575,6 +680,8 @@ export function chatUI(request) {
             "songya-chat-pending",
             this.chatPending ? JSON.stringify(this.chatPending) : null,
           );
+          for (const attachment of attachments || [])
+            attachmentFiles.delete(attachment.key);
           this.applyChat(value);
           if (this.chatBusy()) this.watchChat();
         }

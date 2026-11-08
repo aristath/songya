@@ -196,6 +196,37 @@ type UploadState struct {
 	AttachedFilename string `json:"attached_filename,omitempty"`
 }
 
+// UploadStateByKey recovers a completed upload when its acknowledgement was lost.
+func (s *Store) UploadStateByKey(ctx context.Context, key, scope string) (UploadState, error) {
+	id := dataRevision([]byte(key))
+	err := s.lockedContext(ctx, func(root *os.Root) error {
+		upload, err := readUpload(root, id)
+		if err != nil {
+			return err
+		}
+		if upload.Scope != scope {
+			return fs.ErrNotExist
+		}
+		directory, _ := uploadDirectory(id)
+		// Finish uncertain syncing before acknowledging recovered work.
+		if !marker(root, filepath.Join(directory, "attached")) {
+			if err := syncPath(root, filepath.Join(directory, "content")); err != nil {
+				return err
+			}
+		}
+		for _, path := range []string{filepath.Join(directory, "receipt.json"), directory, ".uploads"} {
+			if err := syncPath(root, path); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return UploadState{}, err
+	}
+	return s.UploadState(ctx, id, scope)
+}
+
 func (s *Store) UploadState(ctx context.Context, id, scope string) (UploadState, error) {
 	var state UploadState
 	err := s.lockedContext(ctx, func(root *os.Root) error {

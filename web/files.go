@@ -17,6 +17,14 @@ func (a *chatApp) registerFiles(mux *http.ServeMux) {
 		}
 		write(w, receipt)
 	})
+	mux.HandleFunc("GET /api/uploads/by-key/{key}", func(w http.ResponseWriter, r *http.Request) {
+		state, err := a.store.UploadStateByKey(r.Context(), r.PathValue("key"), r.URL.Query().Get("scope"))
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		write(w, state)
+	})
 	mux.HandleFunc("GET /api/uploads/{upload}", func(w http.ResponseWriter, r *http.Request) {
 		state, err := a.store.UploadState(r.Context(), r.PathValue("upload"), r.URL.Query().Get("scope"))
 		if err != nil {

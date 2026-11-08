@@ -109,3 +109,25 @@ func TestChatUploadsAreBoundToTurnWithoutChangingOriginalWords(t *testing.T) {
 		t.Fatal("cross-user upload accepted")
 	}
 }
+
+func TestUploadReplyCanBeRecoveredByRetryKeyOnlyWithinItsScope(t *testing.T) {
+	store, _ := songya.Open(t.TempDir())
+	app := Handler(store)
+	defer app.Close()
+	upload, err := store.Upload(context.Background(), "lost-reply", "chat:john", "letter.txt", strings.NewReader("The original letter"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, result := call(t, app, "GET", "/api/uploads/by-key/lost-reply?scope=chat:john", nil)
+	if code != 200 || result["upload"] != upload.ID || result["filename"] != "letter.txt" || result["status"] != "uploaded" {
+		t.Fatal(code, result)
+	}
+	code, _ = call(t, app, "GET", "/api/uploads/by-key/lost-reply?scope=chat:mary", nil)
+	if code == 200 {
+		t.Fatal("another user's upload was exposed")
+	}
+	code, _ = call(t, app, "GET", "/api/uploads/by-key/unknown?scope=chat:john", nil)
+	if code == 200 {
+		t.Fatal("unknown retry key returned a different upload")
+	}
+}

@@ -1153,6 +1153,7 @@ blockquote {
 }
 .chat-composer {
   display: flex;
+  flex-wrap: wrap;
   align-items: end;
   gap: 0.7rem;
   padding: 0.8rem;
@@ -1396,11 +1397,46 @@ blockquote {
   overflow-wrap: anywhere;
 }
 
-.chat-files {
-  padding: 0.5rem 0.8rem;
-  border-block-start: 1px solid var(--line);
+.chat-attachments,
+.chat-composer > .error {
+  flex-basis: 100%;
+  min-inline-size: 0;
 }
-.chat-files input[type="checkbox"] {
-  inline-size: auto;
-  margin: 0;
+.chat-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.chat-attachment {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  max-inline-size: 100%;
+  padding-inline: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}
+.chat-attachment > span:first-child {
+  min-inline-size: 0;
+  flex: 1;
+}
+.chat-compose-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.chat-attach {
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  cursor: pointer;
+  text-align: center;
+  font-size: 0.85rem;
+}
+.chat-attach:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

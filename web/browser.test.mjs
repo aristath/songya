@@ -4547,13 +4547,13 @@ test("chat uploads supply receipts to text-only tools and confirm attached files
   });
   const { page, context } = await pageFor();
   await setupBrowserChat(page, provider.base, "john-files-chat");
-  await page.locator(".chat-files input[type=file][multiple]").setInputFiles({
+  await page.getByLabel("Attach files", { exact: true }).setInputFiles({
     name: "letter.txt",
     mimeType: "text/plain",
     buffer: Buffer.from("Mary's full letter"),
   });
   await page
-    .locator(".chat-files .upload-ready")
+    .locator(".chat-attachments .chat-attachment")
     .filter({ hasText: "letter.txt" })
     .waitFor();
   await page
@@ -4637,6 +4637,277 @@ test("maximum-length duplicate filenames stay distinct and fit a phone's file ca
     dimensions.scroll <= dimensions.width + 1,
     JSON.stringify(dimensions),
   );
+  await context.close();
+  assert.deepEqual(errors, []);
+});
+
+test("chat sends a draft with its uploading files and keeps the next message separate", async (t) => {
+  const received = [];
+  const provider = await chatProvider(t, (res, body) => {
+    received.push(
+      body.messages.filter((m) => m.role === "user").at(-1).content,
+    );
+    streamChunk(res, { role: "assistant", content: "Received." });
+    streamFinish(res);
+  });
+  const { page, context } = await pageFor({ width: 390, height: 844 });
+  await setupBrowserChat(page, provider.base, "john-upload-wait");
+  let release, uploading;
+  const started = new Promise((resolve) => (uploading = resolve));
+  const gate = new Promise((resolve) => (release = resolve));
+  await page.route("**/api/uploads/*?*", async (route) => {
+    if (route.request().method() !== "PUT") return route.continue();
+    uploading();
+    await gate;
+    await route.continue();
+  });
+  t.after(() => release());
+  let posts = 0;
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/api/chat"
+    )
+      posts++;
+  });
+  await page.getByLabel("Attach files", { exact: true }).setInputFiles({
+    name: "letter.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Mary's letter"),
+  });
+  await started;
+  const input = page.getByRole("textbox", {
+    name: "Message Songya",
+    exact: true,
+  });
+  await input.fill("Keep this letter.");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  assert.equal(await input.inputValue(), "");
+  assert.equal(
+    await input.evaluate((element) => document.activeElement === element),
+    true,
+  );
+  assert.equal(await input.isEnabled(), true);
+  await input.fill("My next message.");
+  await input.press("Enter");
+  assert.equal(posts, 0, "No message may overtake an unfinished attachment");
+  assert.equal(
+    await page.locator(".chat-attachments .chat-attachment").count(),
+    0,
+  );
+  release();
+  await page.waitForFunction(
+    () => document.querySelectorAll(".chat-message.assistant").length === 2,
+  );
+  assert.equal(received.length, 2);
+  assert.match(received[0], /Keep this letter\./);
+  assert.match(received[0], /letter\.txt/);
+  assert.equal(received[1], "My next message.");
+  const sessions = await (
+    await context.request.get(url + "/api/chat/sessions")
+  ).json();
+  const conversation = await (
+    await context.request.get(
+      url +
+        "/api/chat/sessions/" +
+        sessions.sessions.find((s) => s.user === "john-upload-wait").id,
+    )
+  ).json();
+  const turns = conversation.messages.filter((m) => m.role === "user");
+  assert.deepEqual(
+    turns.map((m) => m.content),
+    ["Keep this letter.", "My next message."],
+  );
+  assert.equal(turns[0].uploads.length, 1);
+  assert.equal((turns[1].uploads || []).length, 0);
+  assert.equal(
+    await page
+      .getByText("Uploaded files · choose which to include", { exact: true })
+      .count(),
+    0,
+  );
+  await context.close();
+  assert.deepEqual(errors, []);
+});
+
+test("chat draft attachments survive reload, can be removed, and send without message text", async (t) => {
+  let received;
+  const provider = await chatProvider(t, (res, body) => {
+    received = body.messages.filter((m) => m.role === "user").at(-1).content;
+    streamChunk(res, { role: "assistant", content: "Received the file." });
+    streamFinish(res);
+  });
+  const { page, context } = await pageFor({ width: 390, height: 844 });
+  await setupBrowserChat(page, provider.base, "mary-file-draft");
+  const earlier = await context.request.put(
+    url +
+      "/api/uploads/earlier-draft?scope=chat:mary-file-draft&filename=earlier.txt",
+    { data: "A file from another draft" },
+  );
+  assert.equal(earlier.status(), 200);
+  assert.equal(await page.locator(".chat-attachment").count(), 0);
+  const name = "a".repeat(200) + ".txt";
+  await page.getByLabel("Attach files", { exact: true }).setInputFiles([
+    { name, mimeType: "text/plain", buffer: Buffer.from("Keep this") },
+    {
+      name: "remove.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("Do not send"),
+    },
+  ]);
+  await page.waitForFunction(() => {
+    const state = window.Alpine.$data(document.querySelector("[x-data]"));
+    return (
+      state.chatAttachments.length === 2 &&
+      state.chatAttachments.every((a) => a.status === "ready")
+    );
+  });
+  await page
+    .getByRole("button", { name: "Remove remove.txt", exact: true })
+    .click();
+  await page.reload();
+  await page.locator(".chat-attachment").filter({ hasText: name }).waitFor();
+  assert.equal(await page.locator(".chat-attachment").count(), 1);
+  const composer = page.locator(".chat-composer");
+  const dimensions = await composer.evaluate((element) => ({
+    width: element.clientWidth,
+    scroll: element.scrollWidth,
+  }));
+  assert.ok(
+    dimensions.scroll <= dimensions.width + 1,
+    JSON.stringify(dimensions),
+  );
+  await page.getByLabel("Color theme", { exact: true }).selectOption("dark");
+  await page.screenshot({ path: "/tmp/songya-chat-attachments-dark.png" });
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await page
+    .locator(".chat-message.assistant")
+    .getByText("Received the file.", { exact: true })
+    .waitFor();
+  assert.ok(received.includes(name));
+  assert.doesNotMatch(received, /remove\.txt|earlier\.txt/);
+  await context.close();
+  assert.deepEqual(errors, []);
+});
+
+test("chat recovers a lost upload reply and retries the same message after a lost send reply", async (t) => {
+  const provider = await chatProvider(t, (res) => {
+    streamChunk(res, { role: "assistant", content: "Received once." });
+    streamFinish(res);
+  });
+  const { page, context } = await pageFor();
+  await setupBrowserChat(page, provider.base, "john-lost-file-replies");
+  let uploadReplies = 0;
+  await page.route("**/api/uploads/*?*", async (route) => {
+    if (route.request().method() !== "PUT" || uploadReplies++)
+      return route.continue();
+    await route.fetch();
+    await route.abort();
+  });
+  const requests = [];
+  await page.route("**/api/chat", async (route) => {
+    requests.push(route.request().postDataJSON());
+    if (requests.length > 1) return route.continue();
+    await route.fetch();
+    await route.abort();
+  });
+  await page.getByLabel("Attach files", { exact: true }).setInputFiles({
+    name: "letter.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Keep these bytes"),
+  });
+  const input = page.getByRole("textbox", {
+    name: "Message Songya",
+    exact: true,
+  });
+  await input.fill("Keep the letter.");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await page
+    .locator(".chat-error")
+    .getByText(/Retry sends the same request/)
+    .waitFor();
+  await page.reload();
+  await page
+    .locator(".chat-message.assistant")
+    .getByText("Received once.", { exact: true })
+    .waitFor();
+  await page.waitForFunction(
+    () => localStorage.getItem("songya-chat-pending") === null,
+  );
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].request_id, requests[1].request_id);
+  assert.deepEqual(requests[0].uploads, requests[1].uploads);
+  assert.equal(requests[0].uploads.length, 1);
+  assert.equal(provider.calls(), 1);
+  const uploads = await (
+    await context.request.get(
+      url + "/api/uploads?scope=chat:john-lost-file-replies",
+    )
+  ).json();
+  assert.equal(
+    uploads.uploads.length,
+    1,
+    "Recovery must not upload a second copy",
+  );
+  await context.close();
+  assert.deepEqual(errors, []);
+});
+
+test("chat retains a failed uploading message across reload and resumes when its file is chosen again", async (t) => {
+  let received;
+  const provider = await chatProvider(t, (res, body) => {
+    received = body.messages.filter((m) => m.role === "user").at(-1).content;
+    streamChunk(res, {
+      role: "assistant",
+      content: "Received the recovered file.",
+    });
+    streamFinish(res);
+  });
+  const { page, context } = await pageFor();
+  await setupBrowserChat(page, provider.base, "mary-interrupted-file");
+  let failing = true;
+  await page.route("**/api/uploads/*?*", (route) =>
+    route.request().method() === "PUT" && failing
+      ? route.abort()
+      : route.continue(),
+  );
+  const file = {
+    name: "letter.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Original file bytes"),
+  };
+  await page.getByLabel("Attach files", { exact: true }).setInputFiles(file);
+  await page
+    .locator(".chat-attachment .error")
+    .getByText("Upload failed. Retry this file.", { exact: true })
+    .waitFor();
+  const input = page.getByRole("textbox", {
+    name: "Message Songya",
+    exact: true,
+  });
+  await input.fill("Keep my original message.");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await page
+    .locator(".chat-error")
+    .getByText(/Retry sends the same request/)
+    .waitFor();
+  assert.equal(provider.calls(), 0);
+  await input.fill("My next draft.");
+  await page.reload();
+  const choose = page
+    .locator(".chat-message")
+    .getByLabel("Choose letter.txt again", { exact: true });
+  await choose.waitFor();
+  failing = false;
+  await choose.setInputFiles(file);
+  await page
+    .locator(".chat-message.assistant")
+    .getByText("Received the recovered file.", { exact: true })
+    .waitFor();
+  assert.match(received, /Keep my original message\./);
+  assert.match(received, /letter\.txt/);
+  assert.equal(await input.inputValue(), "My next draft.");
+  assert.equal(provider.calls(), 1);
   await context.close();
   assert.deepEqual(errors, []);
 });
