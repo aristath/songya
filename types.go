@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,8 +20,10 @@ type TypeDefinition struct {
 	ID          string `json:"id" yaml:"id"`
 	Name        string `json:"name" yaml:"name"`
 	Description string `json:"description" yaml:"description"`
+	Color       string `json:"color,omitempty" yaml:"color,omitempty"`
 }
 type TypeConfiguration struct {
+	KindColors  map[Destination]string           `json:"kind_colors" yaml:"kind_colors"`
 	User        string                           `json:"user" yaml:"user"`
 	Kinds       map[Destination][]TypeDefinition `json:"kinds" yaml:"kinds"`
 	Version     string                           `json:"version,omitempty" yaml:"-"`
@@ -55,8 +58,9 @@ func DefaultTypeConfiguration(user string) TypeConfiguration {
 		{"creative_work", "Creative work", "A book, text, song, recording, television episode, series, or other creative work."},
 		{"event", "Named event", "A named event or recurring event series. A person's experience of attending it belongs in a memory."},
 	} {
-		cfg.Kinds[Entities] = append(cfg.Kinds[Entities], TypeDefinition{d[0], d[1], d[2]})
+		cfg.Kinds[Entities] = append(cfg.Kinds[Entities], TypeDefinition{ID: d[0], Name: d[1], Description: d[2], Color: DefaultTypeColor(Entities, d[0])})
 	}
+	fillTypeColors(&cfg, TypeConfiguration{})
 	return cfg
 }
 func typeConfigurationID(user string) string { return "cfg_" + dataRevision([]byte(user)) }
@@ -108,14 +112,35 @@ func (s *Store) typeConfigurationRoot(ctx context.Context, root *os.Root, user s
 	cfg = TypeConfiguration{User: user, Kinds: map[Destination][]TypeDefinition{Memories: {}, Entities: {}, Topics: {}, Stories: {}}, Version: dataRevision(raw)}
 	// Decode kind by kind so damage to one user's list does not hide healthy lists.
 	var stored struct {
-		User  string                          `json:"user"`
-		Kinds map[Destination]json.RawMessage `json:"kinds"`
+		User       string                          `json:"user"`
+		Kinds      map[Destination]json.RawMessage `json:"kinds"`
+		KindColors json.RawMessage                 `json:"kind_colors"`
 	}
 	if err := json.Unmarshal(raw, &stored); err != nil {
 		return cfg, raw, fmt.Errorf("type settings need repair; saved bytes retained: %w", err)
 	}
 	if stored.User != user {
 		return cfg, raw, fmt.Errorf("type settings identify another user; saved bytes retained")
+	}
+	cfg.KindColors = map[Destination]string{}
+	var storedColors map[Destination]json.RawMessage
+	if len(stored.KindColors) > 0 && json.Unmarshal(stored.KindColors, &storedColors) != nil {
+		cfg.Diagnostics = append(cfg.Diagnostics, "record colors need repair; defaults shown")
+	}
+	for kind, rawColor := range storedColors {
+		if _, err := kind.prefix(); err != nil {
+			cfg.Diagnostics = append(cfg.Diagnostics, err.Error())
+			continue
+		}
+		var color string
+		if json.Unmarshal(rawColor, &color) != nil {
+			cfg.Diagnostics = append(cfg.Diagnostics, fmt.Sprintf("%s color needs repair; default shown", kind))
+			continue
+		}
+		cfg.KindColors[kind] = color
+		if color != "" && NormalizeColor(color) == "" {
+			cfg.Diagnostics = append(cfg.Diagnostics, fmt.Sprintf("%s color needs a palette preset or hex color", kind))
+		}
 	}
 	for kind, data := range stored.Kinds {
 		if _, err := kind.prefix(); err != nil {
@@ -130,14 +155,29 @@ func (s *Store) typeConfigurationRoot(ctx context.Context, root *os.Root, user s
 		seen := map[string]bool{}
 		for _, entry := range list {
 			var def TypeDefinition
-			if err := json.Unmarshal(entry, &def); err != nil || !typeIDPattern.MatchString(def.ID) || strings.TrimSpace(def.Name) == "" || strings.TrimSpace(def.Description) == "" || seen[def.ID] {
+			decodeErr := json.Unmarshal(entry, &def)
+			if decodeErr != nil {
+				var fields map[string]json.RawMessage
+				if json.Unmarshal(entry, &fields) == nil && fields["color"] != nil {
+					delete(fields, "color")
+					core, _ := json.Marshal(fields)
+					decodeErr = json.Unmarshal(core, &def)
+					def.Color = ""
+					cfg.Diagnostics = append(cfg.Diagnostics, fmt.Sprintf("%s type color needs repair; default shown", kind))
+				}
+			}
+			if err := decodeErr; err != nil || !typeIDPattern.MatchString(def.ID) || strings.TrimSpace(def.Name) == "" || strings.TrimSpace(def.Description) == "" || seen[def.ID] {
 				cfg.Diagnostics = append(cfg.Diagnostics, fmt.Sprintf("%s has an unreadable or duplicate type; original retained", kind))
 				continue
+			}
+			if def.Color != "" && NormalizeColor(def.Color) == "" {
+				cfg.Diagnostics = append(cfg.Diagnostics, fmt.Sprintf("%s type %s needs a palette preset or hex color", kind, def.ID))
 			}
 			seen[def.ID] = true
 			cfg.Kinds[kind] = append(cfg.Kinds[kind], def)
 		}
 	}
+	fillTypeColors(&cfg, TypeConfiguration{})
 	return cfg, raw, nil
 }
 func (s *Store) TypeConfiguration(ctx context.Context, user string) (TypeConfiguration, error) {
@@ -176,9 +216,17 @@ func (s *Store) TypeConfiguration(ctx context.Context, user string) (TypeConfigu
 
 var typeIDPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
-func checkTypeConfiguration(cfg TypeConfiguration) error {
+func checkTypeConfiguration(cfg, previous TypeConfiguration) error {
 	if !validTypeUser(cfg.User) {
 		return fmt.Errorf("choose one user for type settings")
+	}
+	for kind, color := range cfg.KindColors {
+		if _, err := kind.prefix(); err != nil {
+			return err
+		}
+		if NormalizeColor(color) == "" && color != previous.KindColors[kind] {
+			return fmt.Errorf("%s color must be a palette preset or #RRGGBB hex color", kind)
+		}
 	}
 	for kind, defs := range cfg.Kinds {
 		if _, err := kind.prefix(); err != nil {
@@ -187,6 +235,17 @@ func checkTypeConfiguration(cfg TypeConfiguration) error {
 		seen := map[string]bool{}
 		names := map[string]bool{}
 		for _, def := range defs {
+			if NormalizeColor(def.Color) == "" {
+				unchanged := false
+				for _, old := range previous.Kinds[kind] {
+					if old.ID == def.ID && old.Color == def.Color {
+						unchanged = true
+					}
+				}
+				if !unchanged {
+					return fmt.Errorf("type %s color must be a palette preset or #RRGGBB hex color", def.ID)
+				}
+			}
 			key := strings.ToLower(strings.TrimSpace(def.Name))
 			if !typeIDPattern.MatchString(def.ID) || key == "" || strings.TrimSpace(def.Description) == "" {
 				return fmt.Errorf("each type needs a stable lowercase ID, a name, and a short definition")
@@ -201,15 +260,19 @@ func checkTypeConfiguration(cfg TypeConfiguration) error {
 	return nil
 }
 func typeConfigurationRequest(cfg TypeConfiguration, version string, replacements map[Destination]map[string]string, key string) BatchRequest {
-	clean := TypeConfiguration{User: cfg.User, Kinds: cfg.Kinds}
+	clean := TypeConfiguration{User: cfg.User, Kinds: map[Destination][]TypeDefinition{}, KindColors: maps.Clone(cfg.KindColors)}
+	for kind, defs := range cfg.Kinds {
+		clean.Kinds[kind] = append([]TypeDefinition{}, defs...)
+	}
 	raw, _ := json.MarshalIndent(clean, "", "  ")
 	raw = append(raw, '\n')
 	change := &typeConfigurationChange{User: cfg.User, After: raw, Configuration: clean}
-	request := BatchRequest{Key: key, typeConfiguration: change, Changes: []Change{{Fields: map[string]any{"user": cfg.User, "version": version, "configuration": cfg.Kinds, "replacements": replacements}}}}
+	intent := map[string]any{"user": cfg.User, "version": version, "configuration": cfg.Kinds, "replacements": replacements}
+	if cfg.KindColors != nil {
+		intent["kind_colors"] = cfg.KindColors
+	}
+	request := BatchRequest{Key: key, typeConfiguration: change, Changes: []Change{{Fields: intent}}}
 	request.prepare = func(root *os.Root) ([]Change, error) {
-		if err := checkTypeConfiguration(clean); err != nil {
-			return nil, err
-		}
 		before, readErr := readFile(root, typeConfigurationPath(cfg.User))
 		if readErr != nil && !errors.Is(readErr, fs.ErrNotExist) {
 			return nil, readErr
@@ -221,6 +284,13 @@ func typeConfigurationRequest(cfg TypeConfiguration, version string, replacement
 		changes := []Change{}
 		var previous TypeConfiguration
 		_ = json.Unmarshal(before, &previous)
+		fillTypeColors(&clean, previous)
+		if err := checkTypeConfiguration(clean, previous); err != nil {
+			return nil, err
+		}
+		change.Configuration = clean
+		change.After, _ = json.MarshalIndent(clean, "", "  ")
+		change.After = append(change.After, '\n')
 		for _, kind := range destinations {
 			allowed := map[string]bool{}
 			for _, def := range cfg.Kinds[kind] {

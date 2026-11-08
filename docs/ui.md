@@ -11,11 +11,13 @@ fits two columns when each can be at least `32rem` wide; otherwise they stack as
 chat, graph, library. A container narrower than `32rem` stays within its available
 width. This uses intrinsic sizing without media/container queries or breakpoints.
 Chat history and the library scroll independently, and the composer stays inside
-the conversation pane. The graph has a black background. Its 2D / 3D toggle
+the conversation pane. The graph uses the active palette’s Crust background. Its 2D / 3D toggle
 switches between locally bundled [3d-force-graph](https://github.com/vasturiano/3d-force-graph)
-and [force-graph](https://github.com/vasturiano/force-graph). Entities are
-green, memories amber, topics white and stories red; nodes grow with their incoming
-and outgoing connection counts. Hover shows the name/title, and clicking opens
+and [force-graph](https://github.com/vasturiano/force-graph). Node colors come from
+the selected classification user's type colors, with record-kind colors for
+unclassified records. **Colors for** selects that user and stays synchronized
+with the library's **Types for** selector; the owner filter is independent.
+Nodes grow with their incoming and outgoing connection counts. Hover shows the name/title, and clicking opens
 read-only inspection. The top-right owner dropdown defaults to **Any**, showing
 the whole store. Selecting an owner shows their memories and stories plus directly
 connected shared entities/topics, including connections in either direction.
@@ -83,7 +85,10 @@ dialogs and editor surfaces. Source editing uses a dedicated YAML/Markdown
 syntax palette for each theme, including selection, matching text, line numbers,
 cursor and search controls. Device-theme changes update these colors without
 rebuilding the editor or replacing its draft, selection or undo history.
-The graph keeps its dark canvas in either theme.
+The entire interface uses the official [Catppuccin palettes](https://catppuccin.com/palette/):
+Mocha for dark mode and Latte for light mode. Crust is the page, graph and source
+background; Base and Mantle provide panel and control surfaces. Palette-derived
+syntax colors maintain contrast in the source editor, including in Latte.
 
 **Chat settings** saves an OpenAI-compatible API base URL, optional API key and
 model name in `chat-settings.json` at the store root. Use the API base (for example
@@ -296,3 +301,28 @@ user-configured type. Blank means no date is recorded, not proof of continued
 existence. Memory controls retain **Exact date**, **Earliest**, and **Latest**.
 Changing a new draft's kind converts empty controls, while entered date values
 are retained for explicit review instead of being assigned a new meaning.
+
+### Type and record colors
+
+Type settings include **Record colors** for entities, memories, topics and stories,
+and a color choice on every type definition. Each picker has the 23 Mocha presets
+(all palette colors except Crust, Mantle and Base), followed by **Custom** and a
+native color picker. Preset swatches show Mocha; the matching Latte color is used
+in light mode. Custom hex colors remain unchanged across themes.
+
+Record colors are the fallback; a configured type's color takes precedence.
+The graph and library dots use the selected classification user's choices.
+Changing colors does not edit memory files, their dates or their type assignments.
+New and existing users receive defaults; existing settings are not rewritten just
+to display them. Default entities use Green, memories Peach, topics Lavender and
+stories Red. The 12 default entity types receive distinct accent colors; custom
+types receive a stable default and can be changed normally.
+
+Colors share the existing per-user settings version, durable write receipt,
+conflict handling and browser draft retention. Saved color changes invalidate
+open graph/library views. A lost response retries the same submitted choices;
+newer edits stay in the draft until explicitly saved.
+
+The shared `palette.json` is sourced from the official Catppuccin palette. The
+frontend build generates `web/assets/palette.css` and includes the upstream MIT
+license in `NOTICE.txt`; palette data and styles are bundled locally.

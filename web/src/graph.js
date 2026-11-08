@@ -2,12 +2,7 @@ import ForceGraph3D from "3d-force-graph";
 import ForceGraph from "force-graph";
 import { forceCollide } from "d3-force-3d";
 
-const colors = {
-  entities: "#62c983",
-  memories: "#e9aa44",
-  topics: "#ffffff",
-  stories: "#ed7474",
-};
+import { currentPalette, resolveColor, defaultKindColors } from "./palette.js";
 
 // Labels are DOM text: record names and relationship types may contain markup.
 function label(text) {
@@ -18,7 +13,13 @@ function label(text) {
 
 const nodeRadius = (node) => 4 * Math.sqrt(1 + node.connections);
 
-export function memoryGraph(container, inspect, mode = "2d") {
+export function memoryGraph(
+  container,
+  inspect,
+  mode = "2d",
+  nodeColor = (node) => node.color || defaultKindColors[node.kind],
+) {
+  let colors = currentPalette();
   const flat = mode === "2d";
   const fitPadding = () =>
     Math.max(
@@ -27,13 +28,14 @@ export function memoryGraph(container, inspect, mode = "2d") {
         0) + 24,
     );
   let fit = true,
-    matches = null;
+    matches = null,
+    layoutStamp = "";
   const graph = new (flat ? ForceGraph : ForceGraph3D)(container)
-    .backgroundColor("#000000")
+    .backgroundColor(colors.crust)
     .nodeColor((node) =>
       matches && !matches.has(node.id)
-        ? "#283039"
-        : colors[node.kind] || "#ffffff",
+        ? colors.surface1
+        : resolveColor(nodeColor(node), colors),
     )
     .nodeVal((node) => 1 + node.connections)
     .nodeLabel((node) => label(node.title || node.id))
@@ -42,9 +44,9 @@ export function memoryGraph(container, inspect, mode = "2d") {
       matches.has(link.source.id || link.source) ||
       matches.has(link.target.id || link.target)
         ? flat
-          ? "#94a3b859"
-          : "#94a3b8"
-        : "#182028",
+          ? colors.overlay1 + "80"
+          : colors.overlay1
+        : colors.surface0,
     )
     .linkLabel((link) => label(link.type))
     .linkDirectionalArrowLength(2)
@@ -69,6 +71,18 @@ export function memoryGraph(container, inspect, mode = "2d") {
         (link) => nodeRadius(link.source) + nodeRadius(link.target) + 28,
       );
   } else graph.showNavInfo(false).nodeOpacity(1).linkOpacity(0.35);
+  // Read the native CSS theme; no viewport queries or layout breakpoints.
+  // The interval also catches device-theme changes without replacing graph data.
+  const restyle = () => {
+    const next = currentPalette();
+    if (next === colors) return;
+    colors = next;
+    graph
+      .backgroundColor(colors.crust)
+      .nodeColor(graph.nodeColor())
+      .linkColor(graph.linkColor());
+  };
+  const paletteTimer = setInterval(restyle, 500);
   const resize = new ResizeObserver(() => {
     graph.width(container.clientWidth).height(container.clientHeight);
     if (!fit) graph.zoomToFit(0, fitPadding());
@@ -80,6 +94,7 @@ export function memoryGraph(container, inspect, mode = "2d") {
   });
   visibility.observe(container);
   return {
+    restyle,
     highlight(ids) {
       matches = ids === null ? null : new Set(ids);
       graph.nodeColor(graph.nodeColor()).linkColor(graph.linkColor());
@@ -107,6 +122,7 @@ export function memoryGraph(container, inspect, mode = "2d") {
       }
     },
     destroy() {
+      clearInterval(paletteTimer);
       resize.disconnect();
       visibility.disconnect();
       const renderer = flat ? null : graph.renderer();
@@ -114,7 +130,6 @@ export function memoryGraph(container, inspect, mode = "2d") {
       renderer?.forceContextLoss();
     },
     update(data) {
-      fit = true;
       // Both renderers mutate data. Give each its own nodes and links.
       const nodes = data.nodes.map((node) => ({ ...node, connections: 0 }));
       const byID = new Map(nodes.map((node) => [node.id, node]));
@@ -125,6 +140,19 @@ export function memoryGraph(container, inspect, mode = "2d") {
         byID.get(link.source).connections++;
         byID.get(link.target).connections++;
       }
+      const stamp = JSON.stringify([
+        nodes.map((node) => node.id),
+        links.map((link) => [link.source, link.target, link.type]),
+      ]);
+      if (stamp === layoutStamp) {
+        // Color and label changes do not need a new force layout or camera fit.
+        for (const node of graph.graphData().nodes)
+          Object.assign(node, byID.get(node.id));
+        graph.nodeColor(graph.nodeColor()).nodeLabel(graph.nodeLabel());
+        return;
+      }
+      layoutStamp = stamp;
+      fit = true;
       graph.graphData({ nodes, links });
     },
   };

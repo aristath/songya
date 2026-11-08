@@ -1,25 +1,38 @@
 :root {
   font-family: system-ui, sans-serif;
   color: var(--ink);
-  background: var(--paper);
+  background: var(--background);
   line-height: 1.45;
   font-size: 14px;
   color-scheme: light dark;
-  --paper: light-dark(#fff, #171e25);
-  --surface: light-dark(#f2f5f7, #202a33);
-  --ink: light-dark(#252a2e, #e0e8ee);
-  --line: light-dark(#dce3e8, #35434e);
-  --muted: light-dark(#626f7a, #a3b1bd);
-  --accent: light-dark(#275c7a, #8fc4e4);
-  --accent-hover: light-dark(#1d465e, #b0d8ef);
-  --accent-ink: light-dark(#fff, #102836);
-  --selected: light-dark(#e7f0f6, #263f51);
-  --error: light-dark(#a02f35, #f2a3ab);
-  --error-bg: light-dark(#faedef, #42282e);
-  --success: light-dark(#285b40, #8ed5ad);
-  --success-bg: light-dark(#edf6f0, #20392c);
-  --warning: light-dark(#755516, #edca7c);
-  --warning-bg: light-dark(#faf4e7, #3d3422);
+  --background: var(--ctp-crust);
+  --paper: var(--ctp-base);
+  --surface: var(--ctp-mantle);
+  --ink: var(--ctp-text);
+  --line: var(--ctp-surface1);
+  --muted: var(--ctp-subtext1);
+  --accent: light-dark(
+    color-mix(in srgb, var(--ctp-blue) 50%, var(--ctp-text)),
+    var(--ctp-blue)
+  );
+  --accent-hover: var(--ctp-sapphire);
+  --accent-ink: light-dark(var(--ctp-base), var(--ctp-crust));
+  --selected: color-mix(in srgb, var(--ctp-blue) 15%, var(--paper));
+  --error: light-dark(
+    color-mix(in srgb, var(--ctp-red) 30%, var(--ctp-text)),
+    var(--ctp-red)
+  );
+  --error-bg: color-mix(in srgb, var(--ctp-red) 12%, var(--paper));
+  --success: light-dark(
+    color-mix(in srgb, var(--ctp-green) 30%, var(--ctp-text)),
+    var(--ctp-green)
+  );
+  --success-bg: color-mix(in srgb, var(--ctp-green) 12%, var(--paper));
+  --warning: light-dark(
+    color-mix(in srgb, var(--ctp-yellow) 25%, var(--ctp-text)),
+    var(--ctp-yellow)
+  );
+  --warning-bg: color-mix(in srgb, var(--ctp-yellow) 18%, var(--paper));
 }
 :root[data-theme="light"] {
   color-scheme: light;
@@ -131,8 +144,8 @@ small,
 .memory-graph {
   position: relative;
   height: 100%;
-  background: #000;
-  color: #fff;
+  background: var(--background);
+  color: var(--ink);
   overflow: hidden;
   border-radius: 12px;
 }
@@ -156,15 +169,15 @@ body.graph-expanded {
   max-width: 320px;
   min-width: 0;
   margin-right: auto;
-  color: #e5eaf0;
+  color: var(--ink);
 }
 .graph-search input {
-  background: #111820;
-  color: #fff;
-  border-color: #39424b;
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--line);
 }
 .graph-search input::placeholder {
-  color: #a1aab5;
+  color: var(--muted);
 }
 .graph-toolbar {
   position: absolute;
@@ -186,23 +199,23 @@ body.graph-expanded {
 }
 .graph-tools select {
   width: 7rem;
-  background: #111820;
-  border-color: #39424b;
-  color: #fff;
+  background: var(--paper);
+  border-color: var(--line);
+  color: var(--ink);
 }
 .graph-view {
   display: flex;
   gap: 0.2rem;
 }
 .graph-tools button {
-  background: #111820;
-  border-color: #39424b;
-  color: #a1aab5;
+  background: var(--paper);
+  border-color: var(--line);
+  color: var(--muted);
 }
 .graph-tools button:hover,
 .graph-tools button[aria-pressed="true"] {
-  background: #293440;
-  color: #fff;
+  background: var(--selected);
+  color: var(--ink);
 }
 .graph-expand {
   display: grid;
@@ -221,15 +234,15 @@ body.graph-expanded {
   right: 0;
   z-index: 1;
   margin-top: 0.35rem;
-  background: #111820f5;
-  border: 1px solid #39424b;
+  background: var(--paper);
+  border: 1px solid var(--line);
   border-radius: 3px;
 }
 #graph-matches p {
   margin: 0;
   padding: 0.5rem 0.65rem;
   font-size: 0.75rem;
-  color: #a1aab5;
+  color: var(--muted);
 }
 .graph-results {
   max-height: min(230px, 28vh);
@@ -246,17 +259,17 @@ body.graph-expanded {
 }
 .graph-results button:hover,
 .graph-results button:focus-visible {
-  background: #26313c;
+  background: var(--selected);
 }
 .graph-results small {
   display: block;
-  color: #a1aab5;
+  color: var(--muted);
 }
 .graph-status {
   position: absolute;
   inset: 40% 1rem auto;
   text-align: center;
-  color: #a9b3bc;
+  color: var(--muted);
   pointer-events: none;
 }
 .graph-legend {
@@ -277,18 +290,6 @@ body.graph-expanded {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-}
-.entity-dot {
-  background: #62c983;
-}
-.memory-dot {
-  background: #e9aa44;
-}
-.topic-dot {
-  background: #fff;
-}
-.story-dot {
-  background: #ed7474;
 }
 .workspace {
   --workspace-height: max(32rem, calc(100dvh - 8rem));
@@ -488,12 +489,12 @@ dialog {
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 5px;
-  box-shadow: 0 12px 40px #0002;
+  box-shadow: 0 12px 40px color-mix(in srgb, var(--ctp-crust) 25%, transparent);
   color: inherit;
   background: var(--paper);
 }
 dialog::backdrop {
-  background: #18232c55;
+  background: color-mix(in srgb, var(--ctp-crust) 65%, transparent);
 }
 .editor-heading {
   flex-wrap: wrap;
@@ -1013,4 +1014,63 @@ blockquote {
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.color-dot {
+  display: inline-block;
+  inline-size: 0.75rem;
+  block-size: 0.75rem;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  vertical-align: middle;
+  margin-right: 0.4rem;
+  flex-shrink: 0;
+}
+.record-colors {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 1rem;
+  margin: 1rem 0 1.5rem;
+  padding: 1rem;
+  background: var(--surface);
+  border-radius: 7px;
+}
+.record-colors h3,
+.record-colors > p {
+  grid-column: 1/-1;
+  margin: 0;
+}
+.color-picker {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.color-picker > select {
+  flex: 1;
+  min-width: 8rem;
+  width: auto;
+}
+.color-preview {
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.color-picker input[type="color"] {
+  width: 2.8rem;
+  height: 2.8rem;
+  padding: 0.2rem;
+  cursor: pointer;
+}
+.type-color {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.graph-tools .graph-color-user {
+  width: auto;
+  max-width: 12rem;
+  min-width: 8rem;
 }

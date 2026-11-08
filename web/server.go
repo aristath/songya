@@ -45,6 +45,7 @@ func Handler(store *songya.Store) *Application {
 	})
 	mux.Handle("GET /assets/", http.StripPrefix("/assets/", http.FileServerFS(files)))
 	mux.HandleFunc("GET /api/graph", func(w http.ResponseWriter, r *http.Request) {
+		colors := chat.colorConfiguration(r)
 		catalog, err := store.Scan(r.Context())
 		if err != nil {
 			fail(w, err)
@@ -57,7 +58,7 @@ func Handler(store *songya.Store) *Application {
 			if record.ID == "" {
 				continue
 			}
-			nodes = append(nodes, map[string]any{"id": record.ID, "title": record.Title, "aliases": record.Aliases, "kind": record.Kind, "user": record.User})
+			nodes = append(nodes, map[string]any{"id": record.ID, "title": record.Title, "aliases": record.Aliases, "kind": record.Kind, "user": record.User, "color": colors.RecordColor(record)})
 			relations := append([]songya.Relation{}, record.Relations...)
 			for _, target := range record.Redirects {
 				relations = append(relations, songya.Relation{Type: "redirects", Target: target})
@@ -70,9 +71,10 @@ func Handler(store *songya.Store) *Application {
 				}
 			}
 		}
-		write(w, map[string]any{"nodes": nodes, "links": links})
+		write(w, map[string]any{"nodes": nodes, "links": links, "kind_colors": colors.KindColors, "color_user": colors.User})
 	})
 	mux.HandleFunc("GET /api/records", func(w http.ResponseWriter, r *http.Request) {
+		colors := chat.colorConfiguration(r)
 		catalog, err := store.Scan(r.Context())
 		if err != nil {
 			fail(w, err)
@@ -101,7 +103,7 @@ func Handler(store *songya.Store) *Application {
 			}
 		}
 		for _, record := range records {
-			summaries = append(summaries, map[string]any{"id": record.ID, "source": record.Source, "title": record.Title, "description": record.Description, "type": record.Type, "types": record.Types, "aliases": record.Aliases, "kind": record.Kind, "user": record.User, "updated_at": record.UpdatedAt, "version": record.Revision, "pending": record.Pending || record.Unconfirmed})
+			summaries = append(summaries, map[string]any{"id": record.ID, "source": record.Source, "title": record.Title, "description": record.Description, "type": record.Type, "types": record.Types, "aliases": record.Aliases, "kind": record.Kind, "user": record.User, "updated_at": record.UpdatedAt, "color": colors.RecordColor(record), "version": record.Revision, "pending": record.Pending || record.Unconfirmed})
 		}
 		write(w, map[string]any{"records": summaries, "owners": owners, "types": types, "diagnostics": catalog.Diagnostics})
 	})

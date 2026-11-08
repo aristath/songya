@@ -6,6 +6,7 @@
     <title>Sōngyā · Records</title>
     <script src="/assets/theme.js"></script>
     <link rel="stylesheet" href="/assets/editors.css" />
+    <link rel="stylesheet" href="/assets/palette.css" />
     <link rel="stylesheet" href="/assets/app.css" />
     <link rel="stylesheet" href="/assets/chat.css" />
     <script defer src="/assets/app.js"></script>
@@ -424,6 +425,22 @@
                     <option :value="user" x-text="user"></option>
                   </template>
                 </select>
+                <select
+                  class="graph-color-user"
+                  aria-label="Graph colors for"
+                  title="Whose type colors to use"
+                  x-model="classificationUser"
+                  @change="changeClassificationUser()"
+                >
+                  <option value="">Default colors</option>
+                  <template x-for="user in classificationUsers()" :key="user"
+                    ><option
+                      :selected="user===classificationUser"
+                      :value="user"
+                      x-text="'Colors: '+user"
+                    ></option
+                  ></template>
+                </select>
                 <div class="graph-view" role="group" aria-label="Graph view">
                   <button
                     :aria-pressed="graphMode==='2d'"
@@ -512,11 +529,43 @@
               x-show="graphStatus"
               x-text="graphStatus"
             ></p>
-            <div class="graph-legend" aria-label="Graph colors">
-              <span><i class="entity-dot"></i>Entities</span>
-              <span><i class="memory-dot"></i>Memories</span>
-              <span><i class="topic-dot"></i>Topics</span>
-              <span><i class="story-dot"></i>Stories</span>
+            <div
+              class="graph-legend"
+              aria-label="Graph colors"
+              :title="'Default record colors; type colors take precedence. Colors for '+(classificationUser||'no selected user')"
+            >
+              <span
+                ><i
+                  class="entity-dot"
+                  data-kind="entities"
+                  :style="{backgroundColor:colorCSS(graphKindColors.entities)}"
+                ></i
+                >Entities</span
+              >
+              <span
+                ><i
+                  class="memory-dot"
+                  data-kind="memories"
+                  :style="{backgroundColor:colorCSS(graphKindColors.memories)}"
+                ></i
+                >Memories</span
+              >
+              <span
+                ><i
+                  class="topic-dot"
+                  data-kind="topics"
+                  :style="{backgroundColor:colorCSS(graphKindColors.topics)}"
+                ></i
+                >Topics</span
+              >
+              <span
+                ><i
+                  class="story-dot"
+                  data-kind="stories"
+                  :style="{backgroundColor:colorCSS(graphKindColors.stories)}"
+                ></i
+                >Stories</span
+              >
             </div>
           </section>
         </div>
@@ -578,7 +627,11 @@
                 >
                   <option value="">Choose a user</option>
                   <template x-for="user in classificationUsers()" :key="user"
-                    ><option :value="user" x-text="user"></option
+                    ><option
+                      :selected="user===classificationUser"
+                      :value="user"
+                      x-text="user"
+                    ></option
                   ></template></select
               ></label>
               <label
@@ -609,7 +662,11 @@
                   <template
                     x-for="user in Object.keys(owners).sort()"
                     :key="user"
-                    ><option :value="user" x-text="user"></option
+                    ><option
+                      :selected="user===owner"
+                      :value="user"
+                      x-text="user"
+                    ></option
                   ></template></select
               ></label>
             </div>
@@ -661,6 +718,11 @@
                 <template x-for="record in rows()" :key="record.source"
                   ><tr class="record">
                     <td class="title-cell">
+                      <i
+                        class="color-dot"
+                        aria-hidden="true"
+                        :style="{backgroundColor:colorCSS(record.color||graphKindColors[record.kind])}"
+                      ></i>
                       <button
                         class="text-button"
                         @click="open(record.id, false, true)"
@@ -1198,6 +1260,50 @@
           x-text="typeSettingsNotice"
         ></p>
         <fieldset :disabled="typeSettingsBusy" x-show="typeDraft">
+          <div class="record-colors">
+            <h3>Record colors</h3>
+            <p class="muted">Used when a record has no type color.</p>
+            <template x-for="kind in typeKinds" :key="kind"
+              ><label
+                ><span x-text="kind"></span
+                ><span class="color-picker">
+                  <span
+                    class="color-preview"
+                    aria-hidden="true"
+                    :style="{backgroundColor:mochaColor(typeKindColors?.[kind])}"
+                  ></span>
+                  <select
+                    :aria-label="'Color for '+kind"
+                    :value="colorMode(typeKindColors?.[kind])"
+                    @change="setKindColor(kind,$event.target.value)"
+                  >
+                    <template x-for="color in colorPresets" :key="color.id"
+                      ><option
+                        :selected="color.id===colorMode(typeKindColors?.[kind])"
+                        :value="color.id"
+                        x-text="color.name"
+                      ></option
+                    ></template>
+                    <option
+                      :selected="colorMode(typeKindColors?.[kind])==='custom'"
+                      value="custom"
+                    >
+                      Custom
+                    </option>
+                  </select>
+                  <input
+                    type="color"
+                    x-show="colorMode(typeKindColors?.[kind])==='custom'"
+                    :aria-label="'Custom '+('Color for '+kind).toLowerCase()"
+                    :value="mochaColor(typeKindColors?.[kind])"
+                    @input="typeKindColors[kind]=$event.target.value;keepTypeDraft()"
+                  /> </span></label
+            ></template>
+          </div>
+          <p class="muted">
+            Presets show Catppuccin Mocha swatches and follow the matching Latte
+            colors in light mode. Custom colors stay the same in both themes.
+          </p>
           <div
             class="type-kind-tabs"
             role="tablist"
@@ -1235,6 +1341,39 @@
                   rows="2"
                   required
                 ></textarea></label
+              ><label class="type-color"
+                >Color<span class="color-picker">
+                  <span
+                    class="color-preview"
+                    aria-hidden="true"
+                    :style="{backgroundColor:mochaColor(type.color)}"
+                  ></span>
+                  <select
+                    :aria-label="'Color for type '+(type.name||type.id)"
+                    :value="colorMode(type.color)"
+                    @change="setTypeColor(type,$event.target.value)"
+                  >
+                    <template x-for="color in colorPresets" :key="color.id"
+                      ><option
+                        :selected="color.id===colorMode(type.color)"
+                        :value="color.id"
+                        x-text="color.name"
+                      ></option
+                    ></template>
+                    <option
+                      :selected="colorMode(type.color)==='custom'"
+                      value="custom"
+                    >
+                      Custom
+                    </option>
+                  </select>
+                  <input
+                    type="color"
+                    x-show="colorMode(type.color)==='custom'"
+                    :aria-label="'Custom '+('Color for type '+(type.name||type.id)).toLowerCase()"
+                    :value="mochaColor(type.color)"
+                    @input="type.color=$event.target.value;keepTypeDraft()"
+                  /> </span></label
               ><button
                 type="button"
                 @click="removeType(type.id)"

@@ -548,7 +548,15 @@ configures a separate list of optional types for each kind. New users receive
 12 entity types: person, group, organization, place, animal, plant, brand, object,
 food, software, creative_work, and event. The other three lists start empty.
 A person can include a nonhuman person. Each definition has a stable ID, an
-editable display name, and a plain-language description.
+editable display name, a plain-language description and an optional display
+`color`. Each configuration also has `kind_colors` for the four record kinds.
+Colors are named Catppuccin presets (except the three foundation colors) or hex
+colors. Hex shorthand and case normalize to `#rrggbb`; named presets adapt to the
+UI theme. Colors are scoped to the classification user, not the record owner.
+Missing colors receive display defaults without rewriting existing records or
+settings. Omitting colors in an update preserves the saved choices. An unreadable
+color does not remove an otherwise readable type; diagnostics identify the field
+while healthy settings remain usable.
 
 Assignments live in frontmatter:
 

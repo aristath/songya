@@ -158,6 +158,18 @@ async function graphPoint(page, color) {
   const png = (await canvas.screenshot()).toString("base64");
   return page.evaluate(
     async ({ png, color }) => {
+      const kind = {
+        green: "entities",
+        amber: "memories",
+        white: "topics",
+        red: "stories",
+      }[color];
+      const target = getComputedStyle(
+        document.querySelector(`[data-kind="${kind}"]`),
+      )
+        .backgroundColor.match(/\d+/g)
+        .slice(0, 3)
+        .map(Number);
       const image = new Image();
       image.src = "data:image/png;base64," + png;
       await image.decode();
@@ -174,15 +186,13 @@ async function graphPoint(page, color) {
         for (let x = 15; x < image.width - 15; x++) {
           const i = (y * image.width + x) * 4;
           const [r, g, b] = pixels.slice(i, i + 3);
-          const score =
-            color === "green"
-              ? g - Math.max(r, b)
-              : color === "red"
-                ? r - Math.max(g, b)
-                : color === "amber"
-                  ? Math.min(r, g) - b
-                  : Math.min(r, g, b) - Math.max(r, g, b) * 0.5;
-          if (score > 50) {
+          if (
+            Math.max(
+              Math.abs(r - target[0]),
+              Math.abs(g - target[1]),
+              Math.abs(b - target[2]),
+            ) < 24
+          ) {
             sumX += x;
             sumY += y;
             count++;
@@ -1014,7 +1024,7 @@ test("graph views render, preserve search when switching, and open safe hover la
   data.links = data.links.filter((link) => ids.has(link.source));
   data.links.push({ source: memory.id, target: "m_missing", type: "about" });
   const { page, context } = await pageFor();
-  await page.route("**/api/graph", (route) => route.fulfill({ json: data }));
+  await page.route("**/api/graph**", (route) => route.fulfill({ json: data }));
   await page.reload();
   await page.locator(".graph-canvas canvas").waitFor();
   await page.waitForTimeout(3000); // Let the force layout settle and the camera fit.
@@ -1094,7 +1104,7 @@ test("graph views render, preserve search when switching, and open safe hover la
   await page.waitForTimeout(500);
   assert.equal(
     await graph.evaluate((el) => getComputedStyle(el).backgroundColor),
-    "rgb(0, 0, 0)",
+    "rgb(220, 224, 232)",
   );
   for (const color of ["green", "amber", "white", "red"]) {
     assert.ok(
@@ -1326,7 +1336,7 @@ test("graph owner selection keeps only that owner's accounts and connected share
     (link) => ids.has(link.source) && ids.has(link.target),
   );
   const { page, context } = await pageFor();
-  await page.route("**/api/graph", (route) => route.fulfill({ json: data }));
+  await page.route("**/api/graph**", (route) => route.fulfill({ json: data }));
   await page.reload();
   await page.locator(".graph-canvas canvas").waitFor();
   const owner = page.getByRole("combobox", {
@@ -1432,7 +1442,7 @@ test("dense 2D graphs render separate disks for every node", async () => {
       });
   }
   const { page, context } = await pageFor();
-  await page.route("**/api/graph", (route) =>
+  await page.route("**/api/graph**", (route) =>
     route.fulfill({ json: { nodes, links } }),
   );
   await page.reload();
@@ -1803,7 +1813,7 @@ test("chat defaults on, streams real MCP writes, follows replies and restores us
   await observer.page.locator(".graph-canvas canvas").waitFor();
   let failedGraphRefresh = false,
     failedListRefresh = false;
-  await observer.page.route("**/api/graph", (route) => {
+  await observer.page.route("**/api/graph**", (route) => {
     if (!failedGraphRefresh) {
       failedGraphRefresh = true;
       return route.abort();
@@ -2312,22 +2322,22 @@ test("color theme follows the device by default and persists explicit choices", 
     );
   assert.equal(await theme.inputValue(), "system");
   await page.emulateMedia({ colorScheme: "dark" });
-  assert.equal(await background(), "rgb(23, 30, 37)");
+  assert.equal(await background(), "rgb(17, 17, 27)");
   await theme.selectOption("light");
-  assert.equal(await background(), "rgb(255, 255, 255)");
+  assert.equal(await background(), "rgb(220, 224, 232)");
   await page.reload();
   assert.equal(await theme.inputValue(), "light");
-  assert.equal(await background(), "rgb(255, 255, 255)");
+  assert.equal(await background(), "rgb(220, 224, 232)");
   await theme.selectOption("system");
-  assert.equal(await background(), "rgb(23, 30, 37)");
+  assert.equal(await background(), "rgb(17, 17, 27)");
   await page.emulateMedia({ colorScheme: "light" });
-  assert.equal(await background(), "rgb(255, 255, 255)");
+  assert.equal(await background(), "rgb(220, 224, 232)");
   await theme.selectOption("dark");
-  assert.equal(await background(), "rgb(23, 30, 37)");
+  assert.equal(await background(), "rgb(17, 17, 27)");
   await page.locator("#list-panel").scrollIntoViewIfNeeded();
   assert.equal(
     await page.locator("main").evaluate((el) => getComputedStyle(el).color),
-    "rgb(224, 232, 238)",
+    "rgb(205, 214, 244)",
   );
   assert.deepEqual(errors, []);
 });
@@ -2529,7 +2539,7 @@ test("type settings preserve per-user choices, stable IDs and saved drafts", asy
     await dialog.getByLabel("Type name person", { exact: true }).waitFor();
     await dialog.getByRole("button", { name: "Add type", exact: true }).click();
     const added = dialog.locator(".type-definition").last();
-    await added.locator("input").fill("Ingredient");
+    await added.locator("input:not([type=color])").fill("Ingredient");
     await added.locator("textarea").fill("An ingredient used for cooking.");
     await page.reload();
     await page
@@ -3081,13 +3091,11 @@ test("source editor syntax and controls remain readable in explicit and device t
       await editRecord(page, "Source color palette");
       await page.getByRole("tab", { name: "Source", exact: true }).click();
       const content = page.locator(".cm-content");
+      await content.waitFor({ state: "visible" });
       if (!draft) {
-        await content.fill(
-          (await content.innerText()).replace(
-            "Mary remembers an afternoon.",
-            "Mary remembers an afternoon by the lake.",
-          ),
-        );
+        await content.focus();
+        await page.keyboard.press("ControlOrMeta+End");
+        await page.keyboard.insertText(" Extra words by the lake.");
         draft = await content.innerText();
       }
       assert.equal(
@@ -3180,7 +3188,7 @@ test("source editor syntax and controls remain readable in explicit and device t
       assert.ok(report.gutterContrast >= 4.5, "Line numbers remain visible");
       assert.equal(
         report.background,
-        expected === "dark" ? "rgb(23, 30, 37)" : "rgb(255, 255, 255)",
+        expected === "dark" ? "rgb(17, 17, 27)" : "rgb(220, 224, 232)",
       );
       await page.keyboard.press("ArrowRight");
       assert.equal(
@@ -3188,7 +3196,7 @@ test("source editor syntax and controls remain readable in explicit and device t
           .locator(".cm-cursor")
           .first()
           .evaluate((el) => getComputedStyle(el).borderLeftColor),
-        expected === "dark" ? "rgb(224, 232, 238)" : "rgb(37, 42, 46)",
+        expected === "dark" ? "rgb(205, 214, 244)" : "rgb(76, 79, 105)",
         "The drawn cursor remains visible",
       );
       if (preference !== "system")
@@ -3205,15 +3213,15 @@ test("source editor syntax and controls remain readable in explicit and device t
       }));
       assert.equal(
         surfaces.panel,
-        expected === "dark" ? "rgb(32, 42, 51)" : "rgb(242, 245, 247)",
+        expected === "dark" ? "rgb(24, 24, 37)" : "rgb(230, 233, 239)",
       );
       assert.equal(
         surfaces.input,
-        expected === "dark" ? "rgb(23, 30, 37)" : "rgb(255, 255, 255)",
+        expected === "dark" ? "rgb(30, 30, 46)" : "rgb(239, 241, 245)",
       );
       assert.equal(
         surfaces.foreground,
-        expected === "dark" ? "rgb(224, 232, 238)" : "rgb(37, 42, 46)",
+        expected === "dark" ? "rgb(205, 214, 244)" : "rgb(76, 79, 105)",
       );
       await search.locator('button[name="close"]').click();
       if (preference === "system" && device === "dark") {
@@ -3224,7 +3232,7 @@ test("source editor syntax and controls remain readable in explicit and device t
         await page.waitForFunction(
           () =>
             getComputedStyle(document.querySelector(".cm-editor"))
-              .backgroundColor === "rgb(255, 255, 255)",
+              .backgroundColor === "rgb(220, 224, 232)",
         );
         assert.match(await content.innerText(), /Extra words\./);
         await page.keyboard.press("ControlOrMeta+z");
@@ -3238,6 +3246,229 @@ test("source editor syntax and controls remain readable in explicit and device t
         .getByRole("button", { name: "Close record", exact: true })
         .click();
     }
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
+
+test("Catppuccin color presets and custom colors persist per user and recolor the graph", async () => {
+  await fetch(url + "/api/types/palette_user");
+  const entity = await save(
+    "---\nname: Palette John\ntypes: {palette_user: person}\n---\nA fictional person.",
+    "entities",
+  );
+  const memory = await save(
+    source("Palette afternoon").replace("user: ari", "user: palette_user"),
+  );
+  const before = await (await fetch(url + "/api/records/" + entity.id)).json();
+  const { page, context } = await pageFor();
+  try {
+    await page.getByLabel("Color theme", { exact: true }).selectOption("dark");
+    await page
+      .getByLabel("Graph colors for", { exact: true })
+      .selectOption("palette_user");
+    await page
+      .getByRole("button", { name: "Type settings", exact: true })
+      .click();
+    const dialog = page.locator('dialog[x-ref="typeSettingsDialog"]');
+    await dialog
+      .getByLabel("Type settings user", { exact: true })
+      .fill("palette_user");
+    await dialog
+      .getByRole("button", { name: "Load user", exact: true })
+      .click();
+    const person = dialog.getByLabel("Color for type Person", { exact: true });
+    await person.waitFor();
+    const options = await person
+      .locator("option")
+      .evaluateAll((els) => els.map((el) => el.value));
+    assert.equal(options.length, 24);
+    assert.ok(
+      !["crust", "mantle", "base"].some((key) => options.includes(key)),
+    );
+    assert.equal(await person.inputValue(), "mauve");
+    assert.equal(
+      await dialog
+        .getByLabel("Color for memories", { exact: true })
+        .inputValue(),
+      "peach",
+    );
+    await person.selectOption("custom");
+    const custom = dialog.getByLabel("Custom color for type person", {
+      exact: true,
+    });
+    assert.equal(await custom.inputValue(), "#cba6f7");
+    await custom.evaluate((el) => {
+      el.value = "#e84d92";
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await dialog
+      .getByLabel("Color for memories", { exact: true })
+      .selectOption("blue");
+    await dialog.screenshot({
+      path: "/tmp/songya-ui-review/palette-settings-dark.png",
+    });
+    let writes = 0;
+    await page.route("**/api/types/palette_user", async (route) => {
+      if (route.request().method() !== "PUT") return route.continue();
+      writes++;
+      if (writes !== 1) return route.continue();
+      const response = await route.fetch();
+      assert.equal(response.status(), 200);
+      await route.abort("failed");
+    });
+    await dialog
+      .getByRole("button", { name: "Save types", exact: true })
+      .click();
+    await dialog
+      .getByRole("alert")
+      .filter({ hasText: "Failed to fetch" })
+      .waitFor();
+    await page.reload();
+    await page.waitForFunction(
+      () =>
+        document.querySelector('[aria-label="Graph colors for"]').value ===
+        "palette_user",
+    );
+    await page
+      .getByRole("button", { name: "Type settings", exact: true })
+      .click();
+    await dialog
+      .getByLabel("Type settings user", { exact: true })
+      .fill("palette_user");
+    await dialog
+      .getByRole("button", { name: "Load user", exact: true })
+      .click();
+    await dialog
+      .getByRole("button", { name: "Retry saved request", exact: true })
+      .waitFor();
+    assert.equal(await custom.inputValue(), "#e84d92");
+    assert.equal(
+      await dialog
+        .getByLabel("Color for memories", { exact: true })
+        .inputValue(),
+      "blue",
+    );
+    await dialog
+      .getByRole("button", { name: "Retry saved request", exact: true })
+      .click();
+    await dialog
+      .getByText("Types saved for palette_user.", { exact: true })
+      .waitFor();
+    const saved = await (await fetch(url + "/api/types/palette_user")).json();
+    assert.equal(saved.kind_colors.memories, "blue");
+    assert.equal(
+      saved.kinds.entities.find((t) => t.id === "person").color,
+      "#e84d92",
+    );
+    const other = await (await fetch(url + "/api/types/palette_other")).json();
+    assert.equal(other.kind_colors.memories, "peach");
+    assert.equal(
+      other.kinds.entities.find((t) => t.id === "person").color,
+      "mauve",
+    );
+    assert.equal(
+      (await (await fetch(url + "/api/records/" + entity.id)).json()).version,
+      before.version,
+    );
+    await dialog
+      .getByRole("button", { name: "Close type settings", exact: true })
+      .click();
+    await page.waitForFunction(
+      (id) =>
+        window.Alpine.$data(document.body).records.find((r) => r.id === id)
+          ?.color === "#e84d92",
+      entity.id,
+    );
+    for (const [theme, background, memoryColor] of [
+      ["dark", "rgb(17, 17, 27)", "rgb(137, 180, 250)"],
+      ["light", "rgb(220, 224, 232)", "rgb(30, 102, 245)"],
+    ]) {
+      await page.getByLabel("Color theme", { exact: true }).selectOption(theme);
+      assert.equal(
+        await page.evaluate(
+          () => getComputedStyle(document.documentElement).backgroundColor,
+        ),
+        background,
+      );
+      assert.equal(
+        await page
+          .locator('[data-kind="memories"]')
+          .evaluate((el) => getComputedStyle(el).backgroundColor),
+        memoryColor,
+      );
+      const row = page
+        .locator("tr.record")
+        .filter({ has: page.getByText(entity.id, { exact: true }) });
+      assert.equal(
+        await row
+          .locator(".color-dot")
+          .evaluate((el) => getComputedStyle(el).backgroundColor),
+        "rgb(232, 77, 146)",
+      );
+      const graph = await (
+        await fetch(url + "/api/graph?classification_user=palette_user")
+      ).json();
+      assert.equal(
+        graph.nodes.find((n) => n.id === entity.id).color,
+        "#e84d92",
+      );
+      assert.equal(graph.nodes.find((n) => n.id === memory.id).color, "blue");
+      await page
+        .getByRole("searchbox", { name: "Search graph", exact: true })
+        .fill(entity.id);
+      await page.locator("#graph-matches button").first().click();
+      await page.waitForTimeout(800);
+      const png = (
+        await page.locator(".graph-canvas canvas").screenshot()
+      ).toString("base64");
+      const pixel = await page.evaluate(async (png) => {
+        const image = new Image();
+        image.src = "data:image/png;base64," + png;
+        await image.decode();
+        const canvas = document.createElement("canvas");
+        canvas.width = image.width;
+        canvas.height = image.height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(image, 0, 0);
+        return [
+          ...ctx.getImageData(
+            Math.floor(image.width / 2),
+            Math.floor(image.height / 2),
+            1,
+            1,
+          ).data,
+        ].slice(0, 3);
+      }, png);
+      assert.ok(
+        pixel.every((value, i) => Math.abs(value - [232, 77, 146][i]) < 12),
+        "The rendered node uses its saved custom color: " + pixel,
+      );
+      await page.screenshot({
+        path: "/tmp/songya-ui-review/palette-workspace-" + theme + ".png",
+        fullPage: true,
+      });
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page
+      .getByRole("button", { name: "Type settings", exact: true })
+      .click();
+    await dialog
+      .getByLabel("Type settings user", { exact: true })
+      .fill("palette_user");
+    await dialog
+      .getByRole("button", { name: "Load user", exact: true })
+      .click();
+    assert.equal(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+      true,
+    );
+    await dialog.screenshot({
+      path: "/tmp/songya-ui-review/palette-settings-phone.png",
+    });
     assert.deepEqual(errors, []);
   } finally {
     await context.close();

@@ -246,7 +246,7 @@ body.chat-expanded {
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 7px;
-  box-shadow: 0 8px 24px #0002;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--ctp-crust) 25%, transparent);
 }
 .chat-action-menu button {
   text-align: left;
@@ -364,17 +364,35 @@ body.chat-expanded {
   border-radius: 9px;
 }
 .source-editor {
-  --code-key: light-dark(#275c7a, #8fc4e4);
-  --code-string: light-dark(#27643f, #a5d6a7);
-  --code-number: light-dark(#8b4c14, #e8bd82);
-  --code-keyword: light-dark(#7046a6, #c9b2f3);
-  --code-comment: light-dark(#596773, #a3b1bd);
-  --code-markup: light-dark(#9b315f, #f0abc7);
-  --code-selection: light-dark(#e7f0f6, #2b4255);
+  --code-key: light-dark(
+    color-mix(in srgb, var(--ctp-blue) 30%, var(--ctp-text)),
+    var(--ctp-blue)
+  );
+  --code-string: light-dark(
+    color-mix(in srgb, var(--ctp-green) 20%, var(--ctp-text)),
+    var(--ctp-green)
+  );
+  --code-number: light-dark(
+    color-mix(in srgb, var(--ctp-peach) 25%, var(--ctp-text)),
+    var(--ctp-peach)
+  );
+  --code-keyword: light-dark(
+    color-mix(in srgb, var(--ctp-mauve) 30%, var(--ctp-text)),
+    var(--ctp-mauve)
+  );
+  --code-comment: light-dark(
+    color-mix(in srgb, var(--ctp-subtext1) 50%, var(--ctp-text)),
+    var(--ctp-subtext1)
+  );
+  --code-markup: light-dark(
+    color-mix(in srgb, var(--ctp-maroon) 25%, var(--ctp-text)),
+    var(--ctp-pink)
+  );
+  --code-selection: light-dark(var(--ctp-base), var(--ctp-surface0));
 }
 .source-editor .cm-editor {
   color: var(--ink);
-  background: var(--paper);
+  background: var(--background);
 }
 .source-editor .cm-editor.cm-focused {
   outline: 2px solid var(--accent);

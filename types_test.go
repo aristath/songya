@@ -20,8 +20,8 @@ func TestTypeDefaultsAndIndependentUserDefinitions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ari.Kinds[Entities] = append(ari.Kinds[Entities], TypeDefinition{"ingredient", "Ingredient", "An ingredient used for cooking."})
-	ari.Kinds[Memories] = []TypeDefinition{{"recipe", "Recipe", "Ingredients and instructions for making a dish."}}
+	ari.Kinds[Entities] = append(ari.Kinds[Entities], TypeDefinition{ID: "ingredient", Name: "Ingredient", Description: "An ingredient used for cooking."})
+	ari.Kinds[Memories] = []TypeDefinition{{ID: "recipe", Name: "Recipe", Description: "Ingredients and instructions for making a dish."}}
 	receipt, err := s.SaveTypeConfiguration(ctx, ari, ari.Version, nil, "save-ari")
 	if err != nil || receipt.Status != "committed" {
 		t.Fatal(receipt, err)
@@ -55,7 +55,7 @@ func TestSharedEntityTypesAreScopedAndValidated(t *testing.T) {
 		t.Fatal(doc)
 	}
 	cfg, _ := s.TypeConfiguration(ctx, "ari")
-	cfg.Kinds[Entities] = append(cfg.Kinds[Entities], TypeDefinition{"ingredient", "Ingredient", "An ingredient used for cooking."})
+	cfg.Kinds[Entities] = append(cfg.Kinds[Entities], TypeDefinition{ID: "ingredient", Name: "Ingredient", Description: "An ingredient used for cooking."})
 	if _, err = s.SaveTypeConfiguration(ctx, cfg, cfg.Version, nil, "ingredient"); err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestTypeIDWinsOverAnotherDisplayName(t *testing.T) {
 	s, _ := Open(t.TempDir())
 	ctx := context.Background()
 	cfg, _ := s.TypeConfiguration(ctx, "cook")
-	cfg.Kinds[Entities] = []TypeDefinition{{"food", "Dish", "A prepared dish."}, {"ingredient", "Food", "An ingredient."}}
+	cfg.Kinds[Entities] = []TypeDefinition{{ID: "food", Name: "Dish", Description: "A prepared dish."}, {ID: "ingredient", Name: "Food", Description: "An ingredient."}}
 	if _, err := s.SaveTypeConfiguration(ctx, cfg, cfg.Version, nil, "name-overlap"); err != nil {
 		t.Fatal(err)
 	}

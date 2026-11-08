@@ -1,3 +1,10 @@
+import {
+  colorPresets,
+  mochaColor,
+  colorCSS,
+  isPreset,
+  defaultKindColors,
+} from "./palette.js";
 const storage = {
   get(key) {
     try {
@@ -19,6 +26,22 @@ const copy = (value) => JSON.parse(JSON.stringify(value));
 export function typesUI(request) {
   let generation = 0;
   return {
+    colorPresets,
+    mochaColor,
+    colorCSS,
+    colorMode(value) {
+      return isPreset(value) ? value : "custom";
+    },
+    typeKindColors: null,
+    setKindColor(kind, value) {
+      this.typeKindColors[kind] =
+        value === "custom" ? mochaColor(this.typeKindColors[kind]) : value;
+      this.keepTypeDraft();
+    },
+    setTypeColor(type, value) {
+      type.color = value === "custom" ? mochaColor(type.color) : value;
+      this.keepTypeDraft();
+    },
     classificationUser: storage.get("songya-classification-user") || "",
     classificationPolicy: null,
     classificationBusy: false,
@@ -40,7 +63,7 @@ export function typesUI(request) {
         this.classificationUser ||= this.chatUser || users[0] || "";
         if (this.classificationUser) {
           await this.loadClassificationPolicy();
-          await this.refresh();
+          await Promise.all([this.refresh(), this.refreshGraph()]);
         }
       } catch (e) {
         this.failure = e.message;
@@ -99,7 +122,7 @@ export function typesUI(request) {
     async changeClassificationUser() {
       await this.loadClassificationPolicy();
       this.filters.type = "";
-      await this.refresh();
+      await Promise.all([this.refresh(), this.refreshGraph()]);
     },
     typeDraftKey(user = this.typeSettings?.user) {
       return "songya-type-draft:" + user;
@@ -111,6 +134,7 @@ export function typesUI(request) {
         JSON.stringify({
           version: this.typeSettings.version,
           kinds: this.typeDraft,
+          kind_colors: this.typeKindColors,
           replacements: this.typeReplacements,
           pending: this.typePending,
         }),
@@ -154,6 +178,12 @@ export function typesUI(request) {
           version: saved?.version ?? value.version,
         };
         this.typeDraft = copy(saved?.kinds || value.kinds);
+        this.typeKindColors = copy(saved?.kind_colors || value.kind_colors);
+        for (const kind of this.typeKinds)
+          for (const type of this.typeDraft[kind] || [])
+            type.color ||=
+              value.kinds[kind]?.find((t) => t.id === type.id)?.color ||
+              defaultKindColors[kind];
         this.typeReplacements = copy(saved?.replacements || {});
         this.typePending = saved?.pending || null;
         if (saved && saved.version !== value.version && !saved.pending)
@@ -174,6 +204,7 @@ export function typesUI(request) {
         id: "type_" + crypto.randomUUID().replaceAll("-", "").slice(0, 12),
         name: "",
         description: "",
+        color: this.typeKindColors[this.typeSettingsKind],
       });
       this.keepTypeDraft();
     },
@@ -237,6 +268,7 @@ export function typesUI(request) {
           key: crypto.randomUUID(),
           version: this.typeSettings.version,
           kinds: copy(this.typeDraft),
+          kind_colors: copy(this.typeKindColors),
           replacements: copy(this.typeReplacements),
         };
         this.keepTypeDraft();
@@ -246,11 +278,28 @@ export function typesUI(request) {
           { method: "PUT", body: JSON.stringify(submitted) },
         );
         this.typePending = null;
-        if (JSON.stringify(value.kinds) !== JSON.stringify(submitted.kinds))
+        const compared = copy(value.kinds);
+        for (const kind of this.typeKinds)
+          for (const type of compared[kind] || [])
+            if (
+              !Object.hasOwn(
+                submitted.kinds[kind]?.find((t) => t.id === type.id) || {},
+                "color",
+              )
+            )
+              delete type.color;
+        if (
+          JSON.stringify(compared) !== JSON.stringify(submitted.kinds) ||
+          (submitted.kind_colors &&
+            JSON.stringify(value.kind_colors) !==
+              JSON.stringify(submitted.kind_colors))
+        )
           throw Error(
             "Your previous save is confirmed, but settings changed afterwards. Reload saved types to compare; your draft is retained.",
           );
         const newer =
+          JSON.stringify(this.typeKindColors) !==
+            JSON.stringify(submitted.kind_colors) ||
           JSON.stringify(this.typeDraft) !== JSON.stringify(submitted.kinds) ||
           JSON.stringify(this.typeReplacements) !==
             JSON.stringify(submitted.replacements);
@@ -261,13 +310,14 @@ export function typesUI(request) {
           this.keepTypeDraft();
         } else {
           this.typeDraft = copy(value.kinds);
+          this.typeKindColors = copy(value.kind_colors);
           this.typeReplacements = {};
           storage.set(this.typeDraftKey(), null);
           this.typeSettingsNotice = "Types saved for " + value.user + ".";
         }
         if (this.classificationUser === value.user) {
           await this.loadClassificationPolicy();
-          await this.refresh();
+          await Promise.all([this.refresh(), this.refreshGraph()]);
         }
       } catch (e) {
         if (e.rejected) this.typePending = null;

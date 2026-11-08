@@ -3,6 +3,7 @@ import { codeEditor, richEditor } from "./editors.js";
 import { memoryGraph } from "./graph.js";
 import { chatUI } from "./chat.js";
 import { recallUI } from "./recall.js";
+import { defaultKindColors } from "./palette.js";
 import { typesUI } from "./types.js";
 
 async function request(path, options = {}) {
@@ -39,6 +40,7 @@ Alpine.data("songya", () => {
     theme: document.documentElement.dataset.theme || "system",
     setTheme() {
       document.documentElement.dataset.theme = this.theme;
+      graph?.restyle();
       try {
         localStorage.setItem("songya-theme", this.theme);
       } catch {
@@ -85,6 +87,7 @@ Alpine.data("songya", () => {
     graphExpanded: false,
     graphOwner: "",
     graphOwners: [],
+    graphKindColors: { ...defaultKindColors },
     async init() {
       this.$watch("recallDraft", () => this.keepRecallDraft());
       this.refreshGraph();
@@ -105,9 +108,15 @@ Alpine.data("songya", () => {
     async refreshGraph() {
       const ticket = ++graphListing;
       try {
-        const data = await request("/api/graph");
+        const data = await request(
+          "/api/graph?" +
+            new URLSearchParams({
+              classification_user: this.classificationUser,
+            }),
+        );
         if (ticket !== graphListing) return;
         graphData = data;
+        this.graphKindColors = data.kind_colors || { ...defaultKindColors };
         this.graphOwners = [
           ...new Set([
             ...data.nodes.map((node) => node.user).filter(Boolean),
@@ -160,6 +169,7 @@ Alpine.data("songya", () => {
           this.$refs.graph,
           (id) => this.open(id, false, true),
           this.graphMode,
+          (node) => node.color || this.graphKindColors[node.kind],
         );
         graph.update({ nodes, links });
         if (this.graphQuery) this.searchGraph();

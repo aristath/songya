@@ -41,3 +41,24 @@ writeFileSync(
   "assets/NOTICE.txt",
   notices.join("\n\n----------------------------------------\n\n"),
 );
+
+// Official palette values are shared with Go's color validation and defaults.
+const palette = JSON.parse(readFileSync("../palette.json", "utf8"));
+writeFileSync(
+  "assets/palette.css",
+  ":root {\n" +
+    Object.keys(palette.mocha)
+      .map(
+        (key) =>
+          `  --ctp-${key}: light-dark(${palette.latte[key]}, ${palette.mocha[key]});`,
+      )
+      .join("\n") +
+    "\n}\n",
+);
+const catppuccinLicense = readFileSync("../palette-LICENSE.txt", "utf8");
+writeFileSync(
+  "assets/NOTICE.txt",
+  readFileSync("assets/NOTICE.txt", "utf8") +
+    "\n\nCatppuccin palette - https://catppuccin.com/palette/\n" +
+    catppuccinLicense,
+);
