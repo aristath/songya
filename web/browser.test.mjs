@@ -14,8 +14,23 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import { chromium } from "playwright";
 import { arrangeTimeline } from "./src/timeline.js";
+import { normalizeDate, localDate, localDateTime } from "./src/dates.js";
 let root, processHandle, url, browser, embeddingMock;
 const errors = [];
+
+test("ISO dates normalize equivalent inputs without accepting impossible calendar dates", () => {
+  assert.equal(normalizeDate("19810501"), "1981-05-01");
+  assert.equal(normalizeDate("1981-5-1"), "1981-05-01");
+  assert.equal(normalizeDate("2024-02-29"), "2024-02-29");
+  assert.equal(normalizeDate("1900-02-29"), null);
+  assert.equal(normalizeDate("2026-04-31"), null);
+  assert.equal(normalizeDate("07/13/1983"), null);
+  assert.equal(normalizeDate("0099-02-03"), "0099-02-03");
+  assert.equal(normalizeDate(""), "");
+  assert.equal(localDate("1981-05-01"), "1981-05-01");
+  assert.equal(localDate(null), "Unknown");
+  assert.equal(localDateTime(undefined), "Unknown");
+});
 
 test("timeline placement preserves dates, respects partial order, and retains unplaced accounts", () => {
   const record = (id, title, time = {}) => ({
@@ -146,8 +161,9 @@ async function pageFor(
   init,
   view = "list",
   origin = url,
+  options = {},
 ) {
-  const context = await browser.newContext({ viewport });
+  const context = await browser.newContext({ viewport, ...options });
   if (init) await context.addInitScript(init);
   const requests = [];
   context.on("request", (request) => requests.push(request.url()));
@@ -4104,5 +4120,238 @@ test("timeline shows uncertainty and lets dates and after links be corrected in 
     assert.deepEqual(errors, []);
   } finally {
     await context.close();
+  }
+});
+
+test("date fields and calendars stay ISO in different locales and preserve edits", async () => {
+  for (const [locale, width, theme] of [
+    ["en-US", 1320, "dark"],
+    ["de-DE", 390, "light"],
+  ]) {
+    const memory = await save(
+      source(
+        "ISO calendar " + locale,
+        "John remembers the lake.",
+        'time: {date: null, earliest: "1981-05-01", latest: "1981-06-30"}\n',
+      ),
+    );
+    const { page, context } = await pageFor(
+      { width, height: 900 },
+      undefined,
+      "list",
+      url,
+      { locale, timezoneId: "America/Los_Angeles" },
+    );
+    const dialog = page.locator('dialog[x-ref="editorDialog"]');
+    let writes = 0;
+    context.on("request", (request) => {
+      if (request.method() === "POST" && request.url() === url + "/api/records")
+        writes++;
+    });
+    try {
+      await page.getByLabel("Color theme", { exact: true }).selectOption(theme);
+      assert.equal(
+        await page.evaluate(() =>
+          window.Alpine.$data(document.body).updatedLabel(
+            "2026-11-08T06:04:05Z",
+          ),
+        ),
+        "2026-11-07 22:04:05",
+      );
+      assert.equal(
+        await page.evaluate(() =>
+          window.Alpine.$data(document.body).chatSessionDate({
+            updated_at: Date.parse("2026-11-08T06:04:05Z"),
+          }),
+        ),
+        "2026-11-07",
+      );
+      await editRecord(page, "ISO calendar " + locale);
+      await dialog
+        .getByRole("button", { name: "Metadata", exact: true })
+        .click();
+      const input = dialog.getByLabel("Exact event date", { exact: true });
+      assert.equal(await input.getAttribute("type"), "text");
+      assert.equal(await input.getAttribute("placeholder"), "YYYY-MM-DD");
+      assert.equal(
+        await dialog
+          .getByLabel("Earliest event date", { exact: true })
+          .inputValue(),
+        "1981-05-01",
+      );
+      const opener = dialog.getByRole("button", {
+        name: "Exact event date calendar",
+        exact: true,
+      });
+      await opener.click();
+      const calendar = page.getByRole("dialog", {
+        name: "Exact event date calendar",
+        exact: true,
+      });
+      await calendar.waitFor();
+      await calendar
+        .getByRole("spinbutton", { name: "Calendar year", exact: true })
+        .fill("1983");
+      await calendar
+        .getByRole("spinbutton", { name: "Calendar year", exact: true })
+        .dispatchEvent("change");
+      await calendar
+        .getByRole("combobox", { name: "Calendar month", exact: true })
+        .selectOption("6");
+      assert.equal(
+        await calendar.locator(".iso-calendar-period").textContent(),
+        "1983-07",
+      );
+      assert.equal(
+        await page.evaluate(() => window.Alpine.$data(document.body).dirty),
+        false,
+        "Browsing the calendar must not change the memory",
+      );
+      const box = await calendar.boundingBox();
+      assert.ok(
+        box.x >= 0 &&
+          box.y >= 0 &&
+          box.x + box.width <= width &&
+          box.y + box.height <= 900,
+        "Calendar stays within the browser viewport",
+      );
+      await page.screenshot({
+        path: "/tmp/songya-ui-review/iso-calendar-" + locale + ".png",
+      });
+      await calendar
+        .getByRole("spinbutton", { name: "Calendar year", exact: true })
+        .fill("");
+      await calendar
+        .getByRole("button", { name: "1983-07-13", exact: true })
+        .click();
+      assert.equal(
+        await calendar.isVisible(),
+        true,
+        "An incomplete year must not select a date from the old year",
+      );
+      assert.equal(await input.inputValue(), "");
+      await calendar
+        .getByRole("spinbutton", { name: "Calendar year", exact: true })
+        .fill("1983");
+      await calendar
+        .getByRole("spinbutton", { name: "Calendar year", exact: true })
+        .dispatchEvent("change");
+      await calendar
+        .getByRole("button", { name: "1983-07-13", exact: true })
+        .click();
+      await calendar.waitFor({ state: "hidden" });
+      assert.equal(await input.inputValue(), "1983-07-13");
+      assert.equal(
+        await dialog
+          .getByLabel("Earliest event date", { exact: true })
+          .inputValue(),
+        "",
+      );
+      assert.equal(
+        await dialog
+          .getByLabel("Latest event date", { exact: true })
+          .inputValue(),
+        "",
+      );
+      await input.fill("1983-02-29");
+      await input.dispatchEvent("change");
+      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      assert.equal(
+        writes,
+        0,
+        "An impossible date is retained for correction without publishing it",
+      );
+      assert.equal(await input.inputValue(), "1983-02-29");
+      assert.equal(await input.evaluate((el) => el.checkValidity()), false);
+      await input.fill("19810501");
+      await input.dispatchEvent("change");
+      assert.equal(await input.inputValue(), "1981-05-01");
+      await opener.click();
+      await page.keyboard.press("Escape");
+      await calendar.waitFor({ state: "hidden" });
+      assert.equal(
+        await dialog.isVisible(),
+        true,
+        "Escape closes the calendar before the record editor",
+      );
+      await input.fill("2024-02-29");
+      await input.dispatchEvent("change");
+      await opener.click();
+      await page.keyboard.press("ArrowRight");
+      assert.equal(
+        await calendar.locator(".iso-calendar-period").textContent(),
+        "2024-03",
+      );
+      await page.keyboard.press("Enter");
+      await calendar.waitFor({ state: "hidden" });
+      assert.equal(await input.inputValue(), "2024-03-01");
+      await opener.click();
+      await calendar
+        .getByRole("button", { name: "Clear", exact: true })
+        .click();
+      assert.equal(await input.inputValue(), "");
+      await input.fill("2024-02-29");
+      await input.dispatchEvent("change");
+      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      await page.waitForFunction(
+        () => !window.Alpine.$data(document.body).dirty,
+      );
+      const saved = await (
+        await fetch(url + "/api/records/" + memory.id)
+      ).json();
+      assert.equal(
+        saved.draft.fields.find((f) => f.key === "time").time.date,
+        "2024-02-29",
+      );
+      assert.equal(saved.draft.body, "John remembers the lake.");
+      if (locale === "en-US") {
+        await input.fill("2024-02-30");
+        await input.dispatchEvent("change");
+        await dialog.getByRole("tab", { name: "Source", exact: true }).click();
+        const code = dialog.locator(".cm-content");
+        await code.waitFor({ state: "visible" });
+        const source = await code.innerText();
+        assert.ok(
+          source.includes("2024-02-30"),
+          "An invalid draft is preserved when switching editors",
+        );
+        await code.focus();
+        await page.keyboard.press("ControlOrMeta+a");
+        await page.keyboard.insertText(
+          source.replace("2024-02-30", "2024-03-01"),
+        );
+        await dialog.getByRole("button", { name: "Save", exact: true }).click();
+        await page.waitForFunction(
+          () => !window.Alpine.$data(document.body).dirty,
+        );
+        const corrected = await (
+          await fetch(url + "/api/records/" + memory.id)
+        ).json();
+        assert.equal(
+          corrected.draft.fields.find((f) => f.key === "time").time.date,
+          "2024-03-01",
+        );
+        assert.equal(corrected.draft.body, "John remembers the lake.");
+      }
+      await dialog
+        .getByRole("button", { name: "Close record", exact: true })
+        .click();
+      const row = page
+        .locator("tr.record")
+        .filter({ has: page.getByText(memory.id, { exact: true }) });
+      assert.match(
+        await row.locator(".updated-cell time").textContent(),
+        /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/,
+      );
+      assert.equal(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+        true,
+      );
+      assert.deepEqual(errors, []);
+    } finally {
+      await context.close();
+    }
   }
 });

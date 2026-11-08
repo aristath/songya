@@ -722,6 +722,86 @@ dialog::backdrop {
   min-height: 26px;
   color: var(--muted);
 }
+.iso-date {
+  display: flex;
+  position: relative;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.iso-date .iso-date-input {
+  min-width: 0;
+  flex: 1;
+}
+.iso-date-open {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  padding: 0.4rem;
+}
+.iso-calendar {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(21rem, calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0.75rem;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--ctp-crust) 35%, transparent);
+}
+.iso-calendar-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.iso-calendar-heading button {
+  flex-shrink: 0;
+}
+.iso-calendar-year {
+  width: 6rem;
+  min-width: 0;
+}
+.iso-calendar-month {
+  width: 4rem;
+  min-width: 0;
+}
+.iso-calendar-period {
+  margin: 0.6rem 0;
+  text-align: center;
+  font-weight: 600;
+}
+.iso-calendar-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.2rem;
+  text-align: center;
+}
+.iso-calendar-week [role="columnheader"] {
+  font-size: 0.75rem;
+  color: var(--muted);
+  padding: 0.35rem 0;
+}
+.iso-calendar-week button {
+  min-width: 0;
+  width: 100%;
+  min-height: 2.3rem;
+  padding: 0.25rem;
+  border-color: transparent;
+}
+.iso-calendar-week [aria-selected="true"] button {
+  background: var(--selected);
+  border-color: var(--accent);
+}
+.iso-calendar-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin-top: 0.65rem;
+}
 .inspection-metadata {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));

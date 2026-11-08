@@ -1169,17 +1169,21 @@
                       ><div class="entity-lifetime">
                         <label
                           >Start<input
-                            type="date"
+                            type="text"
                             aria-label="Entity start date"
+                            x-iso-date="field.time.start"
                             x-model="field.time.start"
-                            @change="timeChanged(field,false)"
+                            @input="field.value=JSON.stringify(field.time);metadataChanged()"
+                            @change="if($el.checkValidity())timeChanged(field,false)"
                         /></label>
                         <label
                           >End<input
-                            type="date"
+                            type="text"
                             aria-label="Entity end date"
+                            x-iso-date="field.time.end"
                             x-model="field.time.end"
-                            @change="timeChanged(field,false)"
+                            @input="field.value=JSON.stringify(field.time);metadataChanged()"
+                            @change="if($el.checkValidity())timeChanged(field,false)"
                         /></label>
                         <small
                           >The start and end dates of the entity's existence.
@@ -1195,24 +1199,30 @@
                       ><div class="event-dates">
                         <label
                           >Exact date<input
-                            type="date"
+                            type="text"
                             :aria-label="'Exact event date'"
+                            x-iso-date="field.time.date"
                             x-model="field.time.date"
-                            @change="timeChanged(field,true)"
+                            @input="field.value=JSON.stringify(field.time);metadataChanged()"
+                            @change="if($el.checkValidity())timeChanged(field,true)"
                         /></label>
                         <label
                           >Earliest<input
-                            type="date"
+                            type="text"
                             aria-label="Earliest event date"
+                            x-iso-date="field.time.earliest"
                             x-model="field.time.earliest"
-                            @change="timeChanged(field,false)"
+                            @input="field.value=JSON.stringify(field.time);metadataChanged()"
+                            @change="if($el.checkValidity())timeChanged(field,false)"
                         /></label>
                         <label
                           >Latest<input
-                            type="date"
+                            type="text"
                             aria-label="Latest event date"
+                            x-iso-date="field.time.latest"
                             x-model="field.time.latest"
-                            @change="timeChanged(field,false)"
+                            @input="field.value=JSON.stringify(field.time);metadataChanged()"
+                            @change="if($el.checkValidity())timeChanged(field,false)"
                         /></label>
                         <small
                           >Leave unknown dates blank. Use an exact date or range

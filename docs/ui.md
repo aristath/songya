@@ -246,6 +246,14 @@ It does not maintain another memory format or its own relationship graph.
 Unchanged YAML values retain their nodes, including aliases and custom values.
 Common scalar controls are conveniences; custom and nested values remain editable.
 Event time has exact-date and earliest/latest date controls; blank values stay null.
+Date fields and their calendars display `YYYY-MM-DD` in every browser locale.
+Calendar headings use `YYYY-MM`, weeks start on Monday, and keyboard arrows move
+between days; Page Up/Down changes the month (Shift changes the year). Year and
+month controls support jumping directly to older dates. Escape closes the calendar
+before the record editor. Impossible dates remain in the draft for correction;
+equivalent year-first input such as `19810501` normalizes to `1981-05-01`.
+Library update times use local `YYYY-MM-DD HH:mm:ss`, and conversation dates use
+local `YYYY-MM-DD`; stored UTC timestamps and event dates remain unchanged.
 Changing an exact date clears the range, and changing a bound clears the exact date.
 Unrecognized time data stays editable as YAML. Connection controls offer the five
 structural types. A story’s outgoing relations can be moved up/down to set reading

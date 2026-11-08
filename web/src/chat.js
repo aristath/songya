@@ -1,5 +1,6 @@
 import MarkdownIt from "markdown-it";
 import { newID } from "./ids.js";
+import { localDate } from "./dates.js";
 
 const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true });
 const local = {
@@ -159,10 +160,7 @@ export function chatUI(request) {
       return "";
     },
     chatSessionDate(conversation) {
-      return new Date(conversation.updated_at).toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-      });
+      return localDate(conversation.updated_at);
     },
     openChatRename() {
       this.$refs.chatActions.removeAttribute("open");

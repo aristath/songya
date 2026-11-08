@@ -8,6 +8,9 @@ import { typesUI } from "./types.js";
 import { newID } from "./ids.js";
 import { storyUI } from "./story.js";
 import { timelineUI } from "./timeline.js";
+import { registerDates, localDateTime } from "./dates.js";
+
+registerDates(Alpine);
 
 async function request(path, options = {}) {
   const response = await fetch(path, {
@@ -298,9 +301,7 @@ Alpine.data("songya", () => {
       this.sortKey = key;
     },
     updatedLabel(value) {
-      return Number.isFinite(Date.parse(value))
-        ? new Date(value).toLocaleString()
-        : "Unknown";
+      return localDateTime(value);
     },
     sortOrder(key) {
       return this.sortKey === key
@@ -716,6 +717,19 @@ Alpine.data("songya", () => {
     },
     async save() {
       if (this.busy || this.loading || !this.selected) return;
+      const invalidDate =
+        this.mode === "visual" &&
+        [...this.$refs.editorDialog.querySelectorAll(".iso-date-input")].find(
+          (input) => !input.checkValidity(),
+        );
+      if (invalidDate) {
+        this.showMetadata = true;
+        this.$nextTick(() => {
+          invalidDate.focus();
+          invalidDate.reportValidity();
+        });
+        return;
+      }
       this.busy = true;
       this.failure = "";
       this.notice = "";
@@ -862,6 +876,14 @@ Alpine.data("songya", () => {
     },
     back() {
       if (this.busy || this.loading) return;
+      const calendar = this.$refs.editorDialog.querySelector(
+        ".iso-calendar:popover-open",
+      );
+      if (calendar) {
+        calendar.hidePopover();
+        calendar.closest(".iso-date").querySelector(".iso-date-input").focus();
+        return;
+      }
       this.remember();
       this.closeDialog();
     },
