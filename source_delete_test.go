@@ -113,7 +113,7 @@ func TestDeleteKeepsHealthyOperationsWhenSourcesOrCacheFail(t *testing.T) {
 	target, _ := s.Create(Entities, map[string]any{"name": "Alex"}, "Identity")
 	// A broken derived cache cannot block deletion of healthy authoritative records.
 	_ = os.RemoveAll(filepath.Join(s.path, ".index"))
-	_ = os.WriteFile(filepath.Join(s.path, ".index"), []byte("blocked cache"), 0600)
+	_ = fixtureWriteFile(filepath.Join(s.path, ".index"), []byte("blocked cache"), 0600)
 	if err := s.Delete(ctx, target.ID, target.Revision); err != nil {
 		t.Fatal("cache blocked deletion", err)
 	}
@@ -144,7 +144,7 @@ func TestDeleteWaitsForConcurrentWriterAndSeesItsIncomingLink(t *testing.T) {
 			<-release
 			doc, _ := NewDocument(Metadata{User: "ari", CreatedAt: time.Now(), UpdatedAt: time.Now(), Relations: []Relation{{"related_to", target.ID}}}, "Concurrent [["+target.ID+"]]")
 			data, _ := doc.Marshal()
-			if err := root.WriteFile("memories/m_000000000001.md", data, 0600); err != nil {
+			if err := fixtureRootWriteFile(root, "memories/m_000000000001/record.md", data, 0600); err != nil {
 				return err
 			}
 			return syncPath(root, "memories")
@@ -221,10 +221,10 @@ func TestDeletionChecksUnpublishedProposalsAndRetainsPendingWork(t *testing.T) {
 			return err
 		}
 		dir := batchDirectory(request.Key)
-		if err := root.Mkdir(".batches", 0700); err != nil && !errors.Is(err, os.ErrExist) {
+		if err := fixtureRootMkdir(root, ".batches", 0700); err != nil && !errors.Is(err, os.ErrExist) {
 			return err
 		}
-		if err := root.Mkdir(dir, 0700); err != nil {
+		if err := fixtureRootMkdir(root, dir, 0700); err != nil {
 			return err
 		}
 		encoded, err := json.Marshal(journal)

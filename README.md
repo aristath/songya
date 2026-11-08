@@ -47,7 +47,7 @@ Using **Close**, Escape or clicking outside the modal keeps unsaved work in the
 current tab.
 Metadata has text, number and boolean controls, with YAML values for lists and
 nested/custom structures.
-Creation/update timestamps are automatic and read-only. IDs come from filenames.
+Creation/update timestamps are automatic and read-only. IDs come from record-folder names.
 
 **Connections** searches for targets by name or text, accepts custom relationship
 types, and shows outgoing connections and incoming links. Opening another record
@@ -197,9 +197,12 @@ changes, see the [executable examples](example_test.go) and
 
 ## Files and backups
 
-Records live in `memories/`, `entities/`, `topics/`, and `stories/`. Each Markdown
-filename is its identity: a type prefix (`m_`, `e_`, `t_`, or `s_`) plus 12 random
+Records live in `memories/`, `entities/`, `topics/`, and `stories/`. Each record-folder
+name is its identity: a type prefix (`m_`, `e_`, `t_`, or `s_`) plus 12 random
 lowercase letters or digits. Metadata is YAML frontmatter; the body is Markdown.
+Each folder contains `record.md` plus any photos, audio, documents, or other files
+belonging to that record. Only `record.md` is indexed as a record; an attached
+`notes.md` stays a file. No attachment manifest or per-file metadata is required.
 The engine assigns IDs and timestamps. No duplicate ID field is needed in YAML.
 Memories and stories require a `user` field. Entities and topics are shared.
 Select a user when searching, or use `user:all` to query everyone; this is grouping,
@@ -208,7 +211,10 @@ with no access restrictions. See [users](docs/engine.md#users).
 Back up the **whole store**, including hidden files and directories. `.batches/`
 retains transaction journals, original accounts, and before/proposed bytes;
 `.imports/` retains imported originals and mappings. Hidden pending directories
-retain unfinished writes. Only `.index/` is disposable.
+retain unfinished writes. `.uploads/` retains completed uploads until attached;
+`.file-ops/` retains file-operation receipts, and `.deletions/` retains deletion
+intents/tombstones. These are operational recovery state, not another attachment
+store. Only `.index/` is disposable.
 
 For a consistent backup, stop writers and external editors while copying, or use
 an atomic filesystem snapshot. Restore into a directory on a supported local
@@ -218,6 +224,32 @@ automatically. Keep `.lock` in place while a store is in use.
 See [durability and recovery](docs/engine.md#durable-writes-and-recovery) for what
 pending writes mean and [batch recovery](docs/mcp.md#recovery-and-clients) for
 inspecting unfinished work.
+
+### Adding files
+
+Use **Add files** or drag files onto an editor or the chat composer. Uploading and
+attaching are separate steps: a completed upload survives a failed record save.
+The editor attaches staged files after saving the record. In chat, choose the
+files to include with the next message and tell Songya which record they belong
+to. A reply must confirm a committed attachment, not only a saved memory.
+
+Images have previews; supported audio/video have controls and seeking. Plain text
+has a bounded preview. Every file can be downloaded unchanged. HTML, SVG and other
+active formats are downloads, not application content. Duplicate/reserved names
+receive a reported safe filename; existing bytes are never silently overwritten.
+Use **Replace** or **Remove permanently** deliberately. Deleting a record removes
+its files too, while keeping existing incoming-link checks.
+
+Use ordinary relative Markdown links such as `[Notes](notes.txt)` or
+`![A caption](photo.jpg)` for deliberate inline placement. Story readers resolve
+these links and file previews against each originating record, including repeated
+memories and nested stories. They do not copy the files into the story folder.
+
+### Converting an existing flat store
+
+The layout conversion is explicit and offline, not an automatic runtime fallback.
+See [folder conversion](docs/folders.md). Stop every old writer, including long-lived
+MCP processes, before running it. All consumers must run the new engine afterward.
 
 ## Development
 

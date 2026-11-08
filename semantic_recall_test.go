@@ -14,7 +14,7 @@ import (
 func writeRecallPolicy(t *testing.T, s *Store, policy RecallPolicy) {
 	t.Helper()
 	data, _ := json.Marshal(map[string]any{"recall": policy})
-	if err := os.WriteFile(filepath.Join(s.path, "config.json"), data, 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(s.path, "config.json"), data, 0600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -132,7 +132,7 @@ func TestRetrievalPartialFailuresCacheChangesAndWritesContinue(t *testing.T) {
 	}
 	files, _ := os.ReadDir(filepath.Join(s.path, ".index", "embeddings"))
 	for _, file := range files {
-		os.WriteFile(filepath.Join(s.path, ".index", "embeddings", file.Name()), []byte("damaged"), 0600)
+		fixtureWriteFile(filepath.Join(s.path, ".index", "embeddings", file.Name()), []byte("damaged"), 0600)
 	}
 	r = retrieveTest(t, s, "garden")
 	if r.Incomplete || len(r.Items) != 1 {
@@ -161,14 +161,14 @@ func TestRetrievalPartialFailuresCacheChangesAndWritesContinue(t *testing.T) {
 	}
 	count = f.count()
 	raw, _ := json.Marshal(map[string]any{"recall": p, "embeddings": map[string]any{"base_url": f.server.URL, "model": "different-model"}})
-	os.WriteFile(filepath.Join(s.path, "config.json"), raw, 0600)
+	fixtureWriteFile(filepath.Join(s.path, "config.json"), raw, 0600)
 	retrieveTest(t, s, "garden")
 	if f.count() <= count {
 		t.Fatal("model change did not invalidate vectors")
 	}
 	f2 := embeddingService(t)
 	raw, _ = json.Marshal(map[string]any{"recall": p, "embeddings": map[string]any{"base_url": f2.server.URL, "model": "different-model"}})
-	os.WriteFile(filepath.Join(s.path, "config.json"), raw, 0600)
+	fixtureWriteFile(filepath.Join(s.path, "config.json"), raw, 0600)
 	retrieveTest(t, s, "garden")
 	if f2.count() == 0 {
 		t.Fatal("endpoint change did not invalidate vectors")
@@ -177,7 +177,7 @@ func TestRetrievalPartialFailuresCacheChangesAndWritesContinue(t *testing.T) {
 
 func TestRecallConfigurationKeepsHealthyFieldsAndHonestDiagnostics(t *testing.T) {
 	s, _ := Open(t.TempDir())
-	os.WriteFile(filepath.Join(s.path, "config.json"), []byte(`{"recall":{"direct_limit":"2","min_score":"broken","connection_depth":"3","relation_types":["related_to","invalid"]},"embeddings":{"model":"fixture"}}`), 0600)
+	fixtureWriteFile(filepath.Join(s.path, "config.json"), []byte(`{"recall":{"direct_limit":"2","min_score":"broken","connection_depth":"3","relation_types":["related_to","invalid"]},"embeddings":{"model":"fixture"}}`), 0600)
 	c, err := s.Configuration()
 	if err == nil || c.Recall.DirectLimit != 2 || c.Recall.ConnectionDepth != 3 || c.Recall.MinScore != .42 || c.Embeddings.Model != "fixture" || !reflect.DeepEqual(c.Recall.RelationTypes, []string{"related_to"}) {
 		t.Fatal(c, err)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -62,7 +61,7 @@ func TestTimelineManyDatedRecordsKeepsWorkAndResponseBounded(t *testing.T) {
 		id := fmt.Sprintf("m_%012d", i)
 		date := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, i).Format(time.DateOnly)
 		data := fmt.Sprintf("---\ntime:\n  earliest: %s\n  latest: %s\n---\nEpisode", date, date)
-		if err := os.WriteFile(filepath.Join(store.path, "memories", id+".md"), []byte(data), 0600); err != nil {
+		if err := fixtureWriteFile(filepath.Join(store.path, "memories", id+"/record.md"), []byte(data), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}

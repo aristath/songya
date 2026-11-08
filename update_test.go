@@ -50,7 +50,7 @@ func TestUpdatesPreserveRecordsAndRevisions(t *testing.T) {
 			if _, err := store.Update(original.ID, original.Revision, nil, "Stale"); !errors.Is(err, ErrConflict) {
 				t.Fatalf("stale retry replaced the result: %v", err)
 			}
-			data, err := os.ReadFile(filepath.Join(store.path, string(destination), doc.ID+".md"))
+			data, err := os.ReadFile(filepath.Join(store.path, string(destination), doc.ID+"/record.md"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -78,7 +78,7 @@ func TestUpdatesPreserveDamagedAndAliasedCreationTimes(t *testing.T) {
 			}
 			id := "m_000000000000"
 			name, _ := recordName(id)
-			if err := os.WriteFile(filepath.Join(path, name), []byte("---\nuser: test\n"+header+"---\nBody"), 0600); err != nil {
+			if err := fixtureWriteFile(filepath.Join(path, name), []byte("---\nuser: test\n"+header+"---\nBody"), 0600); err != nil {
 				t.Fatal(err)
 			}
 			original, err := store.Read(id)
@@ -135,7 +135,7 @@ func TestUpdatesProtectUserEditsAndMissingRecords(t *testing.T) {
 	}
 	name, _ := recordName(doc.ID)
 	user := []byte("User edited this directly")
-	if err := os.WriteFile(filepath.Join(path, name), user, 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(path, name), user, 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Update(doc.ID, doc.Revision, nil, "Stale"); !errors.Is(err, ErrConflict) {
@@ -173,8 +173,8 @@ func updateFixture(t *testing.T) (*Store, *os.Root, string, string, []byte) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { root.Close() })
-	name := "memories/m_000000000000.md"
-	if err := root.WriteFile(name, []byte(sample), 0600); err != nil {
+	name := "memories/m_000000000000/record.md"
+	if err := fixtureRootWriteFile(root, name, []byte(sample), 0600); err != nil {
 		t.Fatal(err)
 	}
 	doc := Parse([]byte(sample))
@@ -195,10 +195,10 @@ func TestUpdateRecoveryPreservesConflictsAndUnrelatedWork(t *testing.T) {
 			store, root, name, base, data := updateFixture(t)
 			staged := name
 			if state == "written" {
-				if err := root.Mkdir(pendingName(name), 0700); err != nil {
+				if err := fixtureRootMkdir(root, pendingName(name), 0700); err != nil {
 					t.Fatal(err)
 				}
-				if err := root.WriteFile(temporaryName(name, base, data), data, 0600); err != nil {
+				if err := fixtureRootWriteFile(root, temporaryName(name, base, data), data, 0600); err != nil {
 					t.Fatal(err)
 				}
 			} else if retained, err := stage(root, staged, base, data); !retained || err != nil {
@@ -216,7 +216,7 @@ func TestUpdateRecoveryPreservesConflictsAndUnrelatedWork(t *testing.T) {
 					}
 				}
 			case "newer":
-				if err := root.WriteFile(name, []byte("Newer user version"), 0600); err != nil {
+				if err := fixtureRootWriteFile(root, name, []byte("Newer user version"), 0600); err != nil {
 					t.Fatal(err)
 				}
 			case "missing":
@@ -224,19 +224,19 @@ func TestUpdateRecoveryPreservesConflictsAndUnrelatedWork(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "corrupt":
-				if err := root.WriteFile(temporaryName(staged, base, data), []byte("Retained partial"), 0600); err != nil {
+				if err := fixtureRootWriteFile(root, temporaryName(staged, base, data), []byte("Retained partial"), 0600); err != nil {
 					t.Fatal(err)
 				}
 			case "ambiguous":
-				if err := root.WriteFile(temporaryName(staged, base, []byte("Other proposal")), []byte("Other proposal"), 0600); err != nil {
+				if err := fixtureRootWriteFile(root, temporaryName(staged, base, []byte("Other proposal")), []byte("Other proposal"), 0600); err != nil {
 					t.Fatal(err)
 				}
 			case "unknown":
-				if err := root.WriteFile(filepath.Join(pendingName(staged), "foreign.keep"), []byte("Unknown data"), 0600); err != nil {
+				if err := fixtureRootWriteFile(root, filepath.Join(pendingName(staged), "foreign.keep"), []byte("Unknown data"), 0600); err != nil {
 					t.Fatal(err)
 				}
 			case "publish-obstructed":
-				if err := root.WriteFile(ready, []byte("Unknown data"), 0600); err != nil {
+				if err := fixtureRootWriteFile(root, ready, []byte("Unknown data"), 0600); err != nil {
 					t.Fatal(err)
 				}
 			case "empty":
@@ -292,7 +292,7 @@ func TestUpdateRecoveryPreservesConflictsAndUnrelatedWork(t *testing.T) {
 				}
 			}
 			// Other creation recovery and updates stay independent of this attempt.
-			other := "entities/e_000000000000.md"
+			other := "entities/e_000000000000/record.md"
 			if retained, err := stage(root, other, "", []byte("Other creation")); !retained || err != nil {
 				t.Fatal(err)
 			}
@@ -523,19 +523,19 @@ func TestUpdatePublicationKeepsPayloadUntilDirectorySynced(t *testing.T) {
 	if retained, err := stage(root, name, base, data); !retained || err != nil {
 		t.Fatal(err)
 	}
-	publicationRoot, err := os.OpenRoot(filepath.Join(store.path, "memories"))
+	publicationRoot, err := os.OpenRoot(filepath.Join(store.path, filepath.Dir(name)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer publicationRoot.Close()
-	if err := root.Chmod("memories", 0300); err != nil {
+	if err := root.Chmod(filepath.Dir(name), 0300); err != nil {
 		t.Fatal(err)
 	}
-	defer root.Chmod("memories", 0700)
+	defer root.Chmod(filepath.Dir(name), 0700)
 	if published, err := store.publishUpdate(publicationRoot, filepath.Base(name), base, data); published || err == nil {
 		t.Fatal("acknowledged an update without syncing its destination")
 	}
-	if err := root.Chmod("memories", 0700); err != nil {
+	if err := root.Chmod(filepath.Dir(name), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if actual, err := root.ReadFile(name); err != nil || !bytes.Equal(actual, data) {
@@ -575,10 +575,10 @@ func TestUpdateCanRetryAfterStagingPermissionFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := root.Chmod("memories", 0500); err != nil {
+	if err := root.Chmod("memories/m_000000000000", 0500); err != nil {
 		t.Fatal(err)
 	}
-	defer root.Chmod("memories", 0700)
+	defer root.Chmod("memories/m_000000000000", 0700)
 	failed, err := store.Update(original.ID, original.Revision, nil, "Retry")
 	if err == nil || failed.Pending || failed.Revision != original.Revision || failed.Body != "Retry" {
 		t.Fatal("failed staging claimed a retained or committed proposal")
@@ -587,7 +587,7 @@ func TestUpdateCanRetryAfterStagingPermissionFailure(t *testing.T) {
 	if err != nil || read.Body != original.Body {
 		t.Fatal("failed staging damaged committed content")
 	}
-	if err := root.Chmod("memories", 0700); err != nil {
+	if err := root.Chmod("memories/m_000000000000", 0700); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := store.Update(original.ID, original.Revision, nil, "Retry")
@@ -626,7 +626,7 @@ func TestUntouchedCreationAliasesSurviveAnchorRepair(t *testing.T) {
 		id := "m_000000000000"
 		name, _ := recordName(id)
 		source := []byte("---\nuser: test\nother: &date First\ndate: &date " + value + "\ncreated_at: *date\n---\nBody")
-		if err := os.WriteFile(filepath.Join(store.path, name), source, 0600); err != nil {
+		if err := fixtureWriteFile(filepath.Join(store.path, name), source, 0600); err != nil {
 			t.Fatal(err)
 		}
 		original, err := store.Read(id)

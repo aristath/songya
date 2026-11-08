@@ -93,7 +93,7 @@ func TestChatStreamsThroughRealMCPAndSurvivesBrowserDisconnect(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		if !body.Stream || body.Model != "memory-model" || len(body.Tools) != 15 {
+		if !body.Stream || body.Model != "memory-model" || len(body.Tools) < 20 {
 			t.Error("streaming request lost model or MCP definitions")
 		}
 		if !strings.Contains(body.Messages[0].Content, `user "ari"`) || !strings.Contains(body.Messages[0].Content, "Songya stores connected Markdown records") {
@@ -212,7 +212,7 @@ func TestChatStartupRecoversAcceptedToolFromOriginalReceipt(t *testing.T) {
 	tool.Function.Arguments = `{"text":"The original account."}`
 	c := chatConversation{ID: id, User: "ari", Status: "running", TurnID: "original", Prompt: defaultChatPrompt, Requests: map[string]string{"original": chatFingerprint("ari", "Save this account.")}, Messages: []chatMessage{{Role: "user", Content: "Save this account.", TurnID: "original"}, {Role: "assistant", ToolCalls: []chatToolCall{tool}, TurnID: "original"}}}
 	data, _ := json.Marshal(c)
-	if err := os.WriteFile(filepath.Join(root, ".chats", id+".json"), data, 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(root, ".chats", id+".json"), data, 0600); err != nil {
 		t.Fatal(err)
 	}
 	app := Handler(store)

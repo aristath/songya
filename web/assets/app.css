@@ -1321,3 +1321,82 @@ blockquote {
   max-width: 12rem;
   min-width: 8rem;
 }
+
+/* Files wrap to the space available inside each record. */
+.record-files {
+  padding: 1rem;
+  border-block-start: 1px solid var(--line);
+}
+.file-heading,
+.file-actions,
+.upload-ready {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+.file-heading {
+  justify-content: space-between;
+}
+.file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: 1rem;
+}
+.file-card {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+}
+.file-card img,
+.file-card video {
+  display: block;
+  max-inline-size: 100%;
+  max-block-size: 24rem;
+  object-fit: contain;
+}
+.file-card audio {
+  inline-size: 100%;
+  max-inline-size: 100%;
+}
+.file-card figcaption {
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: anywhere;
+  gap: 0.25rem;
+  margin-block: 0.5rem;
+}
+.file-card pre {
+  max-block-size: 20rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.file-picker {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.file-picker input {
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  inline-size: 12rem;
+}
+.upload-ready {
+  font-size: 0.85rem;
+  padding: 0.4rem 0;
+  overflow-wrap: anywhere;
+}
+
+.chat-files {
+  padding: 0.5rem 0.8rem;
+  border-block-start: 1px solid var(--line);
+}
+.chat-files input[type="checkbox"] {
+  inline-size: auto;
+  margin: 0;
+}

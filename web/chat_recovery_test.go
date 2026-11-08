@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -113,7 +112,7 @@ func TestChatRetriesSavedLateSystemNoteWithout400AndKeepsExactOriginalAccount(t 
 		{Role: "user", Content: "SYSTEM/RECOVERY MESSAGE: fix the missing arguments.", TurnID: "birth"},
 	}}
 	raw, _ := json.Marshal(c)
-	if err := os.WriteFile(filepath.Join(root, ".chats", id+".json"), raw, 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(root, ".chats", id+".json"), raw, 0600); err != nil {
 		t.Fatal(err)
 	}
 	code, result := call(t, app, "POST", "/api/chat/sessions/"+id+"/retry", nil)

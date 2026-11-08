@@ -354,7 +354,7 @@ func TestEditsKeepIncomingCommentsAndClearResolvedObstructions(t *testing.T) {
 	}
 
 	path := t.TempDir()
-	if err := os.WriteFile(filepath.Join(path, "memories"), []byte("Obstruction"), 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(path, "memories"), []byte("Obstruction"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	store, err := Open(path)
@@ -381,7 +381,7 @@ func testFailedCollision(t *testing.T, path string) {
 		t.Fatal(err)
 	}
 	id := "m_000000000000"
-	if err := os.Mkdir(filepath.Join(path, pendingName(filepath.Join("memories", id+".md"))), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(path, pendingName(filepath.Join("memories", id+"/record.md"))), 0700); err != nil {
 		t.Fatal(err)
 	}
 	previous := rand.Reader

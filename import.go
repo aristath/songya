@@ -134,6 +134,11 @@ func (s *Store) PreviewImports(ctx context.Context, sourceRoot string, offset, l
 			return nil
 		}
 		if !entry.IsDir() && strings.HasSuffix(strings.ToLower(entry.Name()), ".md") {
+			// A record folder contains one record, even when notes.md is attached.
+			parent := filepath.Base(filepath.Dir(path))
+			if ValidID(parent) && entry.Name() != "record.md" {
+				return nil
+			}
 			paths = append(paths, path)
 		}
 		return nil

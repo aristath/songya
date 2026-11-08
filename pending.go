@@ -34,6 +34,9 @@ func temporaryName(name, base string, data []byte) string {
 }
 
 func stage(root *os.Root, name, base string, data []byte) (bool, error) {
+	if err := ensureDirectory(root, filepath.Dir(name)); err != nil {
+		return false, err
+	}
 	if err := root.Mkdir(pendingName(name), 0700); err != nil {
 		return false, err
 	}
@@ -107,6 +110,25 @@ func stagedData(root *os.Root, name string) ([]byte, string, string, error) {
 }
 
 func (s *Store) complete(root *os.Root, name string) (bool, error) {
+	if owner, err := readFile(root, filepath.Join(pendingName(name), "files")); err == nil {
+		if !validHash(string(owner)) {
+			return false, errors.New("File operation ownership is damaged; retained")
+		}
+		journal, err := readFileJournal(root, filepath.Join(".file-ops", string(owner)))
+		if err != nil {
+			return false, err
+		}
+		err = s.resumeFileChange(root, journal)
+		if err == nil {
+			s.cleanupFileChange(root, journal)
+		}
+		return err == nil, err
+	}
+	if filepath.Base(name) == "record.md" {
+		if err := recordWritable(root, filepath.Base(filepath.Dir(name))); err != nil {
+			return false, err
+		}
+	}
 	data, temporary, base, err := stagedData(root, name)
 	if err != nil {
 		// A crash during cleanup may leave an empty reservation after the final
@@ -182,13 +204,15 @@ func (s *Store) recoverDirectory(root *os.Root, directory string) {
 		return true
 	})
 	for _, entry := range entries {
-		filename := entry.Name()
-		id := strings.TrimSuffix(strings.TrimPrefix(filename, "."), ".md.pending")
+		id := entry.Name()
 		prefix, _ := Destination(directory).prefix()
-		if filename != "."+id+".md.pending" || !ValidID(id) || id[:2] != prefix {
+		if !entry.IsDir() || !ValidID(id) || id[:2] != prefix {
 			continue
 		}
-		name := filepath.Join(directory, id+".md")
+		name, _ := recordName(id)
+		if _, err := root.Lstat(pendingName(name)); errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
 		_, err := s.complete(root, name)
 		s.note(name, err)
 	}

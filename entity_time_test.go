@@ -3,7 +3,6 @@ package songya
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -117,8 +116,8 @@ func TestEntityDateDamageStaysVisibleAndRepairKeepsHealthyComponent(t *testing.T
 	s, _ := Open(t.TempDir())
 	ctx := context.Background()
 	doc, _ := s.Create(Entities, map[string]any{"name": "Mary"}, "Intact identification.")
-	path := filepath.Join(s.Directory(), "entities", doc.ID+".md")
-	if err := os.WriteFile(path, []byte("---\nname: Mary\ntime: {start: long ago, end: '2024-06-01'}\n---\nIntact identification.\n"), 0600); err != nil {
+	path := filepath.Join(s.Directory(), "entities", doc.ID+"/record.md")
+	if err := fixtureWriteFile(path, []byte("---\nname: Mary\ntime: {start: long ago, end: '2024-06-01'}\n---\nIntact identification.\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	doc, _ = s.Read(doc.ID)
@@ -144,7 +143,7 @@ func TestEntityDateDamageStaysVisibleAndRepairKeepsHealthyComponent(t *testing.T
 		t.Fatal("repair lost readable or raw data", string(raw), timing)
 	}
 	// Old entity date bounds remain source evidence; they are never relabelled as a lifetime.
-	if err := os.WriteFile(path, []byte("---\nname: Mary\ntime: {earliest: '1990-04-01', latest: '1990-04-30'}\n---\nIntact identification.\n"), 0600); err != nil {
+	if err := fixtureWriteFile(path, []byte("---\nname: Mary\ntime: {earliest: '1990-04-01', latest: '1990-04-30'}\n---\nIntact identification.\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	doc, _ = s.Read(doc.ID)

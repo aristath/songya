@@ -37,18 +37,18 @@ func TestAbandonBatchRestoresOwnBytesAndKeepsExternalEditsAndProposals(t *testin
 	}
 	persistJournal(t, root, journal)
 	for _, entry := range journal.Entries {
-		if err := root.Mkdir(pendingName(entry.Source), 0700); err != nil {
+		if err := fixtureRootMkdir(root, pendingName(entry.Source), 0700); err != nil {
 			t.Fatal(err)
 		}
 		if err := syncNew(root, filepath.Join(pendingName(entry.Source), "batch"), []byte(filepath.Base(batchDirectory(request.Key)))); err != nil {
 			t.Fatal(err)
 		}
-		if err := root.WriteFile(entry.Source, entry.After, 0600); err != nil {
+		if err := fixtureRootWriteFile(root, entry.Source, entry.After, 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	name, _ := recordName(b.ID)
-	if err := root.WriteFile(name, []byte("External B"), 0600); err != nil {
+	if err := fixtureRootWriteFile(root, name, []byte("External B"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	result, err := store.AbandonBatch(ctx, request.Key)
@@ -119,13 +119,13 @@ func TestInterruptedWithdrawalRecoversWithoutPublishing(t *testing.T) {
 	}
 	persistJournal(t, root, journal)
 	entry := journal.Entries[0]
-	if err := root.Mkdir(pendingName(entry.Source), 0700); err != nil {
+	if err := fixtureRootMkdir(root, pendingName(entry.Source), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if err := syncNew(root, filepath.Join(pendingName(entry.Source), "batch"), []byte(filepath.Base(batchDirectory(request.Key)))); err != nil {
 		t.Fatal(err)
 	}
-	if err := root.WriteFile(entry.Source, entry.After, 0600); err != nil {
+	if err := fixtureRootWriteFile(root, entry.Source, entry.After, 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := mark(root, filepath.Join(batchDirectory(request.Key), "abandoning")); err != nil {

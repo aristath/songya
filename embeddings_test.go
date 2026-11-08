@@ -80,7 +80,7 @@ func TestSemanticIndexNamesDescriptionsContentsAndRefresh(t *testing.T) {
 	memory := createEmbeddedRecord(t, s, Memories, map[string]any{"title": "An evening", "user": "ari"}, "She performed on the violoncello.")
 	createEmbeddedRecord(t, s, Memories, map[string]any{"user": "ari"}, "The roses grow in the garden.")
 	createEmbeddedRecord(t, s, Memories, map[string]any{"user": "bob"}, "Bob plays the violoncello.")
-	original, err := s.ReadSource("memories/" + memory.ID + ".md")
+	original, err := s.ReadSource("memories/" + memory.ID + "/record.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,14 +118,14 @@ func TestSemanticIndexNamesDescriptionsContentsAndRefresh(t *testing.T) {
 	if err != nil || len(result.Matches) != 1 || result.Matches[0].ID != entity.ID || result.Matches[0].User != "" {
 		t.Fatal("shared identity lost", result, err)
 	}
-	after, _ := s.ReadSource("memories/" + memory.ID + ".md")
+	after, _ := s.ReadSource("memories/" + memory.ID + "/record.md")
 	if string(after) != string(original) {
 		t.Fatal("indexing changed original memory")
 	}
 	doc, _ := s.Read(memory.ID)
 	doc.Body = "A garden full of roses."
 	raw, _ := doc.Marshal()
-	if err := os.WriteFile(filepath.Join(s.path, "memories", memory.ID+".md"), raw, 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(s.path, "memories", memory.ID+"/record.md"), raw, 0600); err != nil {
 		t.Fatal(err)
 	}
 	before = f.count()
@@ -137,7 +137,7 @@ func TestSemanticIndexNamesDescriptionsContentsAndRefresh(t *testing.T) {
 	_ = edited.Set("name", "Sam Lee")
 	edited.Body = "A gardener tending roses."
 	changed, _ := edited.Marshal()
-	if err := os.WriteFile(filepath.Join(s.path, "entities", entity.ID+".md"), changed, 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(s.path, "entities", entity.ID+"/record.md"), changed, 0600); err != nil {
 		t.Fatal(err)
 	}
 	before = f.count()
@@ -182,7 +182,7 @@ func TestEmbeddingCacheRepairAndUnwritableIndex(t *testing.T) {
 	if len(files) != 1 {
 		t.Fatal(files)
 	}
-	if err := os.WriteFile(files[0], []byte(`{"vector":[0,0,0],"checksum":"damaged"}`), 0600); err != nil {
+	if err := fixtureWriteFile(files[0], []byte(`{"vector":[0,0,0],"checksum":"damaged"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	before := f.count()
@@ -191,20 +191,20 @@ func TestEmbeddingCacheRepairAndUnwritableIndex(t *testing.T) {
 		t.Fatal("damaged vector not recovered", status, err)
 	}
 	// A cache symlink must never let a rebuild overwrite a canonical record.
-	original, _ := os.ReadFile(filepath.Join(s.path, "memories", memory.ID+".md"))
+	original, _ := os.ReadFile(filepath.Join(s.path, "memories", memory.ID+"/record.md"))
 	_ = os.Remove(files[0])
-	if err := os.Symlink(filepath.Join(s.path, "memories", memory.ID+".md"), files[0]); err != nil {
+	if err := os.Symlink(filepath.Join(s.path, "memories", memory.ID+"/record.md"), files[0]); err != nil {
 		t.Fatal(err)
 	}
 	status, err = s.IndexEmbeddings(context.Background())
-	after, _ := os.ReadFile(filepath.Join(s.path, "memories", memory.ID+".md"))
+	after, _ := os.ReadFile(filepath.Join(s.path, "memories", memory.ID+"/record.md"))
 	if err != nil || status.Incomplete || string(after) != string(original) {
 		t.Fatal("cache repair damaged record", status, err)
 	}
 	if err := os.RemoveAll(filepath.Join(s.path, ".index", "embeddings")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(s.path, ".index", "embeddings"), []byte("blocked"), 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(s.path, ".index", "embeddings"), []byte("blocked"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	result, err := s.Search(context.Background(), Query{Mode: "semantic", Text: "orchestral performer"})

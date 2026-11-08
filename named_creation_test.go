@@ -18,7 +18,7 @@ func TestNamedCreationNeverChangesAnExistingSameNameRecord(t *testing.T) {
 				t.Fatal(err)
 			}
 			id := first.Refs["record"]
-			file := filepath.Join(store.path, string(kind), id+".md")
+			file := filepath.Join(store.path, string(kind), id+"/record.md")
 			before, _ := os.ReadFile(file)
 			secondInput := NamedInput{Key: "second", Create: true, Name: "Alex", Description: textValue("Sam's coworker, a different person.")}
 			second, err := store.SaveNamed(ctx, kind, secondInput)

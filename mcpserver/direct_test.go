@@ -40,7 +40,7 @@ func TestDirectGuideCapture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Tools) != 15 {
+	if len(listed.Tools) < 20 {
 		t.Fatal("missing dedicated tools", len(listed.Tools))
 	}
 	for _, tool := range listed.Tools {
@@ -70,7 +70,7 @@ func TestDirectGuideCapture(t *testing.T) {
 		t.Fatal("capture lost entities", saved)
 	}
 	id := saved["id"].(string)
-	data, err := os.ReadFile(filepath.Join(path, "memories", id+".md"))
+	data, err := os.ReadFile(filepath.Join(path, "memories", id+"/record.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestDirectArgumentsStayFlexible(t *testing.T) {
 	path := t.TempDir()
 	session := connect(t, ctx, binary(t), path, "")
 	saved := keyed(t, ctx, session, "save_memory", "numbers", map[string]any{"text": 3, "user": 3, "metadata": map[string]any{"timing_note": "last summer", "number": json.Number("9007199254740993")}, "relations": []any{map[string]any{"type": "related_to", "target": map[string]any{"kind": "entities", "name": 3, "description": 3}}}})
-	data, err := os.ReadFile(filepath.Join(path, "memories", saved["id"].(string)+".md"))
+	data, err := os.ReadFile(filepath.Join(path, "memories", saved["id"].(string)+"/record.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestIncompleteIdentityDoesNotDiscardCapture(t *testing.T) {
 	if len(saved["relations"].([]any)) != 1 || !strings.Contains(fmt.Sprint(saved["diagnostics"]), "identity resolution") {
 		t.Fatal(saved)
 	}
-	data, _ := os.ReadFile(filepath.Join(path, "memories", saved["id"].(string)+".md"))
+	data, _ := os.ReadFile(filepath.Join(path, "memories", saved["id"].(string)+"/record.md"))
 	if !strings.Contains(string(data), "unresolved_connections") || !strings.Contains(string(data), "John") || songya.Parse(data).Body != "Dinner with John at Pizza AMI" {
 		t.Fatal(string(data))
 	}
@@ -235,14 +235,14 @@ func TestLongSharedMemoryIsEnrichedWithoutGrowingItsEntities(t *testing.T) {
 	if updated["id"] != saved["id"] || len(updated["relations"].([]any)) != 3 {
 		t.Fatal(updated)
 	}
-	data, err := os.ReadFile(filepath.Join(path, "memories", saved["id"].(string)+".md"))
+	data, err := os.ReadFile(filepath.Join(path, "memories", saved["id"].(string)+"/record.md"))
 	if err != nil || songya.Parse(data).Body != text+"\n\nThey also enjoy the salad." {
 		t.Fatal("long memory lost prose", err)
 	}
 	for _, item := range saved["relations"].([]any) {
 		entity := item.(map[string]any)
 		id := entity["target"].(string)
-		data, err := os.ReadFile(filepath.Join(path, "entities", id+".md"))
+		data, err := os.ReadFile(filepath.Join(path, "entities", id+"/record.md"))
 		if err != nil || songya.Parse(data).Body != "" {
 			t.Fatal("history leaked into identity", id, err)
 		}

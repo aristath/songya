@@ -171,11 +171,11 @@ func findNamed(ctx context.Context, root *os.Root, kind Destination, input Named
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		id := strings.TrimSuffix(entry.Name(), ".md")
-		if kindOf(id) != kind || !ValidID(id) {
+		id := entry.Name()
+		if !entry.IsDir() || kindOf(id) != kind || !ValidID(id) {
 			continue
 		}
-		doc, err := readCopy(root, id, string(kind)+"/"+entry.Name())
+		doc, err := readCopy(root, id, string(kind)+"/"+entry.Name()+"/record.md")
 		if err != nil {
 			unavailable = fmt.Errorf("cannot check %s: %w", id, err)
 			continue

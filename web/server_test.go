@@ -129,7 +129,7 @@ func TestGraphIncludesAllRecordKindsAndStoredConnections(t *testing.T) {
 	story, _ := store.Create(songya.Stories, map[string]any{"user": "clara", "title": "Journey", "relations": []songya.Relation{{Type: "related_to", Target: memory.ID}}}, "")
 	redirect, _ := store.Create(songya.Entities, map[string]any{"name": "Old Alex", "redirects": []string{entity.ID}}, "")
 	// A missing target must not stop the rest of the graph from being displayed.
-	if err := os.WriteFile(filepath.Join(root, "entities", "e_123456789abc.md"), []byte("---\nname: Lonely\nrelations:\n  - type: related_to\n    target: m_missing\n---\n"), 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(root, "entities", "e_123456789abc/record.md"), []byte("---\nname: Lonely\nrelations:\n  - type: related_to\n    target: m_missing\n---\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	code, result := call(t, testApplication(t, store), "GET", "/api/graph", nil)
@@ -250,7 +250,7 @@ func TestInvalidUTF8CannotBeSilentlyRewrittenThroughTheEditor(t *testing.T) {
 	id := "m_000000000097"
 	original := []byte("---\nuser: ari\n---\nBad byte: ")
 	original = append(original, 0xff)
-	if err := os.WriteFile(filepath.Join(path, "memories", id+".md"), original, 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(path, "memories", id+"/record.md"), original, 0600); err != nil {
 		t.Fatal(err)
 	}
 	h := Handler(store)
@@ -259,7 +259,7 @@ func TestInvalidUTF8CannotBeSilentlyRewrittenThroughTheEditor(t *testing.T) {
 	if code != 422 {
 		t.Fatal("lossy editor opened damaged encoding")
 	}
-	after, err := os.ReadFile(filepath.Join(path, "memories", id+".md"))
+	after, err := os.ReadFile(filepath.Join(path, "memories", id+"/record.md"))
 	if err != nil || !bytes.Equal(after, original) {
 		t.Fatal("original bytes changed")
 	}

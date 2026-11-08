@@ -5,16 +5,21 @@ import {
   readFileSync,
   rmSync,
   readdirSync,
-  writeFileSync,
+  writeFileSync as rawWriteFileSync,
+  mkdirSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, dirname } from "node:path";
 import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { chromium } from "playwright";
 import { arrangeTimeline } from "./src/timeline.js";
 import { normalizeDate, localDate, localDateTime } from "./src/dates.js";
+function writeFileSync(path, ...args) {
+  mkdirSync(dirname(path), { recursive: true });
+  return rawWriteFileSync(path, ...args);
+}
 let root, processHandle, url, browser, embeddingMock;
 const errors = [];
 
@@ -297,11 +302,14 @@ test("serves offline bundled editors; creates and visually edits a real memory",
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await waitText(page, "Saved");
   const files = readdirSync(join(root, "store", "memories")).filter((n) =>
-    n.endsWith(".md"),
+    n.startsWith("m_"),
   );
   assert.equal(files.length, 1);
   assert.match(
-    readFileSync(join(root, "store", "memories", files[0]), "utf8"),
+    readFileSync(
+      join(root, "store", "memories", files[0], "record.md"),
+      "utf8",
+    ),
     /quiet afternoon/,
   );
   await page.getByRole("tab", { name: "Source", exact: true }).click();
@@ -661,11 +669,16 @@ test("a malformed draft is retained while healthy records stay editable", async 
 });
 
 test("quoted automatic timestamps are protected and malformed records leave healthy reads usable", async (t) => {
-  const damagedPath = join(root, "store", "memories", "m_000000000098.md");
-  t.after(() => rmSync(damagedPath, { force: true }));
+  const damagedPath = join(
+    root,
+    "store",
+    "memories",
+    "m_000000000098/record.md",
+  );
+  t.after(() => rmSync(dirname(damagedPath), { force: true, recursive: true }));
   const id = "m_000000000099";
   writeFileSync(
-    join(root, "store", "memories", id + ".md"),
+    join(root, "store", "memories", id + "/record.md"),
     '---\r\nuser: ari\r\ntitle: Quoted clocks\r\n"created_at": 2024-01-01T00:00:00Z\r\n"updated_at": 2024-01-01T00:00:00Z\r\n---\r\nA record.',
   );
   writeFileSync(damagedPath, "---\ntitle: [broken\n---\nRetained prose.");
@@ -1747,7 +1760,7 @@ async function chatProvider(t, completion) {
       const body = JSON.parse(text);
       assert.equal(body.stream, true);
       assert.equal(body.model, "browser-model");
-      assert.equal(body.tools.length, 15);
+      assert.ok(body.tools.length >= 20);
       await completion(res, body, ++calls);
     } catch (e) {
       errors.push(e.message);
@@ -2861,7 +2874,7 @@ test("last updated sorts real timestamps newest first and filters start collapse
   ]) {
     const record = await save(source(title));
     writeFileSync(
-      join(root, "store", "memories", record.id + ".md"),
+      join(root, "store", "memories", record.id + "/record.md"),
       record.source.replace(/updated_at: [^\n]+/, "updated_at: " + stamp),
     );
   }
@@ -4354,4 +4367,216 @@ test("date fields and calendars stay ISO in different locales and preserve edits
       await context.close();
     }
   }
+});
+
+test("record files upload without changing prose, preview safely, survive reload and remove explicitly", async () => {
+  const record = await save(
+    source("Mary's attached files", "Words to preserve."),
+  );
+  const { page, context } = await pageFor();
+  await editRecord(page, "Mary's attached files");
+  await page.locator(".record-files input[type=file][multiple]").setInputFiles([
+    {
+      name: "record.md",
+      mimeType: "text/markdown",
+      buffer: Buffer.from("A separate note"),
+    },
+    {
+      name: "資料.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("A readable note"),
+    },
+    {
+      name: "danger.html",
+      mimeType: "text/html",
+      buffer: Buffer.from("<script>window.uploadExecuted=true</script>"),
+    },
+  ]);
+  await page.waitForFunction(
+    () => document.querySelectorAll(".record-files .file-card").length === 3,
+  );
+  const listing = await (
+    await fetch(url + "/api/records/" + record.id + "/files")
+  ).json();
+  assert.deepEqual(
+    listing.files.map((f) => f.filename),
+    ["danger.html", "record (file).md", "資料.txt"],
+  );
+  assert.equal(
+    (await (await fetch(url + "/api/records/" + record.id)).json()).draft.body,
+    "Words to preserve.",
+  );
+  await page
+    .locator(".record-files .file-card")
+    .filter({ hasText: "資料.txt" })
+    .getByRole("button", { name: "Preview text" })
+    .click();
+  await page
+    .locator(".record-files pre")
+    .filter({ hasText: "A readable note" })
+    .waitFor();
+  assert.equal(await page.evaluate(() => window.uploadExecuted), undefined);
+  const unsafe = await fetch(
+    url + "/api/records/" + record.id + "/files/danger.html?preview=1",
+  );
+  assert.match(unsafe.headers.get("content-disposition"), /^attachment/);
+  assert.equal(unsafe.headers.get("content-type"), "application/octet-stream");
+  await page.keyboard.press("Escape");
+  await page.reload();
+  await editRecord(page, "Mary's attached files");
+  assert.equal(await page.locator(".record-files .file-card").count(), 3);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page
+    .locator(".record-files .file-card")
+    .filter({ hasText: "資料.txt" })
+    .getByRole("button", { name: "Remove permanently" })
+    .click();
+  await page.waitForFunction(
+    () => document.querySelectorAll(".record-files .file-card").length === 2,
+  );
+  await context.close();
+  assert.deepEqual(errors, []);
+});
+
+test("new record files remain staged through rejected text saves and retry a lost attachment reply once", async () => {
+  const { page, context } = await pageFor();
+  await page.getByRole("button", { name: "New record", exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "Metadata title", exact: true })
+    .fill("Mary's durable upload");
+  await page.locator(".record-files input[type=file][multiple]").setInputFiles({
+    name: "letter.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("The complete letter"),
+  });
+  await page
+    .locator(".record-files .upload-ready")
+    .filter({ hasText: "letter.txt" })
+    .waitFor();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page
+    .getByRole("alert")
+    .filter({ hasText: /user|owner/i })
+    .first()
+    .waitFor();
+  assert.equal(await page.locator(".record-files .file-card").count(), 0);
+  await page
+    .getByRole("textbox", { name: "Metadata user", exact: true })
+    .fill("john");
+  let lost = false;
+  await page.route("**/api/records/*/files", async (route) => {
+    if (route.request().method() === "POST" && !lost) {
+      lost = true;
+      await route.fetch();
+      return route.abort("failed");
+    }
+    return route.continue();
+  });
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page
+    .locator(".record-files .error")
+    .filter({ hasText: /fetch|failed|network/i })
+    .waitFor();
+  await page
+    .getByRole("button", { name: "Attach uploaded files / retry", exact: true })
+    .click();
+  await page.waitForFunction(
+    () => document.querySelectorAll(".record-files .file-card").length === 1,
+  );
+  await page.waitForFunction(
+    () => document.querySelectorAll(".record-files .upload-ready").length === 0,
+  );
+  const records = (
+    await (
+      await fetch(
+        url + "/api/records?q=" + encodeURIComponent("Mary's durable upload"),
+      )
+    ).json()
+  ).records;
+  assert.equal(
+    records.filter((record) => record.title === "Mary's durable upload").length,
+    1,
+  );
+  const savedRecord = records.find(
+    (record) => record.title === "Mary's durable upload",
+  );
+  const files = await (
+    await fetch(url + "/api/records/" + savedRecord.id + "/files")
+  ).json();
+  assert.equal(files.files.length, 1);
+  await page.keyboard.press("Escape");
+  await page.reload();
+  await editRecord(page, "Mary's durable upload");
+  assert.equal(await page.locator(".record-files .file-card").count(), 1);
+  await context.close();
+  assert.deepEqual(errors, []);
+});
+
+test("chat uploads supply receipts to text-only tools and confirm attached files without changing testimony", async (t) => {
+  let id, upload;
+  const provider = await chatProvider(t, async (res, body, n) => {
+    const user = body.messages.filter((m) => m.role === "user").at(-1).content;
+    upload ||= user.match(/"upload":"([a-f0-9]{64})"/)?.[1];
+    assert.ok(upload);
+    if (n === 1)
+      return streamTool(res, "prepare_memory", { text: "Mary's written note" });
+    if (n === 2)
+      return streamTool(res, "save_memory", {
+        title: "Mary's written note",
+        text: "Mary kept the letter.",
+      });
+    const data = JSON.parse(body.messages.at(-1).content).structuredContent
+      .data;
+    if (n === 3) {
+      id = data.id;
+      assert.ok(id);
+      return streamTool(res, "list_files", { id });
+    }
+    if (n === 4)
+      return streamTool(res, "attach_file", {
+        id,
+        revision: data.revision,
+        upload,
+      });
+    assert.equal(data.status, "committed");
+    streamChunk(res, {
+      role: "assistant",
+      content: "Saved the note and attached letter.txt.",
+    });
+    return streamFinish(res);
+  });
+  const { page, context } = await pageFor();
+  await setupBrowserChat(page, provider.base, "john-files-chat");
+  await page.locator(".chat-files input[type=file][multiple]").setInputFiles({
+    name: "letter.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Mary's full letter"),
+  });
+  await page
+    .locator(".chat-files .upload-ready")
+    .filter({ hasText: "letter.txt" })
+    .waitFor();
+  await page
+    .getByRole("textbox", { name: "Message Songya", exact: true })
+    .fill("Keep Mary's letter with this memory.");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await page
+    .locator(".chat-progress")
+    .getByText("Reply complete.", { exact: true })
+    .waitFor();
+  await page
+    .locator(".chat-message .upload-ready")
+    .filter({ hasText: "Attached to " + id })
+    .waitFor();
+  const record = await (await fetch(url + "/api/records/" + id)).json();
+  assert.match(record.source, /Keep Mary's letter with this memory\./);
+  assert.doesNotMatch(record.source, /App upload receipts|not yet attached/);
+  assert.equal(
+    await (
+      await fetch(url + "/api/records/" + id + "/files/letter.txt")
+    ).text(),
+    "Mary's full letter",
+  );
+  await context.close();
+  assert.deepEqual(errors, []);
 });

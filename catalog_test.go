@@ -74,7 +74,7 @@ func TestCatalogRebuildsAndPreservesIndependentSources(t *testing.T) {
 			t.Fatal(err)
 		}
 		if damage == "corrupt" {
-			if err := os.WriteFile(cache, []byte("Broken derived data"), 0600); err != nil {
+			if err := fixtureWriteFile(cache, []byte("Broken derived data"), 0600); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -94,21 +94,21 @@ func TestCatalogRebuildsAndPreservesIndependentSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	data = bytes.Replace(data, []byte("John Smith"), []byte("John Brown"), 1)
-	if err := os.WriteFile(filepath.Join(store.path, name), data, 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(store.path, name), data, 0600); err != nil {
 		t.Fatal(err)
 	}
 	matches, err = store.Search(ctx, Query{Text: "John Brown"})
 	if err != nil || len(matches.Matches) != 1 || matches.Matches[0].Revision == doc.Revision {
 		t.Fatal("external edit stayed stale")
 	}
-	if err := os.WriteFile(filepath.Join(store.path, "memories", "damaged.md"), []byte("---\nbroken: [\n---\nReadable orphan body"), 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(store.path, "memories", "damaged/record.md"), []byte("---\nbroken: [\n---\nReadable orphan body"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	catalog, err := store.Scan(ctx)
 	if err != nil || len(catalog.Records) != 2 || len(catalog.Diagnostics) == 0 {
 		t.Fatal("damaged filename disabled discovery")
 	}
-	raw, err := store.ReadSource("memories/damaged.md")
+	raw, err := store.ReadSource("memories/damaged/record.md")
 	if err != nil || !bytes.Contains(raw, []byte("Readable orphan body")) {
 		t.Fatal("orphan source became unavailable")
 	}

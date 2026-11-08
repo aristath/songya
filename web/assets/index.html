@@ -329,6 +329,13 @@
                       x-html="chatMarkdown(message.content)"
                     ></div>
                     <template
+                      x-for="upload in message.uploads||[]"
+                      :key="upload.upload"
+                      ><p class="upload-ready">
+                        <span x-text="upload.filename"></span
+                        ><span x-text="chatUploadLabel(upload)"></span></p
+                    ></template>
+                    <template
                       x-for="call in message.tool_calls||[]"
                       :key="call.id||call.function.name"
                     >
@@ -377,7 +384,48 @@
               >
                 Continue saved turn
               </button>
-              <form class="chat-composer" @submit.prevent="sendChat()">
+              <div
+                class="chat-files"
+                @dragover.prevent
+                @drop.prevent="uploadChatFiles([...$event.dataTransfer.files])"
+              >
+                <label class="file-picker"
+                  >Add files<input
+                    type="file"
+                    multiple
+                    :disabled="!chatUser||chatFilesBusy||!!chatState?.archived"
+                    @change="uploadChatFiles([...$event.target.files]);$event.target.value=''"
+                /></label>
+                <span class="muted" x-show="chatFilesBusy">Uploading…</span>
+                <p
+                  class="error"
+                  x-show="chatFilesError"
+                  x-text="chatFilesError"
+                  role="alert"
+                ></p>
+                <details
+                  x-show="chatUploads.length"
+                  :open="chatUploadSelected.length>0"
+                >
+                  <summary>Uploaded files · choose which to include</summary>
+                  <template x-for="upload in chatUploads" :key="upload.upload"
+                    ><label class="upload-ready"
+                      ><input
+                        type="checkbox"
+                        x-model="chatUploadSelected"
+                        :value="upload.upload"
+                      /><span x-text="upload.filename"></span
+                      ><span>Uploaded · attachment not confirmed</span></label
+                    ></template
+                  >
+                </details>
+              </div>
+              <form
+                class="chat-composer"
+                @submit.prevent="sendChat()"
+                @dragover.prevent
+                @drop.prevent="uploadChatFiles([...$event.dataTransfer.files])"
+              >
                 <label class="sr-only" for="chat-message-input"
                   >Message Songya</label
                 >
@@ -395,8 +443,8 @@
                 <button
                   class="primary"
                   type="submit"
-                  :disabled="!chatUser||(!chatInput.trim()&&!chatPending)||!chatSettings.configured||!!chatState?.archived"
-                  x-text="chatInput.trim() ? (chatBusy()||chatPending ? 'Queue message' : 'Send') : chatPending ? (chatSending ? 'Sending…' : 'Retry send') : 'Send'"
+                  :disabled="!chatUser||(!chatInput.trim()&&!chatPending&&!chatUploadSelected.length)||!chatSettings.configured||!!chatState?.archived"
+                  x-text="(chatInput.trim()||chatUploadSelected.length) ? (chatBusy()||chatPending ? 'Queue message' : 'Send') : chatPending ? (chatSending ? 'Sending…' : 'Retry send') : 'Send'"
                 ></button>
               </form>
             </div>
@@ -1389,12 +1437,64 @@
                   x-show="part.title && part.id!==selected?.id"
                   x-text="part.title"
                 ></h3>
-                <div x-html="storyHTML(part.text)"></div>
+                <div x-html="storyHTML(part.text, part.id)"></div>
+                <div x-data="fileViewer(part.id)">
+                  <p class="error" x-show="fileError" x-text="fileError"></p>
+                  <div class="file-grid">
+                    <template x-for="file in files" :key="file.filename"
+                      ><figure class="file-card">
+                        <template x-if="file.preview==='image'"
+                          ><img
+                            loading="lazy"
+                            :src="fileURL(part.id,file.filename,true)"
+                            :alt="file.filename"
+                        /></template>
+                        <template x-if="file.preview==='audio'"
+                          ><audio
+                            controls
+                            preload="none"
+                            :src="fileURL(part.id,file.filename,true)"
+                          ></audio
+                        ></template>
+                        <template x-if="file.preview==='video'"
+                          ><video
+                            controls
+                            preload="metadata"
+                            :src="fileURL(part.id,file.filename,true)"
+                          ></video
+                        ></template>
+                        <template x-if="file.preview==='text'"
+                          ><div>
+                            <button @click="previewText(file)">
+                              Preview text
+                            </button>
+                            <pre
+                              x-show="fileText[file.filename]"
+                              x-text="fileText[file.filename]"
+                            ></pre></div
+                        ></template>
+                        <figcaption>
+                          <a
+                            :href="fileURL(part.id,file.filename)"
+                            x-text="file.filename"
+                            download
+                          ></a
+                          ><span
+                            class="muted"
+                            x-text="file.bytes.toLocaleString()+' bytes'"
+                          ></span>
+                        </figcaption></figure
+                    ></template>
+                  </div>
+                </div>
               </div>
             </section>
           </template>
           <p class="muted" role="status" x-show="storyBusy">Loading story…</p>
-          <p class="muted" x-show="storyComplete && !storyParts.length">
+          <p
+            class="muted"
+            x-show="storyComplete && storyParts.length<=1 && storyParts.every(part=>!part.text.trim()) && !recordFiles.length"
+          >
             This story has no text or linked memories yet.
           </p>
           <div class="error" role="alert" x-show="storyError">
@@ -1429,6 +1529,114 @@
         >
           <div x-ref="source"><div x-ignore></div></div>
         </div>
+        <section
+          class="record-files"
+          aria-label="Record files"
+          x-show="!readingStory() || mode==='source'"
+          @dragover.prevent
+          @drop.prevent="if(!inspecting) uploadEditorFiles([...$event.dataTransfer.files])"
+        >
+          <div class="file-heading">
+            <h3>Files</h3>
+            <label class="file-picker" x-show="!inspecting"
+              >Add files<input
+                type="file"
+                multiple
+                :disabled="filesBusy||busy||loading"
+                @change="uploadEditorFiles([...$event.target.files]);$event.target.value=''"
+            /></label>
+          </div>
+          <p class="muted" x-show="!inspecting">
+            Choose files or drop them here. Files uploaded while editing will be
+            attached after you save.
+          </p>
+          <p class="muted" x-show="filesBusy" role="status">Saving files…</p>
+          <p
+            class="error"
+            x-show="filesError"
+            x-text="filesError"
+            role="alert"
+          ></p>
+          <template x-for="upload in editorUploads" :key="upload.upload"
+            ><div class="upload-ready">
+              <span x-text="upload.filename"></span
+              ><span>Uploaded · attachment not confirmed</span>
+            </div></template
+          >
+          <button
+            x-show="editorUploads.length && selected?.id && !dirty"
+            :disabled="filesBusy"
+            @click="attachEditorUploads()"
+          >
+            Attach uploaded files / retry
+          </button>
+          <div class="file-grid">
+            <template x-for="file in recordFiles" :key="file.filename"
+              ><figure class="file-card">
+                <template x-if="file.preview==='image'"
+                  ><img
+                    loading="lazy"
+                    :src="fileURL(selected?.id,file.filename,true)"
+                    :alt="file.filename"
+                /></template>
+                <template x-if="file.preview==='audio'"
+                  ><audio
+                    controls
+                    preload="none"
+                    :src="fileURL(selected?.id,file.filename,true)"
+                  ></audio
+                ></template>
+                <template x-if="file.preview==='video'"
+                  ><video
+                    controls
+                    preload="metadata"
+                    :src="fileURL(selected?.id,file.filename,true)"
+                  ></video
+                ></template>
+                <template x-if="file.preview==='text'"
+                  ><div>
+                    <button @click="previewFileText(file)">Preview text</button>
+                    <pre
+                      x-show="fileText[file.filename]"
+                      x-text="fileText[file.filename]"
+                    ></pre></div
+                ></template>
+                <figcaption>
+                  <a
+                    :href="fileURL(selected?.id,file.filename)"
+                    x-text="file.filename"
+                    download
+                  ></a
+                  ><span
+                    class="muted"
+                    x-text="file.bytes.toLocaleString()+' bytes'"
+                  ></span>
+                </figcaption>
+                <div class="file-actions" x-show="!inspecting">
+                  <label class="file-picker"
+                    >Replace<input
+                      type="file"
+                      :disabled="dirty||filesBusy||busy"
+                      @change="replaceRecordFile(file,$event.target.files[0]);$event.target.value=''"
+                  /></label>
+                  <button
+                    class="danger"
+                    :disabled="dirty||filesBusy||busy"
+                    @click="removeRecordFile(file)"
+                  >
+                    Remove permanently
+                  </button>
+                </div>
+              </figure></template
+            >
+          </div>
+          <p
+            class="muted"
+            x-show="!recordFiles.length && !editorUploads.length"
+          >
+            No files attached.
+          </p>
+        </section>
         <div class="editor-footer" x-show="!inspecting">
           <span class="muted">Changes stay in your draft until you save.</span
           ><button

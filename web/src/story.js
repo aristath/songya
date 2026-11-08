@@ -1,7 +1,24 @@
 import MarkdownIt from "markdown-it";
+import { relativeFileURL } from "./files.js";
 
 const markdown = new MarkdownIt({ html: false, linkify: true });
 
+for (const [rule, attribute, preview] of [
+  ["image", "src", true],
+  ["link_open", "href", false],
+]) {
+  const original = markdown.renderer.rules[rule];
+  markdown.renderer.rules[rule] = (tokens, index, options, env, self) => {
+    const token = tokens[index];
+    token.attrSet(
+      attribute,
+      relativeFileURL(env?.recordID, token.attrGet(attribute), preview),
+    );
+    return original
+      ? original(tokens, index, options, env, self)
+      : self.renderToken(tokens, index, options);
+  };
+}
 export function storyUI(request) {
   let generation = 0,
     controller,
@@ -22,8 +39,8 @@ export function storyUI(request) {
     readingStory() {
       return this.inspecting && this.selected?.kind === "stories";
     },
-    storyHTML(text) {
-      return markdown.render(text);
+    storyHTML(text, id) {
+      return markdown.render(text, { recordID: id });
     },
     resetStory() {
       generation++;

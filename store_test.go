@@ -25,8 +25,8 @@ func TestStoreInitializesAndPreservesExistingFiles(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(path, "memories"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	name := filepath.Join(path, "memories", "m_7k3m9x2q6v4c.md")
-	if err := os.WriteFile(name, []byte(sample), 0600); err != nil {
+	name := filepath.Join(path, "memories", "m_7k3m9x2q6v4c/record.md")
+	if err := fixtureWriteFile(name, []byte(sample), 0600); err != nil {
 		t.Fatal(err)
 	}
 	for range 2 {
@@ -79,7 +79,7 @@ func TestStoreCreatesAndReadsAllDestinations(t *testing.T) {
 		if metadata.CreatedAt.Before(before) || metadata.CreatedAt.After(time.Now()) || !metadata.CreatedAt.Equal(metadata.UpdatedAt) || metadata.CreatedAt.Location() != time.UTC {
 			t.Fatalf("timestamps were not engine-assigned in UTC: %+v", metadata)
 		}
-		stored, err := os.ReadFile(filepath.Join(path, string(destination), doc.ID+".md"))
+		stored, err := os.ReadFile(filepath.Join(path, string(destination), doc.ID+"/record.md"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -131,7 +131,7 @@ func TestStoreReadsSameSuffixInDifferentDestinations(t *testing.T) {
 	for _, destination := range []Destination{Memories, Entities, Topics, Stories} {
 		prefix, _ := destination.prefix()
 		id := prefix + "7k3m9x2q6v4c"
-		if err := os.WriteFile(filepath.Join(path, string(destination), id+".md"), []byte(sample), 0600); err != nil {
+		if err := fixtureWriteFile(filepath.Join(path, string(destination), id+"/record.md"), []byte(sample), 0600); err != nil {
 			t.Fatal(err)
 		}
 		read, err := store.Read(id)
@@ -200,8 +200,8 @@ func TestStoreRejectsInvalidInputAndIsolatesDamagedRecords(t *testing.T) {
 		t.Fatalf("missing record did not retain ErrNotExist: %v", err)
 	}
 	for _, content := range []string{"---\ntitle: [broken\n---\nOriginal text", strings.Replace(sample, "created_at: 2026-11-03T10:00:00Z", "created_at: invalid", 1)} {
-		name := filepath.Join(path, "memories", "m_7k3m9x2q6v4c.md")
-		if err := os.WriteFile(name, []byte(content), 0600); err != nil {
+		name := filepath.Join(path, "memories", "m_7k3m9x2q6v4c/record.md")
+		if err := fixtureWriteFile(name, []byte(content), 0600); err != nil {
 			t.Fatal(err)
 		}
 		if doc, err := store.Read("m_7k3m9x2q6v4c"); err != nil || len(doc.Diagnostics()) == 0 {
@@ -231,8 +231,8 @@ func TestPublicationNeverOverwritesExistingFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	name := filepath.Join("memories", "m_7k3m9x2q6v4c.md")
-	if err := root.WriteFile(name, []byte("Existing contents"), 0600); err != nil {
+	name := filepath.Join("memories", "m_7k3m9x2q6v4c/record.md")
+	if err := fixtureRootWriteFile(root, name, []byte("Existing contents"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if ready, err := stage(root, name, "", []byte(sample)); !ready || err != nil {
@@ -259,10 +259,11 @@ func TestStoreRejectsSymlinksOutsideRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	external := filepath.Join(outside, "record.md")
-	if err := os.WriteFile(external, []byte(sample), 0600); err != nil {
+	if err := fixtureWriteFile(external, []byte(sample), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(external, filepath.Join(path, "memories", "m_7k3m9x2q6v4c.md")); err != nil {
+	_ = os.MkdirAll(filepath.Join(path, "memories", "m_7k3m9x2q6v4c"), 0700)
+	if err := os.Symlink(external, filepath.Join(path, "memories", "m_7k3m9x2q6v4c/record.md")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Read("m_7k3m9x2q6v4c"); err == nil {
@@ -311,7 +312,7 @@ func TestStoreInitializationRejectsNonDirectoryAndExternalLinks(t *testing.T) {
 	}
 	path := t.TempDir()
 	name := filepath.Join(path, "memories")
-	if err := os.WriteFile(name, []byte("Existing file"), 0600); err != nil {
+	if err := fixtureWriteFile(name, []byte("Existing file"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	store, err := Open(path)
@@ -373,10 +374,13 @@ func TestStoreConcurrentProcessesPublishCompleteRecords(t *testing.T) {
 					t.Fatal(err)
 				}
 				for _, entry := range entries {
-					if !strings.HasSuffix(entry.Name(), ".md") {
+					if !entry.IsDir() || !ValidID(entry.Name()) {
 						continue
 					}
-					data, err := os.ReadFile(filepath.Join(path, string(destination), entry.Name()))
+					data, err := os.ReadFile(filepath.Join(path, string(destination), entry.Name(), "record.md"))
+					if errors.Is(err, fs.ErrNotExist) {
+						continue
+					}
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -391,10 +395,10 @@ func TestStoreConcurrentProcessesPublishCompleteRecords(t *testing.T) {
 	for _, destination := range destinations {
 		entries, _ := os.ReadDir(filepath.Join(path, string(destination)))
 		for _, entry := range entries {
-			if !strings.HasSuffix(entry.Name(), ".md") {
+			if !entry.IsDir() || !ValidID(entry.Name()) {
 				t.Fatalf("unexpected leftover staging file %q", entry.Name())
 			}
-			id := strings.TrimSuffix(entry.Name(), ".md")
+			id := entry.Name()
 			document, err := store.Read(id)
 			if err != nil || len(document.Body) != 128*1024 {
 				t.Fatalf("incomplete saved record %q: %v", id, err)
@@ -505,7 +509,7 @@ func TestStoreProcess(t *testing.T) {
 	if role == "staged-crash" {
 		store := &Store{path: path}
 		err := store.locked(true, func(root *os.Root) error {
-			if _, err := stage(root, filepath.Join("memories", "m_7k3m9x2q6v4c.md"), "", []byte(sample)); err != nil {
+			if _, err := stage(root, filepath.Join("memories", "m_7k3m9x2q6v4c/record.md"), "", []byte(sample)); err != nil {
 				return err
 			}
 			fmt.Println("staged")
@@ -572,11 +576,11 @@ func TestOpenExistingDoesNotReplaceMissingSourcesOrPublishRecovery(t *testing.T)
 	if err := os.Mkdir(filepath.Join(path, "memories"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	name := filepath.Join("memories", "m_7k3m9x2q6v4c.md")
-	if err := os.Mkdir(filepath.Join(path, pendingName(name)), 0700); err != nil {
+	name := filepath.Join("memories", "m_7k3m9x2q6v4c/record.md")
+	if err := os.MkdirAll(filepath.Join(path, pendingName(name)), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(path, temporaryName(name, "", []byte(sample))), []byte(sample), 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(path, temporaryName(name, "", []byte(sample))), []byte(sample), 0600); err != nil {
 		t.Fatal(err)
 	}
 	reader, err = OpenExisting(path)

@@ -46,7 +46,7 @@ func recordName(id string) (string, error) {
 		for _, destination := range destinations {
 			prefix, _ := destination.prefix()
 			if id[:2] == prefix {
-				return filepath.Join(string(destination), id+".md"), nil
+				return filepath.Join(string(destination), id, "record.md"), nil
 			}
 		}
 	}
@@ -178,7 +178,7 @@ func ensureDirectory(root *os.Root, name string) error {
 	info, err := root.Lstat(name)
 	if err == nil {
 		if info.IsDir() {
-			return nil
+			return errors.Join(syncPath(root, name), syncPath(root, filepath.Dir(name)))
 		}
 		return fmt.Errorf("%s is not a directory", name)
 	}
@@ -188,7 +188,7 @@ func ensureDirectory(root *os.Root, name string) error {
 	if err := root.Mkdir(name, 0700); err != nil {
 		return err
 	}
-	return syncPath(root, ".")
+	return errors.Join(syncPath(root, name), syncPath(root, filepath.Dir(name)))
 }
 
 // Recover resumes completed pending writes when the write lock is available.
@@ -209,6 +209,8 @@ func (s *Store) Recover() error {
 				directories = append(directories, name)
 			}
 		}
+		s.recoverDeletions(root)
+		s.recoverFileChanges(root)
 		s.recoverBatches(root)
 		for _, name := range directories {
 			s.recoverDirectory(root, name)
@@ -276,10 +278,16 @@ func (s *Store) Create(destination Destination, fields map[string]any, body stri
 			if err != nil {
 				return err
 			}
-			name := filepath.Join(string(destination), id+".md")
-			if _, err := root.Lstat(name); err == nil {
+			name, _ := recordName(id)
+			if err := recordWritable(root, id); err != nil {
+				continue
+			}
+			if _, err := root.Lstat(filepath.Dir(name)); err == nil {
 				continue
 			} else if !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
+			if err := ensureDirectory(root, filepath.Dir(name)); err != nil {
 				return err
 			}
 			retained, err := stage(root, name, "", data)
@@ -368,6 +376,9 @@ func readLockedCopy(root *os.Root, id, name string) (*Document, error) {
 }
 
 func readCopyWith(root *os.Root, id, name string, read func(*os.Root, string) ([]byte, error)) (*Document, error) {
+	if err := recordWritable(root, id); err != nil {
+		return nil, fmt.Errorf("%s: %w", id, fs.ErrNotExist)
+	}
 	data, err := read(root, name)
 	pending := false
 	var warning string

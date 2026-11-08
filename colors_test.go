@@ -22,7 +22,7 @@ func TestColorsDefaultExistingChoicesAndPersistIndependently(t *testing.T) {
 		}
 	}
 	legacy, _ := json.Marshal(existing)
-	_ = os.WriteFile(filepath.Join(store.Directory(), typeConfigurationPath("reader")), legacy, 0600)
+	_ = fixtureWriteFile(filepath.Join(store.Directory(), typeConfigurationPath("reader")), legacy, 0600)
 	cfg, err := store.TypeConfiguration(ctx, "reader")
 	if err != nil || cfg.KindColor(Memories) != "peach" || cfg.Kinds[Entities][0].Color != "mauve" {
 		t.Fatal(cfg, err)
@@ -104,7 +104,7 @@ func TestColorValidationAndDamagedColorsLeaveTypesUsable(t *testing.T) {
 	defs[1].(map[string]any)["color"] = "not-a-color"
 	data["kind_colors"].(map[string]any)["stories"] = false
 	damaged, _ := json.Marshal(data)
-	_ = os.WriteFile(filepath.Join(store.Directory(), typeConfigurationPath("reader")), damaged, 0600)
+	_ = fixtureWriteFile(filepath.Join(store.Directory(), typeConfigurationPath("reader")), damaged, 0600)
 	readable, err := store.TypeConfiguration(ctx, "reader")
 	if err != nil || len(readable.Kinds[Entities]) != 12 || len(readable.Diagnostics) < 3 || readable.Kinds[Entities][0].Color != "mauve" {
 		t.Fatal("a damaged color hid healthy types", readable, err)
@@ -115,7 +115,7 @@ func TestColorValidationAndDamagedColorsLeaveTypesUsable(t *testing.T) {
 	}
 	data["kind_colors"] = "damaged"
 	damaged, _ = json.Marshal(data)
-	_ = os.WriteFile(filepath.Join(store.Directory(), typeConfigurationPath("reader")), damaged, 0600)
+	_ = fixtureWriteFile(filepath.Join(store.Directory(), typeConfigurationPath("reader")), damaged, 0600)
 	readable, err = store.TypeConfiguration(ctx, "reader")
 	if err != nil || len(readable.Kinds[Entities]) != 12 || readable.KindColor(Memories) != "peach" {
 		t.Fatal("damaged record colors hid healthy types", readable, err)

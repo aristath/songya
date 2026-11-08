@@ -24,6 +24,14 @@ import (
 
 const Guide = `Songya stores connected Markdown records. A record is one saved entry. A field is a named part such as title. An ID is the unique label a tool returns for a record. Copy IDs exactly; never invent them. Examples are instructions, not facts to save.
 
+FILES
+A record can have files, such as photos, songs, or notes. Files belong to that record. They are not separate memories. The record ID and actual filename identify a saved file.
+The app uploads bytes before you attach them. Use only completed upload values the app gives you. Never invent a disk path, upload value, or file contents. Never send binary data or base64 in text tool arguments.
+After saving a new record, use its returned ID. Call list_files to get the current revision, then attach_file for each requested upload. Read each result. Say a file is attached only when status is committed. If a save fails, the completed upload is retained; do not claim it was lost or attached. If a file result is pending or its reply was lost, use file_status with that operation key. memory_maintenance with action=recover retries retained work. Do not start a second attachment to check the first.
+list_files shows filenames and preview formats, not image or sound contents. read_file can read plain text in small pages. If a file is unsupported, say you can store/manage it but cannot inspect its contents with these tools. Do not guess what it shows or says.
+replace_file and remove_file permanently change bytes; use them only for the person's explicit request. They do not change the record's prose. Never remove a file just because the prose no longer mentions it.
+Use normal Markdown for a caption or deliberate inline link. Use the actual filename from the successful tool result. Do not add a duplicate file list in metadata.
+
 TYPES
 Types belong to the selected user. Read type_configuration for that user before assigning a type unless the app already supplied the choices. Use only configured IDs and their definitions. Omit type if none fits. type_user selects whose classification changes; it does not change the record owner. Empty type clears only that user's assignment. Never invent types, change type settings, write a global metadata.type, or change another user's classifications. Shared identities can have different types for different users.
 
@@ -484,8 +492,8 @@ func (a *App) read(ctx context.Context, input pageInput) (any, error) {
 	// Damaged or misplaced filenames remain inspectable by their literal source.
 	if input.ID == "" && input.Key == "" && input.Archive == "" && input.Root == "" {
 		parts := strings.Split(input.Source, "/")
-		if len(parts) == 2 && strings.HasSuffix(parts[1], ".md") {
-			id := strings.TrimSuffix(parts[1], ".md")
+		if len(parts) == 3 && parts[2] == "record.md" {
+			id := parts[1]
 			if songya.ValidID(id) && string(kindFor(id)) == parts[0] {
 				input.ID = id
 				input.View = "source"
@@ -528,7 +536,7 @@ func (a *App) read(ctx context.Context, input pageInput) (any, error) {
 			user = doc.Metadata().User
 		}
 		if input.View == "source" {
-			source := string(kindFor(input.ID)) + "/" + input.ID + ".md"
+			source := string(kindFor(input.ID)) + "/" + input.ID + "/record.md"
 			data, err = a.Store.ReadSource(source)
 			if err == nil && owned {
 				user = songya.Parse(data).Metadata().User
@@ -678,6 +686,57 @@ func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]
 	tool(server, "compose_story", "Read a story and its linked memories in reading order. Follow next as offset to read more. Missing records and loops are reported.", schema(map[string]any{"id": str("Story ID"), "offset": count(), "limit": count()}, "id"), true, func(ctx context.Context, input pageInput) (any, error) {
 		return store.Compose(ctx, input.ID, input.Offset, limit(input.Limit, 12288, 8192))
 	})
+	tool(server, "list_files", "List files attached to this record. Use each returned filename exactly. revision is required to attach, replace, or remove a file. If next is positive, send it as offset with the same id to read more.", schema(map[string]any{"id": str("Record ID"), "offset": count(), "limit": count()}, "id"), true, func(ctx context.Context, input struct {
+		ID     string `json:"id"`
+		Offset int    `json:"offset"`
+		Limit  int    `json:"limit"`
+	}) (any, error) {
+		listing, err := store.Attachments(ctx, input.ID)
+		if err != nil {
+			return listing, err
+		}
+		start := min(max(0, input.Offset), len(listing.Files))
+		end := min(start+limit(input.Limit, 16, 16), len(listing.Files))
+		next := 0
+		if end < len(listing.Files) {
+			next = end
+		}
+		return map[string]any{"files": listing.Files[start:end], "revision": listing.Revision, "pending": listing.Pending, "diagnostics": listing.Diagnostics, "offset": start, "next": next, "truncated": next > 0}, nil
+	})
+	tool(server, "read_file", "Read a plain text attachment, at most 16384 bytes per call. If next is positive, use it as offset with the same id and filename. Other formats are stored and downloadable but this tool cannot see/hear them. Do not claim to have read them.", schema(map[string]any{"id": str("Record ID"), "filename": str("Actual filename from list_files"), "offset": count()}, "id", "filename"), true, func(ctx context.Context, input struct {
+		ID       string `json:"id"`
+		Filename string `json:"filename"`
+		Offset   int64  `json:"offset"`
+	}) (any, error) {
+		input.Offset = max(0, input.Offset)
+		text, next, err := store.ReadAttachmentText(ctx, input.ID, input.Filename, input.Offset, 16384)
+		return map[string]any{"text": text, "offset": input.Offset, "next": next, "truncated": next > 0}, err
+	})
+	tool(server, "attach_file", "Attach a completed upload to an existing record. Read list_files first and send its revision. Use only an upload value supplied by the app. Filename is optional; existing filenames are never silently overwritten. The result gives the actual saved filename. A saved memory alone does not attach its files.", schema(map[string]any{"id": str("Record ID"), "revision": str("Latest revision from list_files"), "upload": str("Completed upload value supplied by the app"), "filename": str("Optional desired filename; no folders")}, "id", "revision", "upload"), false, func(ctx context.Context, input songya.FileChange) (any, error) {
+		input.Key = requestKey(ctx)
+		input.Action = "add"
+		input.Key = fileRequestKey(input)
+		return store.ChangeFile(ctx, input)
+	})
+	tool(server, "replace_file", "Replace the bytes of an existing file only when the person asked to replace it. Read list_files first. Send the exact filename, current revision, and completed upload value. This permanently replaces that file's old bytes. It does not edit the record's words.", schema(map[string]any{"id": str("Record ID"), "revision": str("Latest revision from list_files"), "filename": str("Actual existing filename"), "upload": str("Completed upload value supplied by the app")}, "id", "revision", "filename", "upload"), false, func(ctx context.Context, input songya.FileChange) (any, error) {
+		input.Key = requestKey(ctx)
+		input.Action = "replace"
+		input.Key = fileRequestKey(input)
+		return store.ChangeFile(ctx, input)
+	})
+	tool(server, "remove_file", "Permanently remove one attached file only when the person asked to remove it. Read list_files first. Send the record ID, current revision, and exact filename. This does not delete the record or change its words.", schema(map[string]any{"id": str("Record ID"), "revision": str("Latest revision from list_files"), "filename": str("Actual existing filename")}, "id", "revision", "filename"), false, func(ctx context.Context, input songya.FileChange) (any, error) {
+		input.Key = requestKey(ctx)
+		input.Action = "remove"
+		input.Key = fileRequestKey(input)
+		return store.ChangeFile(ctx, input)
+	})
+
+	tool(server, "file_status", "Check an attachment operation after a failed or lost reply. Copy the exact key returned by the file tool. committed confirms that operation finished; pending means it is retained. memory_maintenance with action=recover retries retained work. Do not invent a new save to check an old one.", schema(map[string]any{"key": str("Exact file operation key returned by the file tool")}, "key"), true, func(ctx context.Context, input struct {
+		Key string `json:"key"`
+	}) (any, error) {
+		return store.FileChangeReceipt(ctx, input.Key)
+	})
+
 	type organization struct {
 		Action   string             `json:"action"`
 		Sources  []string           `json:"sources"`
@@ -884,3 +943,11 @@ func importPage(mapping songya.ImportMapping, offset, size int) any {
 }
 
 func memoryRevision(data []byte) string { return fmt.Sprintf("%x", sha256.Sum256(data)) }
+
+func fileRequestKey(input songya.FileChange) string {
+	if input.Key != "" {
+		return input.Key
+	}
+	data, _ := json.Marshal(input)
+	return fmt.Sprintf("file:%x", sha256.Sum256(data))
+}

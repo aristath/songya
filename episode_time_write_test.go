@@ -54,7 +54,7 @@ func TestOngoingStateAndInvalidDateUpdatesPreserveStoredAccount(t *testing.T) {
 	if timing.Date != nil || dateValue(timing.Earliest) != "2025-07-01" || timing.Latest != nil {
 		t.Fatal("ongoing state acquired an exact day or invented end", timing)
 	}
-	file := filepath.Join(store.path, "memories", id+".md")
+	file := filepath.Join(store.path, "memories", id+"/record.md")
 	before, _ := os.ReadFile(file)
 	if _, err := store.SaveMemory(ctx, MemoryInput{ID: id, Append: "This must not be partly saved.", Time: map[string]any{"latest": "ongoing"}}); err == nil {
 		t.Fatal("invalid date update accepted")

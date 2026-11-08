@@ -62,12 +62,12 @@ func (s *Store) resumeAbandon(root *os.Root, journal batchJournal) error {
 			return err
 		}
 		for _, entry := range journal.Entries {
-			s.clearBatchClaim(root, entry.Source, []byte(filepath.Base(directory)))
+			s.clearBatchClaim(root, entry.target(), []byte(filepath.Base(directory)))
 		}
 		return nil
 	}
 	for _, entry := range journal.Entries {
-		current, err := readFile(root, entry.Source)
+		current, err := readFile(root, entry.target())
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
@@ -80,7 +80,7 @@ func (s *Store) resumeAbandon(root *os.Root, journal batchJournal) error {
 		if entry.Base == "" {
 			// Recheck immediately before deletion, with the same advisory-lock limit
 			// as publication when an external editor does not coordinate with us.
-			current, err = readFile(root, entry.Source)
+			current, err = readFile(root, entry.target())
 			if errors.Is(err, fs.ErrNotExist) {
 				continue
 			}
@@ -90,7 +90,7 @@ func (s *Store) resumeAbandon(root *os.Root, journal batchJournal) error {
 			if dataRevision(current) != entry.Revision {
 				continue
 			}
-			if err := root.Remove(entry.Source); err != nil {
+			if err := root.Remove(entry.target()); err != nil {
 				return err
 			}
 		} else {
@@ -98,7 +98,7 @@ func (s *Store) resumeAbandon(root *os.Root, journal batchJournal) error {
 			if err := syncNew(root, temporary, entry.Before); err != nil {
 				return err
 			}
-			current, err = readFile(root, entry.Source)
+			current, err = readFile(root, entry.target())
 			if errors.Is(err, fs.ErrNotExist) {
 				continue
 			}
@@ -108,18 +108,18 @@ func (s *Store) resumeAbandon(root *os.Root, journal batchJournal) error {
 			if dataRevision(current) != entry.Revision {
 				continue
 			}
-			if err := root.Rename(temporary, entry.Source); err != nil {
+			if err := root.Rename(temporary, entry.target()); err != nil {
 				return err
 			}
 		}
-		if err := syncPath(root, filepath.Dir(entry.Source)); err != nil {
+		if err := syncPath(root, filepath.Dir(entry.target())); err != nil {
 			return err
 		}
 	}
 	// Sync every affected directory on retries too: the previous process may have
 	// died after a rollback rename but before its directory sync.
 	for _, entry := range journal.Entries {
-		if err := syncPath(root, filepath.Dir(entry.Source)); err != nil {
+		if err := syncPath(root, filepath.Dir(entry.target())); err != nil {
 			return err
 		}
 	}
@@ -127,7 +127,7 @@ func (s *Store) resumeAbandon(root *os.Root, journal batchJournal) error {
 		return err
 	}
 	for _, entry := range journal.Entries {
-		s.clearBatchClaim(root, entry.Source, []byte(filepath.Base(directory)))
+		s.clearBatchClaim(root, entry.target(), []byte(filepath.Base(directory)))
 	}
 	return nil
 }

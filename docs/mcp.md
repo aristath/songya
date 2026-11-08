@@ -201,3 +201,25 @@ Date-only updates leave the description unchanged, and save feedback returns
 both lifetime components. A narrated event belongs in a linked memory with
 its own event timing. An entity start/end date alone does not need a separate
 memory record.
+
+
+## Files
+
+- `list_files(id)` returns actual filenames, preview kinds, and the current record revision.
+- `read_file(id, filename, offset)` reads at most 16384 bytes of plain text. Continue a positive `next` as `offset`. Unsupported media is not interpreted.
+- `attach_file(id, revision, upload, filename?)` attaches a completed upload supplied by the app, returning the actual filename and durability status.
+- `replace_file(id, revision, filename, upload)` explicitly replaces one file's bytes.
+- `remove_file(id, revision, filename)` explicitly removes one file.
+- `file_status(key)` checks the original file operation after an uncertain reply, without replaying it.
+
+Use record IDs and returned filenames, never model-invented disk paths. Uploads
+travel over the application's streaming HTTP endpoint, not binary/base64 text
+arguments. The embedded chat supplies completed upload receipts alongside each
+message. Text-only clients can manage files and inspect supported text; these tools
+do not provide OCR, image understanding, audio transcription, or video analysis.
+
+Only `status:"committed"` confirms an attachment change. An upload alone is not an
+attachment. Clients supply stable `songya/request-key` metadata on mutations; a
+retry must keep that key and its original arguments. `memory_maintenance` recovery
+also resumes accepted file changes. Record-file changes update `updated_at` and
+the text revision without changing the prose or unrelated field values.

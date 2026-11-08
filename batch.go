@@ -77,6 +77,19 @@ type batchJournal struct {
 	Entries []batchEntry
 }
 
+// Source stays byte-for-byte as recorded in old receipts. It is never a live path.
+func (e batchEntry) target() string {
+	name, _ := batchTarget(e.ID)
+	return name
+}
+
+func historicalRecordName(id string) string {
+	if !ValidID(id) {
+		return ""
+	}
+	return filepath.Join(string(kindOf(id)), id+".md")
+}
+
 func batchDirectory(key string) string { return filepath.Join(".batches", dataRevision([]byte(key))) }
 func validHash(value string) bool {
 	_, err := hex.DecodeString(value)
@@ -163,7 +176,7 @@ func loadJournal(root *os.Root, directory string) (batchJournal, error) {
 		seen := map[string]bool{}
 		for _, record := range journal.Entries {
 			source, err := batchTarget(record.ID)
-			if err != nil || record.Source != source || seen[record.ID] || record.Revision != dataRevision(record.After) || record.Base != "" && record.Base != dataRevision(record.Before) {
+			if err != nil || (record.Source != source && record.Source != historicalRecordName(record.ID)) || seen[record.ID] || record.Revision != dataRevision(record.After) || record.Base != "" && record.Base != dataRevision(record.Before) {
 				return journal, fmt.Errorf("invalid record in batch journal %s; retained", directory)
 			}
 			seen[record.ID] = true
@@ -291,7 +304,10 @@ func prepareBatch(ctx context.Context, root *os.Root, request BatchRequest, revi
 					return journal, err
 				}
 				name, _ := recordName(id)
-				_, committed := root.Lstat(name)
+				if err := recordWritable(root, id); err != nil {
+					continue
+				}
+				_, committed := root.Lstat(filepath.Dir(name))
 				_, pending := root.Lstat(pendingName(name))
 				if errors.Is(committed, fs.ErrNotExist) && errors.Is(pending, fs.ErrNotExist) && !ids[id] {
 					break
@@ -326,6 +342,9 @@ func prepareBatch(ctx context.Context, root *os.Root, request BatchRequest, revi
 		}
 		name, err := recordName(change.ID)
 		if err != nil {
+			return journal, err
+		}
+		if err := (&Store{path: root.Name()}).recoverRecordFiles(root, change.ID); err != nil {
 			return journal, err
 		}
 		if _, err := root.Lstat(pendingName(name)); err == nil {
@@ -586,7 +605,7 @@ func (s *Store) resumeBatch(root *os.Root, journal batchJournal) (string, error)
 			return "blocked", err
 		}
 		for _, entry := range journal.Entries {
-			s.clearBatchClaim(root, entry.Source, []byte(filepath.Base(directory)))
+			s.clearBatchClaim(root, entry.target(), []byte(filepath.Base(directory)))
 		}
 		return "committed", nil
 	}
@@ -611,7 +630,10 @@ func (s *Store) publishBatch(root *os.Root, journal batchJournal) error {
 	owner := []byte(filepath.Base(directory))
 	// Catch already-observed conflicts before reserving or publishing anything.
 	for _, entry := range journal.Entries {
-		current, err := readFile(root, entry.Source)
+		if err := recordWritable(root, entry.ID); err != nil {
+			return err
+		}
+		current, err := readFile(root, entry.target())
 		if err == nil {
 			revision := dataRevision(current)
 			if revision != entry.Base && revision != entry.Revision {
@@ -623,16 +645,19 @@ func (s *Store) publishBatch(root *os.Root, journal batchJournal) error {
 	}
 	// Establish every reservation before publishing the first canonical file.
 	for _, entry := range journal.Entries {
-		if err := root.Mkdir(pendingName(entry.Source), 0700); err != nil && !errors.Is(err, fs.ErrExist) {
+		if err := ensureDirectory(root, filepath.Dir(entry.target())); err != nil {
 			return err
 		}
-		claim := filepath.Join(pendingName(entry.Source), "batch")
+		if err := root.Mkdir(pendingName(entry.target()), 0700); err != nil && !errors.Is(err, fs.ErrExist) {
+			return err
+		}
+		claim := filepath.Join(pendingName(entry.target()), "batch")
 		if existing, err := readFile(root, claim); err == nil {
 			if string(existing) != string(owner) {
 				return fmt.Errorf("%s is reserved by another batch", entry.ID)
 			}
 		} else {
-			entries, listErr := fs.ReadDir(root.FS(), pendingName(entry.Source))
+			entries, listErr := fs.ReadDir(root.FS(), pendingName(entry.target()))
 			if listErr != nil {
 				return listErr
 			}
@@ -643,20 +668,20 @@ func (s *Store) publishBatch(root *os.Root, journal batchJournal) error {
 		if err := syncNew(root, claim, owner); err != nil {
 			return err
 		}
-		if err := syncPath(root, pendingName(entry.Source)); err != nil {
+		if err := syncPath(root, pendingName(entry.target())); err != nil {
 			return err
 		}
-		if err := syncPath(root, filepath.Dir(entry.Source)); err != nil {
+		if err := syncPath(root, filepath.Dir(entry.target())); err != nil {
 			return err
 		}
 	}
 	for _, entry := range journal.Entries {
-		current, err := readFile(root, entry.Source)
+		current, err := readFile(root, entry.target())
 		if err == nil && dataRevision(current) == entry.Revision {
-			if err := syncPath(root, entry.Source); err != nil {
+			if err := syncPath(root, entry.target()); err != nil {
 				return err
 			}
-			if err := syncPath(root, filepath.Dir(entry.Source)); err != nil {
+			if err := syncPath(root, filepath.Dir(entry.target())); err != nil {
 				return err
 			}
 			continue
@@ -673,28 +698,28 @@ func (s *Store) publishBatch(root *os.Root, journal batchJournal) error {
 			return err
 		}
 		// Recheck immediately before replacement, just as for single-record updates.
-		current, err = readFile(root, entry.Source)
+		current, err = readFile(root, entry.target())
 		if entry.Base == "" {
 			if err == nil || !errors.Is(err, fs.ErrNotExist) {
 				return ErrConflict
 			}
-			if err := root.Link(temporary, entry.Source); err != nil {
+			if err := root.Link(temporary, entry.target()); err != nil {
 				return err
 			}
 		} else {
 			if err != nil || dataRevision(current) != entry.Base {
 				return ErrConflict
 			}
-			if err := root.Rename(temporary, entry.Source); err != nil {
+			if err := root.Rename(temporary, entry.target()); err != nil {
 				return err
 			}
 		}
-		if err := syncPath(root, filepath.Dir(entry.Source)); err != nil {
+		if err := syncPath(root, filepath.Dir(entry.target())); err != nil {
 			return err
 		}
 	}
 	for _, entry := range journal.Entries {
-		data, err := readFile(root, entry.Source)
+		data, err := readFile(root, entry.target())
 		if err != nil || dataRevision(data) != entry.Revision {
 			return fmt.Errorf("batch changed before commit: %w", ErrConflict)
 		}
@@ -703,7 +728,7 @@ func (s *Store) publishBatch(root *os.Root, journal batchJournal) error {
 		return err
 	}
 	for _, entry := range journal.Entries {
-		s.clearBatchClaim(root, entry.Source, owner)
+		s.clearBatchClaim(root, entry.target(), owner)
 	}
 	return nil
 }
@@ -759,7 +784,7 @@ func batchView(root *os.Root, name string, data []byte, readErr error) ([]byte, 
 		return readFile(root, name)
 	}
 	for _, entry := range journal.Entries {
-		if entry.Source != name {
+		if entry.target() != name {
 			continue
 		}
 		if readErr == nil {
@@ -826,7 +851,7 @@ func busyBatchView(root *os.Root, name string, data []byte, knownWithdrawals map
 			continue
 		}
 		for _, entry := range journal.Entries {
-			if entry.Source != name || entry.Revision != revision {
+			if entry.target() != name || entry.Revision != revision {
 				continue
 			}
 			if marker(root, filepath.Join(path, "abandoned")) {
@@ -903,7 +928,7 @@ func (s *Store) BatchStatus(ctx context.Context, key string) (Receipt, error) {
 		return receiptFor(journal, withdrawal, nil), nil
 	}
 	for _, entry := range journal.Entries {
-		data, err := readFile(root, entry.Source)
+		data, err := readFile(root, entry.target())
 		if err == nil {
 			actual := dataRevision(data)
 			if actual != entry.Base && actual != entry.Revision {

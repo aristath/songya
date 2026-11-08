@@ -37,6 +37,7 @@ func Handler(store *songya.Store) *Application {
 	chat.register(mux)
 	chat.registerRecall(mux)
 	chat.registerTypes(mux)
+	chat.registerFiles(mux)
 	mux.HandleFunc("GET /api/records/events", chat.recordEventsHTTP)
 	mux.HandleFunc("GET /api/timeline", chat.timelineHTTP)
 	files, _ := fs.Sub(assets, "assets")

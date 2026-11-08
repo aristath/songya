@@ -42,7 +42,7 @@ func testBatchProcess(t *testing.T, role, path string) {
 		persistJournal(t, root, journal)
 		if point != "journal" {
 			for _, entry := range journal.Entries {
-				if err := root.Mkdir(pendingName(entry.Source), 0700); err != nil {
+				if err := fixtureRootMkdir(root, pendingName(entry.Source), 0700); err != nil {
 					return err
 				}
 				if err := syncNew(root, filepath.Join(pendingName(entry.Source), "batch"), []byte(filepath.Base(batchDirectory(request.Key)))); err != nil {

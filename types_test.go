@@ -158,7 +158,7 @@ func TestDamagedUserTypesDoNotBlockHealthyRecordsOrAnotherUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(filepath.Join(s.Directory(), typeConfigurationPath("ari")), []byte("{broken"), 0600); err != nil {
+	if err = fixtureWriteFile(filepath.Join(s.Directory(), typeConfigurationPath("ari")), []byte("{broken"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.TypeConfiguration(ctx, "ari"); err == nil {
@@ -207,14 +207,14 @@ func TestTypeSettingsAndReassignmentRecoverTogetherAfterInterruption(t *testing.
 	}
 	persistJournal(t, root, journal)
 	for _, entry := range journal.Entries {
-		if err := root.Mkdir(pendingName(entry.Source), 0700); err != nil {
+		if err := fixtureRootMkdir(root, pendingName(entry.Source), 0700); err != nil {
 			t.Fatal(err)
 		}
 		if err := syncNew(root, filepath.Join(pendingName(entry.Source), "batch"), []byte(filepath.Base(batchDirectory(request.Key)))); err != nil {
 			t.Fatal(err)
 		}
 		if entry.ID == typeConfigurationID("ari") {
-			if err := root.WriteFile(entry.Source, entry.After, 0600); err != nil {
+			if err := fixtureRootWriteFile(root, entry.Source, entry.After, 0600); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -259,7 +259,7 @@ func TestSettingsEditsPreserveUnrecognizedAndDamagedAssignments(t *testing.T) {
 	}
 	name, _ := recordName(doc.ID)
 	raw := []byte("---\nname: Clara\ntypes:\n  ari: person\n  bob: {unparsed: keep this}\n---\nIntact words.\n")
-	if err := os.WriteFile(filepath.Join(s.Directory(), name), raw, 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(s.Directory(), name), raw, 0600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, _ := s.TypeConfiguration(ctx, "ari")
@@ -283,7 +283,7 @@ func TestSettingsEditsPreserveUnrecognizedAndDamagedAssignments(t *testing.T) {
 		t.Fatal(fields, after.Body)
 	}
 	// An already unrecognized assignment must not block a definition-only edit.
-	if err := os.WriteFile(filepath.Join(s.Directory(), name), []byte("---\nname: Clara\ntypes: {ari: old_unknown}\n---\nIntact words.\n"), 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(s.Directory(), name), []byte("---\nname: Clara\ntypes: {ari: old_unknown}\n---\nIntact words.\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, _ = s.TypeConfiguration(ctx, "ari")
@@ -320,13 +320,13 @@ func TestTypeSettingsLockedReadsKeepInterruptedBatchPriorView(t *testing.T) {
 	}
 	persistJournal(t, root, journal)
 	entry := journal.Entries[0]
-	if err := root.Mkdir(pendingName(entry.Source), 0700); err != nil {
+	if err := fixtureRootMkdir(root, pendingName(entry.Source), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if err := syncNew(root, filepath.Join(pendingName(entry.Source), "batch"), []byte(filepath.Base(batchDirectory(request.Key)))); err != nil {
 		t.Fatal(err)
 	}
-	if err := root.WriteFile(entry.Source, entry.After, 0600); err != nil {
+	if err := fixtureRootWriteFile(root, entry.Source, entry.After, 0600); err != nil {
 		t.Fatal(err)
 	}
 	err = s.lockedContext(ctx, func(locked *os.Root) error {

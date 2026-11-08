@@ -51,6 +51,9 @@ func (s *Store) Update(id, revision string, fields map[string]any, body string) 
 	}
 	var data []byte
 	err = s.locked(true, func(root *os.Root) (err error) {
+		if err := s.recoverRecordFiles(root, id); err != nil {
+			return err
+		}
 		if err := s.validateTypeChange(context.Background(), root, Parse(doc.OriginalSource()), doc, kindOf(id), nil); err != nil {
 			return err
 		}

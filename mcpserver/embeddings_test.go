@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -51,7 +50,7 @@ func TestMCPEmbeddingConfigurationAndSemanticSearch(t *testing.T) {
 	}
 	config := map[string]any{"embeddings": map[string]any{"model": 77, "base_url": service.URL + "/v1/", "api_key": "fixture-key", "chunk_size": "2000"}}
 	data, _ := json.Marshal(config)
-	if err := os.WriteFile(filepath.Join(path, "config.json"), data, 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(path, "config.json"), data, 0600); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -81,7 +80,7 @@ func TestMCPEmbeddingConfigurationAndSemanticSearch(t *testing.T) {
 	config["embeddings"].(map[string]any)["model"] = "custom-model"
 	data, _ = json.Marshal(config)
 	override := filepath.Join(t.TempDir(), "songya.json")
-	if err := os.WriteFile(override, data, 0600); err != nil {
+	if err := fixtureWriteFile(override, data, 0600); err != nil {
 		t.Fatal(err)
 	}
 	second := connect(t, ctx, bin, path, "", "--config", override)

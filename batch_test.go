@@ -64,7 +64,7 @@ func persistJournal(t *testing.T, root *os.Root, journal batchJournal) {
 		t.Fatal(err)
 	}
 	directory := batchDirectory(journal.Key)
-	if err := root.Mkdir(directory, 0700); err != nil {
+	if err := fixtureRootMkdir(root, directory, 0700); err != nil {
 		t.Fatal(err)
 	}
 	data, err := json.Marshal(journal)
@@ -106,14 +106,14 @@ func TestBatchPartialPublicationHasCoherentViewAndPreservesConflict(t *testing.T
 	persistJournal(t, root, journal)
 	owner := []byte(filepath.Base(batchDirectory(request.Key)))
 	for _, entry := range journal.Entries {
-		if err := root.Mkdir(pendingName(entry.Source), 0700); err != nil {
+		if err := fixtureRootMkdir(root, pendingName(entry.Source), 0700); err != nil {
 			t.Fatal(err)
 		}
 		if err := syncNew(root, filepath.Join(pendingName(entry.Source), "batch"), owner); err != nil {
 			t.Fatal(err)
 		}
 		if entry.ID == a.ID || entry.Base == "" {
-			if err := root.WriteFile(entry.Source, entry.After, 0600); err != nil {
+			if err := fixtureRootWriteFile(root, entry.Source, entry.After, 0600); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -131,7 +131,7 @@ func TestBatchPartialPublicationHasCoherentViewAndPreservesConflict(t *testing.T
 	}
 	name, _ := recordName(b.ID)
 	user := []byte("User changed B")
-	if err := root.WriteFile(name, user, 0600); err != nil {
+	if err := fixtureRootWriteFile(root, name, user, 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Recover(); err != nil {
@@ -149,7 +149,7 @@ func TestBatchPartialPublicationHasCoherentViewAndPreservesConflict(t *testing.T
 	// Deliberately restore the base in this fixture, then let recovery finish.
 	for _, entry := range journal.Entries {
 		if entry.ID == b.ID {
-			if err := root.WriteFile(entry.Source, entry.Before, 0600); err != nil {
+			if err := fixtureRootWriteFile(root, entry.Source, entry.Before, 0600); err != nil {
 				t.Fatal(err)
 			}
 		}

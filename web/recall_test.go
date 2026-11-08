@@ -28,7 +28,7 @@ func TestRecallHTTPSettingsConflictPreservationAndLiveConfiguration(t *testing.T
 		t.Fatal(err)
 	}
 	original := `{"embeddings":{"model":"configured","base_url":"` + embed.URL + `","api_key":"private-key"},"other":{"keep":[3,true]}}`
-	os.WriteFile(filepath.Join(root, "config.json"), []byte(original), 0600)
+	fixtureWriteFile(filepath.Join(root, "config.json"), []byte(original), 0600)
 	app := Handler(store)
 	defer app.Close()
 	code, settings := call(t, app, "GET", "/api/recall/settings", nil)
@@ -118,7 +118,7 @@ func TestChatAutomaticallyCapturesRecallAndKeepsItAcrossRetry(t *testing.T) {
 	p := songya.DefaultRecallPolicy()
 	p.DirectLimit = 0
 	raw, _ := json.Marshal(map[string]any{"recall": p})
-	os.WriteFile(filepath.Join(root, "config.json"), raw, 0600)
+	fixtureWriteFile(filepath.Join(root, "config.json"), raw, 0600)
 	app.Close()
 	app = Handler(store)
 	defer app.Close()

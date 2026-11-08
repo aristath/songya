@@ -13,7 +13,7 @@ func TestTimelineHTTPShowsUnknownDatesAndConflictsWithoutChangingRecords(t *test
 	first, _ := store.Create(songya.Memories, map[string]any{"user": "reader", "title": "Mary's walk", "time": map[string]any{"date": "2000-01-01"}}, "A walk by the lake.")
 	second, _ := store.Create(songya.Memories, map[string]any{"user": "reader", "title": "John's visit", "relations": []songya.Relation{{Type: "after", Target: first.ID}}}, "A later visit.")
 	other, _ := store.Create(songya.Memories, map[string]any{"user": "other", "title": "Another account"}, "A separate collection.")
-	path := filepath.Join(store.Directory(), "memories", second.ID+".md")
+	path := filepath.Join(store.Directory(), "memories", second.ID+"/record.md")
 	// A direct edit leaves an unreadable date, but the intact account stays usable.
 	if err := second.Set("time", map[string]any{"earliest": "sometimes"}); err != nil {
 		t.Fatal(err)
@@ -22,7 +22,7 @@ func TestTimelineHTTPShowsUnknownDatesAndConflictsWithoutChangingRecords(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, damaged, 0600); err != nil {
+	if err := fixtureWriteFile(path, damaged, 0600); err != nil {
 		t.Fatal(err)
 	}
 	app := Handler(store)

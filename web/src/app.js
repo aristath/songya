@@ -1,4 +1,5 @@
 import Alpine from "alpinejs";
+import { filesUI, recordFiles } from "./files.js";
 import { codeEditor, richEditor } from "./editors.js";
 import { memoryGraph } from "./graph.js";
 import { chatUI } from "./chat.js";
@@ -24,6 +25,7 @@ async function request(path, options = {}) {
     });
   return value;
 }
+Alpine.data("fileViewer", (id) => recordFiles(request, id));
 Alpine.data("songya", () => {
   let code,
     rich,
@@ -41,6 +43,7 @@ Alpine.data("songya", () => {
   const drafts = new Map();
   return {
     ...chatUI(request),
+    ...filesUI(request),
     ...recallUI(request),
     ...typesUI(request),
     ...storyUI(request),
@@ -316,12 +319,15 @@ Alpine.data("songya", () => {
     },
     closeDialog() {
       this.resetStory();
+      if (this.filesBusy) return;
       this.$refs.editorDialog.close();
       this.dialogOpen = false;
       code?.destroy();
       rich?.destroy();
       code = null;
       rich = null;
+      this.recordFiles = [];
+      this.editorUploads = [];
       this.selected = null;
       this.source = "";
       this.dirty = false;
@@ -361,7 +367,7 @@ Alpine.data("songya", () => {
       this.remember();
     },
     async open(id, force = false, inspect = false) {
-      if (this.busy || this.loading) return;
+      if (this.busy || this.loading || this.filesBusy) return;
       this.loading = true;
       this.failure = "";
       this.notice = "";
@@ -399,6 +405,7 @@ Alpine.data("songya", () => {
             this.chatUser || this.classificationUsers()[0] || "";
         if (this.classificationUser) await this.loadClassificationPolicy();
         this.install(saved);
+        await this.loadEditorFiles();
         if (force) {
           drafts.delete(id);
         }
@@ -427,7 +434,7 @@ Alpine.data("songya", () => {
       this.mount();
     },
     async create() {
-      if (this.busy || this.loading) return;
+      if (this.busy || this.loading || this.filesBusy) return;
       this.loading = true;
       try {
         await this.stash();
@@ -459,6 +466,7 @@ Alpine.data("songya", () => {
           this.classificationUser =
             this.chatUser || this.classificationUsers()[0] || "";
         if (this.classificationUser) await this.loadClassificationPolicy();
+        await this.loadEditorFiles();
         this.showDialog();
         this.showMetadata = true;
         this.failure = "";
@@ -506,6 +514,7 @@ Alpine.data("songya", () => {
                 editGeneration++;
               },
               this.inspecting,
+              this.selected.id,
             );
           } catch {
             this.visualIssue =
@@ -716,7 +725,7 @@ Alpine.data("songya", () => {
       this.metadataChanged();
     },
     async save() {
-      if (this.busy || this.loading || !this.selected) return;
+      if (this.busy || this.loading || this.filesBusy || !this.selected) return;
       const invalidDate =
         this.mode === "visual" &&
         [...this.$refs.editorDialog.querySelectorAll(".iso-date-input")].find(
@@ -750,6 +759,7 @@ Alpine.data("songya", () => {
           method: "POST",
           body: JSON.stringify(submitted),
         });
+        this.bindEditorUploads(submitted.id, result.id);
         this.selected = {
           id: result.id,
           kind: result.kind,
@@ -777,6 +787,7 @@ Alpine.data("songya", () => {
         await this.refresh();
         const record = await request("/api/records/" + result.id);
         this.links = record.links;
+        await this.attachEditorUploads();
       } catch (e) {
         if (e.rejected) attempt = null;
         this.failure = e.message;
@@ -784,6 +795,24 @@ Alpine.data("songya", () => {
       } finally {
         this.busy = false;
       }
+    },
+    async refreshAfterFileChange() {
+      const id = this.selected?.id;
+      if (!id) return;
+      const record = await request("/api/records/" + id);
+      const listing = await request("/api/records/" + id + "/files");
+      if (this.selected?.id !== id) return;
+      this.recordFiles = listing.files;
+      if (!this.dirty) {
+        this.selected.version = record.version;
+        this.source = base = record.source;
+        body = record.draft.body;
+        this.fields = record.draft.fields;
+        metadataStamp = JSON.stringify(this.fields);
+        this.mount();
+      }
+      this.refreshGraph();
+      await this.refresh();
     },
     async remove(record = this.selected) {
       if (this.busy || this.loading || !record?.id) return;
@@ -836,7 +865,7 @@ Alpine.data("songya", () => {
       }
     },
     async connection(action, edge) {
-      if (this.busy || this.loading) return;
+      if (this.busy || this.loading || this.filesBusy) return;
       this.loading = true;
       try {
         await this.flush();
@@ -875,7 +904,7 @@ Alpine.data("songya", () => {
         });
     },
     back() {
-      if (this.busy || this.loading) return;
+      if (this.busy || this.loading || this.filesBusy) return;
       const calendar = this.$refs.editorDialog.querySelector(
         ".iso-calendar:popover-open",
       );
@@ -905,7 +934,7 @@ Alpine.data("songya", () => {
       return "Untitled";
     },
     async discard() {
-      if (this.busy || this.loading) return;
+      if (this.busy || this.loading || this.filesBusy) return;
       if (this.selected?.id) {
         await this.reload();
         return;

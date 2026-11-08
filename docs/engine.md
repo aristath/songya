@@ -23,17 +23,17 @@ limits. For executable Go examples, see [example_test.go](../example_test.go).
 
 ```text
 memory-store/
-  memories/m_<12-character-suffix>.md
-  entities/e_<12-character-suffix>.md
-  topics/t_<12-character-suffix>.md
-  stories/s_<12-character-suffix>.md
+  memories/m_<12-character-suffix>/record.md
+  entities/e_<12-character-suffix>/record.md
+  topics/t_<12-character-suffix>/record.md
+  stories/s_<12-character-suffix>/record.md
   .index/
   .batches/
   .imports/
   .lock
 ```
 
-The filename is the record's identity. IDs are a type prefix followed by 12 random
+The record-folder name is its identity. IDs are a type prefix followed by 12 random
 lowercase letters or digits, and are returned as `Document.ID`, never written as
 an `id` metadata field. A record contains YAML frontmatter and a Markdown body:
 
@@ -122,7 +122,7 @@ serialized. Healthy fields in the first YAML document remain usable, and the
 Markdown body stays unchanged. If the frontmatter boundaries cannot be determined,
 the entire original is retained as the body. Reads do not silently rewrite original files.
 
-Standalone parsed documents have no ID; the store derives it from the filename.
+Standalone parsed documents have no ID; the store derives it from the folder name.
 Metadata inputs are data: scalars, maps, lists, and raw YAML nodes. Pointers to
 these values, named scalar types, `time.Time`, `time.Duration`, `Relation`,
 `Metadata`, and exact `json.Number` values are supported. Go struct tags and
@@ -198,7 +198,7 @@ errors affect operations on that directory only.
 
 `SaveSource(ctx, key, id, kind, revision, source)` creates or replaces a complete
 Markdown/YAML document through the existing batch receipts. Omit `id` for a new
-engine-assigned filename. Existing records require the revision from `Read`.
+engine-assigned folder name. Existing records require the revision from `Read`.
 Metadata omitted from a full source replacement is removed; arbitrary YAML trees
 and the body remain available. IDs and creation/update timestamps stay managed by
 the engine. `Document.OriginalSource()` returns the bytes captured by `Read`,
@@ -254,11 +254,11 @@ exactly the same bytes.
 
 ## Durable writes and recovery
 
-A creation exclusively creates a hidden `.ID.md.pending/` directory to reserve
-its ID. This requires no scan of other records. Inside it, a file named
+A creation exclusively allocates its record folder, then a hidden
+`.record.md.pending/` directory inside it to reserve the text write. This requires no scan of other records. Inside it, a file named
 `<sha256>.tmp` holds the data and records its expected checksum. The file, staging
 directory, and destination directory are synced before publication. Recovery
-verifies the checksum, then hard-links the data to the final `<id>.md` name
+verifies the checksum, then hard-links the data to the final `record.md` name
 without replacing existing files. New saves reuse their already-synced staging
 data for this publication step. The destination directory is synced before
 staging cleanup begins. If the final file already exists with identical bytes,
@@ -625,3 +625,24 @@ a known start is rejected. Existing unreadable values remain available for
 repair, and do not block unrelated body edits. Old entity uncertainty fields are
 retained with diagnostics; they are never automatically relabelled as lifetime
 bounds. A partial repair preserves both raw damage and healthy date components.
+
+
+## Record files
+
+`Store.Upload` streams bytes to recoverable operational staging. A completed
+receipt binds its retry key, scope, actual filename, size and checksum. Partial
+uploads are not listed as completed. `Store.ChangeFile` accepts add, replace or
+remove with an existing record ID and the current record revision. Its durable
+journal and per-record reservation precede effects; restart recovery completes
+accepted work. Retries return the accepted result without replaying later edits.
+
+`Store.Attachments` derives file information by listing the record directory.
+`Store.OpenAttachment` returns a streaming file. `Store.ReadAttachmentText` pages
+plain UTF-8 text with a bounded response; unsupported content remains downloadable.
+There are no standalone attachment entities or record-side attachment lists.
+
+Files update the record's automatic timestamp/revision, preserving body and other
+field values. Text edits do not remove files. Incoming-reference checks still guard
+record deletion. A synced deletion intent precedes moving the complete folder out
+of the live name; cleanup resumes after interruption and tombstones prevent old
+proposals from restoring it. Historical batch/import receipts remain unchanged.

@@ -75,7 +75,8 @@ func TestBrokenUnrelatedEntityDoesNotHideHealthyMatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink("/nonexistent", filepath.Join(path, "entities", "e_000000000000.md")); err != nil {
+	_ = os.MkdirAll(filepath.Join(path, "entities", "e_000000000000"), 0700)
+	if err := os.Symlink("/nonexistent", filepath.Join(path, "entities", "e_000000000000/record.md")); err != nil {
 		t.Fatal(err)
 	}
 	receipt, err := store.SaveMemory(context.Background(), MemoryInput{Key: "healthy", User: "ari", Text: textValue("Dinner with John"), Relations: []RelationInput{{Type: "related_to", Target: map[string]any{"kind": "entities", "name": "John"}}}})
@@ -96,7 +97,7 @@ func TestUnusableEntityDirectoryStillPreservesMemory(t *testing.T) {
 	if err := os.Remove(filepath.Join(path, "entities")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(path, "entities"), []byte("blocked"), 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(path, "entities"), []byte("blocked"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	receipt, err := store.SaveMemory(context.Background(), MemoryInput{Key: "preserve", User: "ari", Text: textValue("Dinner with John"), Relations: []RelationInput{{Type: "related_to", Target: map[string]any{"kind": "entities", "name": "John", "description": textValue("A long-standing friend")}}}})
@@ -165,7 +166,7 @@ func TestCaptureReusesIdentityWithoutRewritingAndKeepsCanonicalName(t *testing.T
 		t.Fatal(err)
 	}
 	id := john.Refs["record"]
-	filename := filepath.Join(path, "entities", id+".md")
+	filename := filepath.Join(path, "entities", id+"/record.md")
 	before, _ := os.ReadFile(filename)
 	_, err = store.SaveMemory(context.Background(), MemoryInput{User: "ari", Text: textValue("Coffee with Johnny"), Relations: []RelationInput{{Type: "related_to", Target: map[string]any{"kind": "entities", "name": "Johnny"}}}})
 	if err != nil {

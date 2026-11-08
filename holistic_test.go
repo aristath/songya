@@ -106,7 +106,7 @@ func TestUnrelatedSaveDoesNotClearDeferredRecovery(t *testing.T) {
 	}
 	defer root.Close()
 	id := "m_000000000000"
-	name := filepath.Join("memories", id+".md")
+	name := filepath.Join("memories", id+"/record.md")
 	if _, err := stage(root, name, "", []byte(sample)); err != nil {
 		t.Fatal(err)
 	}
@@ -148,13 +148,13 @@ func TestRecoveryCleansIdenticalIndependentCopies(t *testing.T) {
 	}
 	defer root.Close()
 	id := "m_000000000000"
-	name := filepath.Join("memories", id+".md")
+	name := filepath.Join("memories", id+"/record.md")
 	if _, err := stage(root, name, "", []byte(sample)); err != nil {
 		t.Fatal(err)
 	}
 	// A restore or an editor's atomic save can replace the canonical inode while
 	// retaining the exact same content as staging.
-	if err := root.WriteFile(name, []byte(sample), 0600); err != nil {
+	if err := fixtureRootWriteFile(root, name, []byte(sample), 0600); err != nil {
 		t.Fatal(err)
 	}
 	for range 2 {
@@ -184,8 +184,8 @@ func TestStagingReservationAndAmbiguityStayIsolated(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	name := "memories/m_000000000000.md"
-	if err := root.Mkdir(pendingName(name), 0700); err != nil {
+	name := "memories/m_000000000000/record.md"
+	if err := fixtureRootMkdir(root, pendingName(name), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if retained, err := stage(root, name, "", []byte(sample)); retained || !errors.Is(err, fs.ErrExist) {
@@ -198,7 +198,7 @@ func TestStagingReservationAndAmbiguityStayIsolated(t *testing.T) {
 		t.Fatalf("empty reservation mistaken for an absent record: %v", err)
 	}
 	for _, data := range [][]byte{[]byte(sample), []byte("Different retained body")} {
-		if err := root.WriteFile(temporaryName(name, "", data), data, 0600); err != nil {
+		if err := fixtureRootWriteFile(root, temporaryName(name, "", data), data, 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -228,9 +228,9 @@ func TestRecoveryRetainsForeignPendingData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	name := filepath.Join("memories", doc.ID+".md")
+	name := filepath.Join("memories", doc.ID+"/record.md")
 	foreign := filepath.Join(path, pendingName(name))
-	if err := os.WriteFile(foreign, []byte("Unrecognized data"), 0600); err != nil {
+	if err := fixtureWriteFile(foreign, []byte("Unrecognized data"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Recover(); err != nil {
@@ -255,7 +255,7 @@ func TestRecoveryFinishesInterruptedStagingCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	name := "memories/m_000000000000.md"
+	name := "memories/m_000000000000/record.md"
 	data := []byte(sample)
 	if _, err := stage(root, name, "", data); err != nil {
 		t.Fatal(err)
@@ -295,25 +295,25 @@ func TestPublicationKeepsStagingWhenDirectorySyncFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	name := "memories/m_000000000000.md"
+	name := "memories/m_000000000000/record.md"
 	data := []byte(sample)
 	if _, err := stage(root, name, "", data); err != nil {
 		t.Fatal(err)
 	}
-	publicationRoot, err := os.OpenRoot(filepath.Join(path, "memories"))
+	publicationRoot, err := os.OpenRoot(filepath.Join(path, filepath.Dir(name)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer publicationRoot.Close()
 	// Linking is permitted, but opening the directory to sync publication fails.
-	if err := root.Chmod("memories", 0300); err != nil {
+	if err := root.Chmod(filepath.Dir(name), 0300); err != nil {
 		t.Fatal(err)
 	}
-	defer root.Chmod("memories", 0700)
+	defer root.Chmod(filepath.Dir(name), 0700)
 	if published, err := store.publish(publicationRoot, filepath.Base(name), data); published || err == nil {
 		t.Fatal("claimed publication without syncing the final name")
 	}
-	if err := root.Chmod("memories", 0700); err != nil {
+	if err := root.Chmod(filepath.Dir(name), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := root.Lstat(name); err != nil {

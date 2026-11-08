@@ -1,3 +1,4 @@
+import { relativeFileURL } from "./files.js";
 import { EditorView as CodeView, basicSetup } from "codemirror";
 import { EditorState } from "@codemirror/state";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
@@ -139,9 +140,32 @@ export function codeEditor(
     }),
   });
 }
-export function richEditor(host, body, onChange, readOnly = false) {
+export function richEditor(
+  host,
+  body,
+  onChange,
+  readOnly = false,
+  recordID = "",
+) {
   const doc = parser.parse(body);
   return new RichView(host, {
+    nodeViews: {
+      image(node) {
+        const dom = document.createElement("img");
+        dom.src = relativeFileURL(recordID, node.attrs.src, true);
+        dom.alt = node.attrs.alt || "";
+        if (node.attrs.title) dom.title = node.attrs.title;
+        return { dom };
+      },
+    },
+    markViews: {
+      link(mark) {
+        const dom = document.createElement("a");
+        dom.href = relativeFileURL(recordID, mark.attrs.href);
+        if (mark.attrs.title) dom.title = mark.attrs.title;
+        return { dom, contentDOM: dom };
+      },
+    },
     editable: () => !readOnly,
     attributes: {
       "aria-label": "Record text",

@@ -28,6 +28,13 @@ func (s *Store) Delete(ctx context.Context, id, revision string) error {
 		return err
 	}
 	return s.lockedContext(ctx, func(root *os.Root) error {
+		if saved, err := readFile(root, filepath.Join(deletionDirectory(id), "revision")); err == nil {
+			if revision != string(saved) {
+				return ErrConflict
+			}
+			return s.finishDeletion(root, id)
+		}
+
 		blocked := &DeleteBlocked{Records: []Record{}}
 		catalog, err := s.scanRoot(ctx, root, false, nil)
 		if err != nil {
@@ -72,13 +79,19 @@ func (s *Store) Delete(ctx context.Context, id, revision string) error {
 				continue
 			} // already diagnosed by scanRoot
 			for _, entry := range entries {
-				pendingID := strings.TrimSuffix(strings.TrimPrefix(entry.Name(), "."), ".md.pending")
-				if entry.Name() != "."+pendingID+".md.pending" || !ValidID(pendingID) {
+				pendingID := entry.Name()
+				if !entry.IsDir() || !ValidID(pendingID) || kindOf(pendingID) != kind {
 					continue
 				}
-				source := filepath.Join(string(kind), pendingID+".md")
+				source, _ := recordName(pendingID)
+				if _, err := root.Lstat(pendingName(source)); errors.Is(err, fs.ErrNotExist) {
+					continue
+				}
 				if pendingID == id {
 					blocked.Diagnostics = append(blocked.Diagnostics, Diagnostic{source, "Unfinished write must recover before deletion"})
+				}
+				if _, fileErr := readFile(root, filepath.Join(pendingName(source), "files")); fileErr == nil {
+					continue
 				}
 				data, _, _, err := stagedData(root, source)
 				if err != nil {
@@ -123,6 +136,27 @@ func (s *Store) Delete(ctx context.Context, id, revision string) error {
 				check(recordFromDocument(item.Source, doc, kindOf(item.ID)))
 			}
 		}
+		operations, err := fs.ReadDir(root.FS(), ".file-ops")
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			blocked.Diagnostics = append(blocked.Diagnostics, Diagnostic{".file-ops", err.Error()})
+		}
+		for _, entry := range operations {
+			if !validHash(entry.Name()) || !entry.IsDir() {
+				continue
+			}
+			directory := filepath.Join(".file-ops", entry.Name())
+			if marker(root, filepath.Join(directory, "committed")) {
+				continue
+			}
+			journal, err := readFileJournal(root, directory)
+			if err != nil {
+				blocked.Diagnostics = append(blocked.Diagnostics, Diagnostic{directory, "Unfinished file operation cannot be inspected"})
+				continue
+			}
+			if journal.Request.ID == id {
+				blocked.Diagnostics = append(blocked.Diagnostics, Diagnostic{directory, "An unfinished file change must recover before deletion"})
+			}
+		}
 		if len(blocked.Records) > 0 || len(blocked.Diagnostics) > 0 {
 			return blocked
 		}
@@ -139,9 +173,6 @@ func (s *Store) Delete(ctx context.Context, id, revision string) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := root.Remove(name); err != nil {
-			return err
-		}
-		return syncPath(root, filepath.Dir(name))
+		return s.deleteFolder(root, id, revision)
 	})
 }

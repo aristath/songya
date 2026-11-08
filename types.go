@@ -316,11 +316,11 @@ func typeConfigurationRequest(cfg TypeConfiguration, version string, replacement
 				return nil, err
 			}
 			for _, entry := range entries {
-				if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+				if !entry.IsDir() || !ValidID(entry.Name()) || kindOf(entry.Name()) != kind {
 					continue
 				}
-				id := strings.TrimSuffix(entry.Name(), ".md")
-				doc, err := readLockedCopy(root, id, filepath.Join(string(kind), entry.Name()))
+				id := entry.Name()
+				doc, err := readLockedCopy(root, id, filepath.Join(string(kind), entry.Name(), "record.md"))
 				if err != nil {
 					return nil, err
 				}

@@ -1,4 +1,5 @@
 import MarkdownIt from "markdown-it";
+import { uploadFile } from "./files.js";
 import { newID } from "./ids.js";
 import { localDate } from "./dates.js";
 
@@ -28,9 +29,78 @@ export function chatUI(request) {
     settingsGeneration = 0,
     historyObserver,
     historyTimer,
-    historyListing = 0;
+    historyListing = 0,
+    uploadStamp = "";
   return {
     chatUser: local.get("songya-chat-user"),
+    chatUploads: [],
+    chatUploadSelected: [],
+    chatUploadStates: {},
+    chatFilesBusy: false,
+    chatFilesError: "",
+    async refreshChatUploads() {
+      const user = this.chatUser;
+      if (!user) return;
+      try {
+        const pending = await request(
+          "/api/uploads?" + new URLSearchParams({ scope: "chat:" + user }),
+        );
+        if (user !== this.chatUser) return;
+        this.chatUploads = pending.uploads;
+        const ids = [
+          ...new Set([
+            ...pending.uploads.map((u) => u.upload),
+            ...(this.chatState?.messages || []).flatMap((m) =>
+              (m.uploads || []).map((u) => u.upload),
+            ),
+          ]),
+        ];
+        await Promise.all(
+          ids.map(async (id) => {
+            const state = await request(
+              "/api/uploads/" +
+                id +
+                "?" +
+                new URLSearchParams({ scope: "chat:" + user }),
+            );
+            if (user === this.chatUser) this.chatUploadStates[id] = state;
+          }),
+        );
+      } catch (e) {
+        if (user === this.chatUser) this.chatFilesError = e.message;
+      }
+    },
+    async uploadChatFiles(files) {
+      if (!this.chatUser || this.chatFilesBusy) return;
+      const user = this.chatUser;
+      this.chatFilesBusy = true;
+      this.chatFilesError = "";
+      try {
+        for (const file of files) {
+          try {
+            const receipt = await uploadFile(request, file, "chat:" + user);
+            if (user === this.chatUser) {
+              this.chatUploadStates[receipt.upload] = {
+                ...receipt,
+                status: "uploaded",
+              };
+              this.chatUploadSelected.push(receipt.upload);
+            }
+          } catch (e) {
+            this.chatFilesError += file.name + ": " + e.message + " ";
+          }
+        }
+        await this.refreshChatUploads();
+      } finally {
+        this.chatFilesBusy = false;
+      }
+    },
+    chatUploadLabel(upload) {
+      const state = this.chatUploadStates[upload.upload];
+      return state?.status === "attached"
+        ? "Attached to " + state.record_id + " as " + state.attached_filename
+        : "Uploaded · attachment not confirmed";
+    },
     chatSessions: [],
     chatSessionID: "",
     chatState: null,
@@ -135,6 +205,9 @@ export function chatUI(request) {
       this.chatDraftUser = this.chatUser;
       this.chatDraftSession = this.chatSessionID;
       this.chatInput = local.get(this.chatDraftKey());
+      this.chatUploadSelected = [];
+      this.chatUploadStates = {};
+      this.refreshChatUploads();
     },
     async openChat(id) {
       if (this.chatNavigationBusy()) return;
@@ -324,6 +397,7 @@ export function chatUI(request) {
         ...queue.map((m) => ({
           role: "user",
           content: m.text,
+          uploads: m.uploads,
           status: "Queued",
         })),
         ...(this.chatPending
@@ -335,6 +409,13 @@ export function chatUI(request) {
                       {
                         role: "user",
                         content: m.text,
+                        uploads: (m.uploads || []).map(
+                          (id) =>
+                            this.chatUploadStates[id] || {
+                              upload: id,
+                              filename: "Uploaded file",
+                            },
+                        ),
                         status: i
                           ? "Waiting to send"
                           : this.chatSending
@@ -365,6 +446,16 @@ export function chatUI(request) {
         return;
       const follow = this.chatFollow;
       this.chatState = value;
+      const stamp =
+        value.id +
+        ":" +
+        value.messages.filter((m) => m.role === "tool").length +
+        ":" +
+        value.status;
+      if (stamp !== uploadStamp) {
+        uploadStamp = stamp;
+        this.refreshChatUploads();
+      }
       this.chatSessionID = value.id;
       local.set("songya-chat-selected:" + value.user, value.id);
       this.chatConnection = "";
@@ -440,12 +531,13 @@ export function chatUI(request) {
         this.chatState?.archived
       )
         return;
-      if (this.chatInput.trim()) {
+      if (this.chatInput.trim() || this.chatUploadSelected.length) {
         const message = {
           id: this.chatSessionID || this.chatPending?.id || newID(),
           request_id: newID(),
           user: this.chatUser,
           text: this.chatInput,
+          uploads: [...this.chatUploadSelected],
         };
         this.chatPending = this.chatPending
           ? {
@@ -455,6 +547,7 @@ export function chatUI(request) {
           : message;
         local.set("songya-chat-pending", JSON.stringify(this.chatPending));
         this.chatInput = "";
+        this.chatUploadSelected = [];
         this.keepChatDraft();
         this.chatSessionID = message.id;
         this.chatDraftSession = message.id;

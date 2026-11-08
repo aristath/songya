@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -59,7 +58,7 @@ func TestChatQueueSurvivesRestartAndRunsInOrder(t *testing.T) {
 	app := Handler(store)
 	defer func() { _ = app.Close() }()
 	configureChat(t, app, provider.URL)
-	if err := os.WriteFile(filepath.Join(root, "chat-system.md"), []byte("First prompt"), 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(root, "chat-system.md"), []byte("First prompt"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	id := chatID()
@@ -72,7 +71,7 @@ func TestChatQueueSurvivesRestartAndRunsInOrder(t *testing.T) {
 		t.Fatal("request identity did not protect a queued message", code)
 	}
 	_, _ = call(t, app, "PUT", "/api/chat/settings", map[string]any{"base_url": provider.URL + "/v1", "model": "memory-model", "temperature": .7})
-	if err := os.WriteFile(filepath.Join(root, "chat-system.md"), []byte("Third prompt"), 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(root, "chat-system.md"), []byte("Third prompt"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	postChat(t, app, id, "third", "sam", "Third")

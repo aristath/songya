@@ -179,12 +179,12 @@ func testOrphanCollision(t *testing.T, path string) {
 	}
 	defer root.Close()
 	id := "m_000000000000"
-	name := filepath.Join("memories", id+".md")
+	name := filepath.Join("memories", id+"/record.md")
 	temporary := temporaryName(name, "", []byte(sample))
-	if err := root.Mkdir(pendingName(name), 0700); err != nil {
+	if err := fixtureRootMkdir(root, pendingName(name), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := root.WriteFile(temporary, []byte(sample), 0600); err != nil {
+	if err := fixtureRootWriteFile(root, temporary, []byte(sample), 0600); err != nil {
 		t.Fatal(err)
 	}
 	// Force an initial collision, then provide different random bytes. Keep the
@@ -213,13 +213,13 @@ func TestRemovedArtifactsClearOnlyObsoleteDiagnostics(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	first := temporaryName("memories/m_000000000000.md", "", []byte(sample))
-	second := temporaryName("entities/e_000000000000.md", "", []byte(sample))
+	first := temporaryName("memories/m_000000000000/record.md", "", []byte(sample))
+	second := temporaryName("entities/e_000000000000/record.md", "", []byte(sample))
 	for _, name := range []string{first, second} {
 		if err := root.MkdirAll(filepath.Dir(name), 0700); err != nil {
 			t.Fatal(err)
 		}
-		if err := root.WriteFile(name, []byte("Partial data"), 0600); err != nil {
+		if err := fixtureRootWriteFile(root, name, []byte("Partial data"), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -284,7 +284,7 @@ func TestReadsSurviveConcurrentPublication(t *testing.T) {
 	defer lock.Close()
 	for iteration := range 150 {
 		id := fmt.Sprintf("m_%012d", iteration)
-		name := filepath.Join("memories", id+".md")
+		name := filepath.Join("memories", id+"/record.md")
 		if ready, err := stage(root, name, "", []byte(sample)); !ready || err != nil {
 			t.Fatal(err)
 		}

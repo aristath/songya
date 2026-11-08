@@ -27,7 +27,7 @@ func TestMemorySaveChangesDatesAndRetryOutcomes(t *testing.T) {
 		t.Fatal(birth)
 	}
 	id := birth["id"].(string)
-	filename := filepath.Join(path, "memories", id+".md")
+	filename := filepath.Join(path, "memories", id+"/record.md")
 	original, err := os.ReadFile(filename)
 	if err != nil {
 		t.Fatal(err)

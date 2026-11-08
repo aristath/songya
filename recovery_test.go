@@ -98,13 +98,13 @@ func TestBrokenOptionalDirectoriesDoNotDisableStore(t *testing.T) {
 	if err := os.Remove(filepath.Join(path, ".index")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(path, ".index"), []byte("Broken disposable cache"), 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(path, ".index"), []byte("Broken disposable cache"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(filepath.Join(path, "entities")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(path, "entities"), []byte("Preserve this"), 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(path, "entities"), []byte("Preserve this"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	store, err = Open(path)
@@ -168,12 +168,12 @@ func TestPendingWriteRecoversAfterPublicationFailure(t *testing.T) {
 	}
 	defer root.Close()
 	id := "m_7k3m9x2q6v4c"
-	name := filepath.Join("memories", id+".md")
+	name := filepath.Join("memories", id+"/record.md")
 	if ready, err := stage(root, name, "", []byte(sample)); !ready || err != nil {
 		t.Fatal(err)
 	}
 	// A destination obstruction prevents publication, but not access to staged data.
-	if err := root.Mkdir(name, 0700); err != nil {
+	if err := fixtureRootMkdir(root, name, 0700); err != nil {
 		t.Fatal(err)
 	}
 	if published, err := store.complete(root, name); published || err == nil {
@@ -199,7 +199,7 @@ func TestPendingWriteRecoversAfterPublicationFailure(t *testing.T) {
 		t.Fatal("recovered data changed")
 	}
 	for _, suffix := range []string{".pending", ".tmp"} {
-		_, err := root.Lstat(filepath.Join("memories", "."+id+".md"+suffix))
+		_, err := root.Lstat(filepath.Join("memories", "."+id+"/record.md"+suffix))
 		if !errors.Is(err, fs.ErrNotExist) {
 			t.Fatalf("staging file not cleaned: %v", err)
 		}
@@ -224,18 +224,18 @@ func TestIncompleteAndConflictingWritesStayIsolated(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	incomplete := temporaryName(filepath.Join("memories", "m_000000000000.md"), "", []byte(sample))
+	incomplete := temporaryName(filepath.Join("memories", "m_000000000000/record.md"), "", []byte(sample))
 	if err := root.MkdirAll(filepath.Dir(incomplete), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := root.WriteFile(incomplete, []byte("Incomplete original"), 0600); err != nil {
+	if err := fixtureRootWriteFile(root, incomplete, []byte("Incomplete original"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	name := filepath.Join("memories", "m_7k3m9x2q6v4c.md")
+	name := filepath.Join("memories", "m_7k3m9x2q6v4c/record.md")
 	if ready, err := stage(root, name, "", []byte(sample)); !ready || err != nil {
 		t.Fatal(err)
 	}
-	if err := root.WriteFile(name, []byte("Different original record"), 0600); err != nil {
+	if err := fixtureRootWriteFile(root, name, []byte("Different original record"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Recover(); err != nil {
@@ -269,13 +269,13 @@ func TestPublicationPreservesUnrelatedStagingData(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	name := filepath.Join("memories", "m_7k3m9x2q6v4c.md")
+	name := filepath.Join("memories", "m_7k3m9x2q6v4c/record.md")
 	if ready, err := stage(root, name, "", []byte(sample)); !ready || err != nil {
 		t.Fatal(err)
 	}
 	// Files unrelated to the staged record must never be deleted by cleanup.
 	temporary := filepath.Join(pendingName(name), "unrelated.keep")
-	if err := root.WriteFile(temporary, []byte("Unrelated retained data"), 0600); err != nil {
+	if err := fixtureRootWriteFile(root, temporary, []byte("Unrelated retained data"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if published, err := store.complete(root, name); !published || err != nil {
@@ -294,12 +294,12 @@ func TestStagedFileRecoversBeforePublication(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			name := filepath.Join("memories", "m_7k3m9x2q6v4c.md")
+			name := filepath.Join("memories", "m_7k3m9x2q6v4c/record.md")
 			// The ID was claimed and writing finished before the process could sync or publish.
-			if err := os.Mkdir(filepath.Join(path, pendingName(name)), 0700); err != nil {
+			if err := os.MkdirAll(filepath.Join(path, pendingName(name)), 0700); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(path, temporaryName(name, "", []byte(sample))), []byte(sample), 0600); err != nil {
+			if err := fixtureWriteFile(filepath.Join(path, temporaryName(name, "", []byte(sample))), []byte(sample), 0600); err != nil {
 				t.Fatal(err)
 			}
 			if trigger == "open" {

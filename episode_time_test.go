@@ -3,7 +3,6 @@ package songya
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -131,7 +130,7 @@ func createDamagedTimeRecord(t *testing.T, store *Store, value any, body string)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(store.path, "memories", doc.ID+".md"), data, 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(store.path, "memories", doc.ID+"/record.md"), data, 0600); err != nil {
 		t.Fatal(err)
 	}
 	result, err := store.Read(doc.ID)

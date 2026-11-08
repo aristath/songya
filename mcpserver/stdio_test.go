@@ -131,7 +131,7 @@ func TestStdioResourcesAndErrorsStayWithinBudget(t *testing.T) {
 		raw.WriteString(key + ": one\n" + key + ": two\n")
 	}
 	raw.WriteString("---\nAccount")
-	if err := os.WriteFile(filepath.Join(path, "memories", id+".md"), []byte(raw.String()), 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(path, "memories", id+"/record.md"), []byte(raw.String()), 0600); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -158,16 +158,16 @@ func TestStdioRetainedSingleCreationRemainsSearchableAndReadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := "m_000000000000"
-	pending := filepath.Join(path, "memories", "."+id+".md.pending")
-	if err := os.Mkdir(pending, 0700); err != nil {
+	pending := filepath.Join(path, "memories", id+"/.record.md.pending")
+	if err := os.MkdirAll(pending, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(filepath.Join(path, "memories", id+".md"), 0700); err != nil {
+	if err := os.Mkdir(filepath.Join(path, "memories", id+"/record.md"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	raw := []byte("---\ntitle: Retained\ncreated_at: 2000-01-01\nupdated_at: 2000-01-01\n---\nRetained account")
 	checksum := fmt.Sprintf("%x", sha256.Sum256(raw))
-	if err := os.WriteFile(filepath.Join(pending, checksum+".tmp"), raw, 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(pending, checksum+".tmp"), raw, 0600); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -181,7 +181,7 @@ func TestStdioRetainedSingleCreationRemainsSearchableAndReadable(t *testing.T) {
 	if len(matches) != 1 || matches[0].(map[string]any)["pending"] != true {
 		t.Fatal("pending body vanished from MCP discovery")
 	}
-	for _, args := range []map[string]any{{"id": id, "view": "body"}, {"source": "memories/" + id + ".md"}} {
+	for _, args := range []map[string]any{{"id": id, "view": "body"}, {"source": "memories/" + id + "/record.md"}} {
 		envelope, result = invoke(t, ctx, session, "read_memory", args)
 		if result.IsError {
 			t.Fatal(envelope)
@@ -196,7 +196,7 @@ func TestStdioRetainedSingleCreationRemainsSearchableAndReadable(t *testing.T) {
 func TestStdioImportRequiresUnambiguousReviewedBounds(t *testing.T) {
 	bin := binary(t)
 	source := t.TempDir()
-	if err := os.WriteFile(filepath.Join(source, "reviewed.md"), []byte("abcdef"), 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(source, "reviewed.md"), []byte("abcdef"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -235,14 +235,14 @@ func TestStdioUnconfirmedSnapshotIsReadableWithoutACommittedRevision(t *testing.
 	}
 	id := "m_000000000000"
 	raw := []byte("---\ntitle: Uncertain\ncreated_at: 2000-01-01\nupdated_at: 2000-01-01\n---\nReadable uncertain account")
-	if err := os.WriteFile(filepath.Join(path, "memories", id+".md"), raw, 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(path, "memories", id+"/record.md"), raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	pending := filepath.Join(path, "memories", "."+id+".md.pending")
-	if err := os.Mkdir(pending, 0700); err != nil {
+	pending := filepath.Join(path, "memories", id+"/.record.md.pending")
+	if err := os.MkdirAll(pending, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(pending, "batch"), []byte(strings.Repeat("0", 64)), 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(pending, "batch"), []byte(strings.Repeat("0", 64)), 0600); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

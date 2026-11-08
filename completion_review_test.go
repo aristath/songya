@@ -37,7 +37,7 @@ func TestImportRetrySurvivesRemovalOfSourceDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := []byte("Retain the original account.")
-	if err := os.WriteFile(filepath.Join(source, "old.md"), original, 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(source, "old.md"), original, 0600); err != nil {
 		t.Fatal(err)
 	}
 	request := ImportRequest{User: "test", Path: "old.md", Revision: dataRevision(original)}
@@ -66,7 +66,7 @@ func TestDiscoveryIncludesReadablePendingSingleCreation(t *testing.T) {
 	defer root.Close()
 	id := "m_000000000000"
 	name, _ := recordName(id)
-	if err := root.Mkdir(name, 0700); err != nil {
+	if err := fixtureRootMkdir(root, name, 0700); err != nil {
 		t.Fatal(err)
 	}
 	raw := []byte("---\ntitle: Unpublished episode\n---\nUnpublished readable body")
@@ -106,7 +106,7 @@ func TestHistoricalWithdrawalDoesNotBlockAnIndependentExactEdit(t *testing.T) {
 	}
 	entry := journal.Entries[0]
 	// Restoring exact bytes from a backup is a valid independent external edit.
-	if err := root.WriteFile(entry.Source, entry.After, 0600); err != nil {
+	if err := fixtureRootWriteFile(root, entry.Source, entry.After, 0600); err != nil {
 		t.Fatal(err)
 	}
 	lock := flock.New(filepath.Join(store.path, ".lock"))
@@ -187,7 +187,7 @@ func TestExplicitRebuildDiscardsCachedInterpretations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(store.path, ".index", "catalog.json"), payload, 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(store.path, ".index", "catalog.json"), payload, 0600); err != nil {
 		t.Fatal(err)
 	}
 	cached, err := store.Scan(context.Background())
@@ -220,17 +220,17 @@ func TestDamagedBatchJournalLeavesAnExplicitlyUnconfirmedReadableSnapshot(t *tes
 	}
 	persistJournal(t, root, journal)
 	entry := journal.Entries[0]
-	if err := root.Mkdir(pendingName(entry.Source), 0700); err != nil {
+	if err := fixtureRootMkdir(root, pendingName(entry.Source), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if err := syncNew(root, filepath.Join(pendingName(entry.Source), "batch"), []byte(filepath.Base(batchDirectory(request.Key)))); err != nil {
 		t.Fatal(err)
 	}
-	if err := root.WriteFile(entry.Source, entry.After, 0600); err != nil {
+	if err := fixtureRootWriteFile(root, entry.Source, entry.After, 0600); err != nil {
 		t.Fatal(err)
 	}
 	payload, _ := json.Marshal(journal)
-	if err := root.WriteFile(filepath.Join(batchDirectory(request.Key), dataRevision(payload)+".json"), []byte("Damaged journal"), 0600); err != nil {
+	if err := fixtureRootWriteFile(root, filepath.Join(batchDirectory(request.Key), dataRevision(payload)+".json"), []byte("Damaged journal"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	current, err := store.Read(changed.ID)

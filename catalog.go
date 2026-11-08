@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const indexFormat = 11
+const indexFormat = 12
 
 // Diagnostic identifies a recoverable problem without hiding healthy records.
 type Diagnostic struct {
@@ -184,29 +184,36 @@ func (s *Store) scanRoot(ctx context.Context, root *os.Root, rebuild bool, coord
 			if err := ctx.Err(); err != nil {
 				return result, err
 			}
-			pendingID := strings.TrimSuffix(strings.TrimPrefix(entry.Name(), "."), ".md.pending")
-			if entry.Name() == "."+pendingID+".md.pending" && ValidID(pendingID) && pendingID[:2] == prefix {
-				source := filepath.Join(directory, pendingID+".md")
-				if _, err := readFile(root, source); err == nil {
+			id := entry.Name()
+			if !entry.IsDir() || strings.HasPrefix(id, ".") {
+				if strings.HasSuffix(id, ".md") {
+					result.Diagnostics = append(result.Diagnostics, Diagnostic{filepath.Join(directory, id), "Flat record requires the explicit folder conversion; retained unchanged"})
+				}
+				continue
+			}
+			if ValidID(id) && id[:2] == prefix {
+				if err := recordWritable(root, id); err != nil {
 					continue
 				}
-				// Batch creations stay hidden until the whole batch commits. Ordinary
-				// retained creations remain discoverable, even while publication is blocked.
-				if _, err := root.Lstat(filepath.Join(pendingName(source), "batch")); !errors.Is(err, fs.ErrNotExist) {
+			}
+			source := filepath.Join(directory, id, "record.md")
+			if _, err := readFile(root, source); err != nil {
+				// Uncommitted batch creations stay hidden until the batch commits.
+				if _, claimErr := root.Lstat(filepath.Join(pendingName(source), "batch")); claimErr == nil {
 					continue
 				}
-				doc, err := readCopy(root, pendingID, source)
-				if err != nil {
-					result.Diagnostics = append(result.Diagnostics, Diagnostic{source, err.Error()})
+				pendingID := id
+				if !ValidID(id) || id[:2] != prefix {
+					pendingID = ""
+				}
+				doc, readErr := readCopy(root, pendingID, source)
+				if readErr != nil {
+					result.Diagnostics = append(result.Diagnostics, Diagnostic{source, readErr.Error()})
 					continue
 				}
 				result.Records = append(result.Records, recordFromDocument(source, doc, destination))
 				continue
 			}
-			if strings.HasPrefix(entry.Name(), ".") || !strings.HasSuffix(entry.Name(), ".md") {
-				continue
-			}
-			source := filepath.Join(directory, entry.Name())
 			data, err := readFile(root, source)
 			data, err = batchView(root, source, data, err)
 			if err != nil {
@@ -218,7 +225,7 @@ func (s *Store) scanRoot(ctx context.Context, root *os.Root, rebuild bool, coord
 			if !ok || r.Revision != revision {
 				d := Parse(data)
 				d.Revision = revision
-				id := strings.TrimSuffix(entry.Name(), ".md")
+				id := entry.Name()
 				if ValidID(id) && id[:2] == prefix {
 					d.ID = id
 				}
@@ -458,11 +465,12 @@ func (s *Store) ReadSource(source string) ([]byte, error) {
 		return nil, errors.New("store is nil")
 	}
 	parts := strings.Split(filepath.ToSlash(source), "/")
-	if len(parts) != 2 || parts[1] == "" || strings.HasPrefix(parts[1], ".") || !strings.HasSuffix(parts[1], ".md") {
+	if len(parts) != 3 || parts[1] == "" || strings.HasPrefix(parts[1], ".") || parts[2] != "record.md" {
 		return nil, fmt.Errorf("invalid record source %q", source)
 	}
-	if _, err := Destination(parts[0]).prefix(); err != nil {
-		return nil, err
+	_, kindErr := Destination(parts[0]).prefix()
+	if kindErr != nil || filepath.ToSlash(filepath.Clean(source)) != source {
+		return nil, fmt.Errorf("invalid record source %q", source)
 	}
 	root, err := os.OpenRoot(s.path)
 	if err != nil {

@@ -3,7 +3,6 @@ package songya
 import (
 	"context"
 	"encoding/base64"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -33,8 +32,8 @@ func TestRecallConnectedNarratives(t *testing.T) {
 	other := create(Memories, map[string]any{"user": "clara", "relations": []Relation{{Type: "related_to", Target: e.ID}}}, "Clara has her own perspective.")
 	// Intact prose remains useful even when frontmatter needs repair.
 	damaged := create(Memories, map[string]any{"user": "ari", "title": "Dimitra damaged account"}, "Retained uncertain account.")
-	name := filepath.Join(s.path, "memories", damaged.ID+".md")
-	if err := os.WriteFile(name, []byte("---\nuser: ari\ntitle: Dimitra damaged account\nbroken: [\n---\nRetained uncertain account."), 0600); err != nil {
+	name := filepath.Join(s.path, "memories", damaged.ID+"/record.md")
+	if err := fixtureWriteFile(name, []byte("---\nuser: ari\ntitle: Dimitra damaged account\nbroken: [\n---\nRetained uncertain account."), 0600); err != nil {
 		t.Fatal(err)
 	}
 	q := RecallQuery{Text: "Who was Dimitra?", User: "ari"}

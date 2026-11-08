@@ -237,9 +237,9 @@ func TestDamagedOwnershipStaysReadableAndNeedsAnExplicitRepair(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := "m_000000000000"
-	path := filepath.Join(store.path, "memories", id+".md")
+	path := filepath.Join(store.path, "memories", id+"/record.md")
 	original := []byte("---\ntitle: Keep\n---\nOriginal account")
-	if err := os.WriteFile(path, original, 0600); err != nil {
+	if err := fixtureWriteFile(path, original, 0600); err != nil {
 		t.Fatal(err)
 	}
 	doc, err := store.Read(id)
@@ -266,7 +266,7 @@ func TestImportUsesAnExplicitUserWithoutChangingTheOriginal(t *testing.T) {
 	}
 	source := t.TempDir()
 	original := []byte("First.\nSecond.\n")
-	if err := os.WriteFile(filepath.Join(source, "old.md"), original, 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(source, "old.md"), original, 0600); err != nil {
 		t.Fatal(err)
 	}
 	request := ImportRequest{User: "ari", Path: "old.md", Revision: dataRevision(original), Parts: []ImportPart{

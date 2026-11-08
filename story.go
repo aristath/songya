@@ -84,7 +84,7 @@ func (s *Store) compose(ctx context.Context, id string, offset, limit int, parts
 	write := func(value string, part *StoryPart) {
 		validUTF8 = validUTF8 && utf8.ValidString(value)
 		partStart := offset - skip + output.Len()
-		if parts && part != nil && part.Kind == Memories && value == "" && skip == 0 {
+		if parts && part != nil && value == "" && skip == 0 {
 			copy := *part
 			copy.Start = partStart
 			spans = append(spans, span{copy, output.Len(), output.Len()})
@@ -153,7 +153,7 @@ func (s *Store) compose(ctx context.Context, id string, offset, limit int, parts
 			return
 		}
 		key := position{current, depth}
-		if length, known := lengths[key]; known && length <= uint64(skip) {
+		if length, known := lengths[key]; known && length > 0 && length <= uint64(skip) {
 			skip -= int(length)
 			return
 		}

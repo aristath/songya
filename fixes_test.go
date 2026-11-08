@@ -54,12 +54,12 @@ func TestCorruptedReadyWriteIsNotPublished(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	name := filepath.Join("memories", "m_7k3m9x2q6v4c.md")
+	name := filepath.Join("memories", "m_7k3m9x2q6v4c/record.md")
 	if ready, err := stage(root, name, "", []byte(sample)); !ready || err != nil {
 		t.Fatal(err)
 	}
 	changed := []byte("---\ntitle: Truncated\n---\nOnly part of the body")
-	if err := root.WriteFile(temporaryName(name, "", []byte(sample)), changed, 0600); err != nil {
+	if err := fixtureRootWriteFile(root, temporaryName(name, "", []byte(sample)), changed, 0600); err != nil {
 		t.Fatal(err)
 	}
 	if published, err := store.complete(root, name); published || !errors.Is(err, errUnverifiedPending) {
@@ -95,14 +95,14 @@ func TestCommittedContentWinsOverPendingWhenLockBreaks(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	name := filepath.Join("memories", committed.ID+".md")
+	name := filepath.Join("memories", committed.ID+"/record.md")
 	if ready, err := stage(root, name, "", []byte(sample)); !ready || err != nil {
 		t.Fatal(err)
 	}
 	if err := root.Remove(".lock"); err != nil {
 		t.Fatal(err)
 	}
-	if err := root.Mkdir(".lock", 0700); err != nil {
+	if err := fixtureRootMkdir(root, ".lock", 0700); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := Open(path)
@@ -250,7 +250,7 @@ func TestInitializationRetriesUnsyncedParents(t *testing.T) {
 			if err := os.MkdirAll(filepath.Join(path, "memories"), 0700); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(path, "memories", "m_7k3m9x2q6v4c.md"), []byte(sample), 0600); err != nil {
+			if err := fixtureWriteFile(filepath.Join(path, "memories", "m_7k3m9x2q6v4c/record.md"), []byte(sample), 0600); err != nil {
 				t.Fatal(err)
 			}
 			if unfinished == nil {
@@ -300,7 +300,7 @@ func TestPendingReadDoesNotWaitAndRecoveryClearsDeferredDiagnostic(t *testing.T)
 	}
 	defer root.Close()
 	id := "m_7k3m9x2q6v4c"
-	name := filepath.Join("memories", id+".md")
+	name := filepath.Join("memories", id+"/record.md")
 	if ready, err := stage(root, name, "", []byte(sample)); !ready || err != nil {
 		t.Fatal(err)
 	}

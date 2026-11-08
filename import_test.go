@@ -14,7 +14,7 @@ func TestImportPreservesOriginalCoverageAndRetryIdentity(t *testing.T) {
 	}
 	sourceRoot := t.TempDir()
 	source := []byte("First episode.\n\nSecond episode.\n")
-	if err := os.WriteFile(filepath.Join(sourceRoot, "old.md"), source, 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(sourceRoot, "old.md"), source, 0600); err != nil {
 		t.Fatal(err)
 	}
 	preview, err := store.PreviewImports(context.Background(), sourceRoot, 0, 10)
@@ -53,7 +53,7 @@ func TestPartialImportReportsUncoveredSource(t *testing.T) {
 	}
 	sourceRoot := t.TempDir()
 	source := []byte("Keep one. Keep two.")
-	if err := os.WriteFile(filepath.Join(sourceRoot, "old.md"), source, 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(sourceRoot, "old.md"), source, 0600); err != nil {
 		t.Fatal(err)
 	}
 	mapping, err := store.Import(context.Background(), sourceRoot, ImportRequest{User: "test", Path: "old.md", Revision: dataRevision(source), Parts: []ImportPart{{Start: 0, End: 9}}})
@@ -73,7 +73,7 @@ func TestImportCannotReadActiveStoreThroughDirectoryAlias(t *testing.T) {
 	if err := os.Symlink(path, filepath.Join(parent, "alias")); err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = store.ImportSource(parent, filepath.Join("alias", "memories", doc.ID+".md"))
+	_, _, err = store.ImportSource(parent, filepath.Join("alias", "memories", doc.ID+"/record.md"))
 	if err == nil {
 		t.Fatal("active source was importable through a directory alias")
 	}

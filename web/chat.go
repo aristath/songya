@@ -28,14 +28,16 @@ type chatToolCall struct {
 	} `json:"function"`
 }
 type chatMessage struct {
-	Role       string         `json:"role"`
-	Content    string         `json:"content"`
-	ToolCalls  []chatToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string         `json:"tool_call_id,omitempty"`
-	Name       string         `json:"name,omitempty"`
-	TurnID     string         `json:"turn_id,omitempty"`
+	Uploads    []songya.Upload `json:"uploads,omitempty"`
+	Role       string          `json:"role"`
+	Content    string          `json:"content"`
+	ToolCalls  []chatToolCall  `json:"tool_calls,omitempty"`
+	ToolCallID string          `json:"tool_call_id,omitempty"`
+	Name       string          `json:"name,omitempty"`
+	TurnID     string          `json:"turn_id,omitempty"`
 }
 type chatQueuedTurn struct {
+	Uploads             []songya.Upload       `json:"uploads,omitempty"`
 	ID                  string                `json:"id"`
 	Text                string                `json:"text"`
 	Prompt              string                `json:"prompt,omitempty"`
@@ -76,13 +78,25 @@ func (c *chatConversation) advance() {
 	c.RecallConfiguration, c.RecallConfigIssue = turn.RecallConfiguration, turn.RecallConfigIssue
 	c.Status, c.Error = "pending", ""
 	c.Draft, c.Recall = nil, nil
-	c.Messages = append(c.Messages, chatMessage{Role: "user", Content: turn.Text, TurnID: turn.ID})
+	c.Messages = append(c.Messages, chatMessage{Role: "user", Content: turn.Text, TurnID: turn.ID, Uploads: turn.Uploads})
 }
 
 // Receipts identify the exact submitted words, independently of message roles.
 func chatFingerprint(user, text string) string {
 	hash := sha256.Sum256([]byte(user + "\x00" + text))
 	return hex.EncodeToString(hash[:])
+}
+func chatTurnFingerprint(user, text string, uploads []songya.Upload) string {
+	fingerprint := chatFingerprint(user, text)
+	if len(uploads) > 0 {
+		ids := make([]string, len(uploads))
+		for i, upload := range uploads {
+			ids[i] = upload.ID
+		}
+		data, _ := json.Marshal(ids)
+		fingerprint = chatFingerprint(fingerprint, string(data))
+	}
+	return fingerprint
 }
 
 type chatApp struct {
@@ -430,16 +444,17 @@ func (a *chatApp) register(mux *http.ServeMux) {
 
 func (a *chatApp) sendHTTP(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		ID        string `json:"id"`
-		RequestID string `json:"request_id"`
-		User      string `json:"user"`
-		Text      string `json:"text"`
+		ID        string   `json:"id"`
+		RequestID string   `json:"request_id"`
+		User      string   `json:"user"`
+		Text      string   `json:"text"`
+		Uploads   []string `json:"uploads,omitempty"`
 	}
 	if !decode(w, r, &input) {
 		return
 	}
 	input.User = strings.TrimSpace(input.User)
-	if !validChatID(input.ID) || input.RequestID == "" || len(input.RequestID) > 120 || input.User == "" || input.User == "all" || strings.TrimSpace(input.Text) == "" {
+	if !validChatID(input.ID) || input.RequestID == "" || len(input.RequestID) > 120 || input.User == "" || input.User == "all" || (strings.TrimSpace(input.Text) == "" && len(input.Uploads) == 0) {
 		writeStatus(w, 400, map[string]any{"error": "Choose a user and enter a message with valid conversation/request IDs."})
 		return
 	}
@@ -458,7 +473,16 @@ func (a *chatApp) sendHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	fingerprint := chatFingerprint(input.User, input.Text)
+	uploads := []songya.Upload{}
+	for _, id := range input.Uploads {
+		state, err := a.store.UploadState(r.Context(), id, "chat:"+input.User)
+		if err != nil {
+			fail(w, fmt.Errorf("Completed upload unavailable for this user: %w", err))
+			return
+		}
+		uploads = append(uploads, state.Upload)
+	}
+	fingerprint := chatTurnFingerprint(input.User, input.Text, uploads)
 	c, err := a.edit(r.Context(), input.ID, func(c *chatConversation) error {
 		if c.User != "" && c.User != input.User {
 			return fmt.Errorf("%w: this conversation belongs to another user", songya.ErrConflict)
@@ -473,7 +497,7 @@ func (a *chatApp) sendHTTP(w http.ResponseWriter, r *http.Request) {
 			return fmt.Errorf("%w: restore this conversation before sending another message", songya.ErrConflict)
 		}
 		c.User = input.User
-		turn := chatQueuedTurn{ID: input.RequestID, Text: input.Text,
+		turn := chatQueuedTurn{ID: input.RequestID, Text: input.Text, Uploads: uploads,
 			Prompt:      string(prompt) + "\n\nCurrent turn received at " + time.Now().Format(time.RFC3339) + ".",
 			Temperature: &settings.Temperature, RecallConfiguration: &configuration}
 		if configurationIssue != nil {
@@ -481,6 +505,9 @@ func (a *chatApp) sendHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if c.Title == "" {
 			c.Title = input.Text
+			if c.Title == "" && len(uploads) > 0 {
+				c.Title = uploads[0].Filename
+			}
 			if len([]rune(c.Title)) > 60 {
 				c.Title = string([]rune(c.Title)[:60]) + "…"
 			}

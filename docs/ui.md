@@ -281,11 +281,11 @@ The UI resolves a lost acknowledgement before publishing newer draft edits. A
 request rejected before persistence can be corrected and submitted again.
 
 `Store.Delete` checks current and pending references under the engine's exclusive
-cross-process writer lock. It removes only the requested, unchanged record and
-syncs the directory before reporting success. It refuses an incomplete incoming
+cross-process writer lock. It removes only the requested, unchanged record folder and its files, with a
+durable deletion intent and directory syncing before reporting success. It refuses an incomplete incoming
 link check and unfinished writes that might republish the record. Completed batch
-receipts never republish deleted records during recovery. It adds no trash,
-revisions or soft-delete mechanism, and it does not erase historical transaction
+receipts never republish deleted records during recovery. It adds no user-visible trash,
+revision browser or soft-delete mechanism, and it does not erase historical transaction
 journal payloads.
 
 The interface uses explicit Save. Unsaved work stays in the tab when moving
@@ -370,3 +370,22 @@ newer edits stay in the draft until explicitly saved.
 The shared `palette.json` is sourced from the official Catppuccin palette. The
 frontend build generates `web/assets/palette.css` and includes the upstream MIT
 license in `NOTICE.txt`; palette data and styles are bundled locally.
+
+
+## Files in the editor and chat
+
+Every kind of record has the same **Files** section. Select multiple files or drop
+them onto the section. Dirty/new text is saved before attaching staged uploads.
+Completed uploads stay available when a save or its acknowledgment fails. Keep the
+same retry operation to resolve an uncertain result. Replace/remove are explicit
+permanent actions; save a dirty text draft before using them.
+
+The chat composer accepts multiple files without disabling text input or queued
+messages. Select which completed uploads to include with a turn. The transcript
+keeps upload receipts separately from the person's words; the model receives those
+receipts without binary data. Uploaded and confirmed-attached states are distinct.
+Failed memory saves do not erase completed uploads. Reloading recovers them.
+
+File previews use the browser's native image/media controls and safe text output.
+Media responses support HTTP ranges. Original downloads keep their actual saved
+filename and bytes. Active formats are served as downloads with restrictive headers.

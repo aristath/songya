@@ -71,7 +71,7 @@ func TestGeneratedUpdateSequencesPreserveIndependentData(t *testing.T) {
 		}
 		if iteration%13 == 0 {
 			edited := append(append([]byte(nil), disk...), []byte("User edit")...)
-			if err := os.WriteFile(filepath.Join(store.path, name), edited, 0600); err != nil {
+			if err := fixtureWriteFile(filepath.Join(store.path, name), edited, 0600); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := store.Update(doc.ID, read.Revision, nil, "Stale edit"); !errors.Is(err, ErrConflict) {
@@ -104,7 +104,7 @@ func TestUpdatesRetainUnreadableHeadersAndBodies(t *testing.T) {
 		}
 		id := "m_000000000000"
 		name, _ := recordName(id)
-		if err := os.WriteFile(filepath.Join(store.path, name), []byte(source), 0600); err != nil {
+		if err := fixtureWriteFile(filepath.Join(store.path, name), []byte(source), 0600); err != nil {
 			t.Fatal(err)
 		}
 		original, err := store.Read(id)
