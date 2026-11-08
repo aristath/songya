@@ -367,7 +367,7 @@
               <div class="chat-progress" aria-live="polite">
                 <span
                   x-show="chatBusy()"
-                  x-text="chatConnection||'Working…'"
+                  x-text="chatConnection||chatProgressLabel()"
                 ></span>
                 <span x-show="chatState?.status==='paused'"
                   >Paused. Your conversation and completed work are saved.</span

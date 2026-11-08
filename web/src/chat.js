@@ -30,7 +30,10 @@ export function chatUI(request) {
     historyObserver,
     historyTimer,
     historyListing = 0,
-    uploadStamp = "";
+    uploadStamp = "",
+    connectionTimer,
+    reconnectTimer,
+    progressClock;
   const attachmentFiles = new Map(),
     attachmentTasks = new Map();
   return {
@@ -178,6 +181,8 @@ export function chatUI(request) {
     chatPending: null,
     chatError: "",
     chatConnection: "",
+    chatProgress: null,
+    chatNow: Date.now(),
     chatFollow: true,
     chatAddingUser: false,
     chatNewUser: "",
@@ -396,6 +401,8 @@ export function chatUI(request) {
       recordEvents?.close();
       historyObserver?.disconnect();
       events?.close();
+      watch++;
+      this.stopChatUpdates();
     },
     watchRecords() {
       recordEvents?.close();
@@ -445,6 +452,8 @@ export function chatUI(request) {
       this.changeChatUser();
     },
     async selectChat() {
+      this.stopChatUpdates();
+      this.chatProgress = null;
       events?.close();
       watch++;
       this.chatState = null;
@@ -532,6 +541,8 @@ export function chatUI(request) {
         return;
       const follow = this.chatFollow;
       this.chatState = value;
+      if (this.chatProgress?.turn_id !== value.turn_id)
+        this.chatProgress = null;
       const stamp =
         value.id +
         ":" +
@@ -575,6 +586,7 @@ export function chatUI(request) {
         }
       });
       if (!this.chatBusy()) {
+        this.stopChatUpdates();
         events?.close();
         this.refreshChatSessions();
       }
@@ -596,24 +608,114 @@ export function chatUI(request) {
         );
       }
     },
+    stopChatUpdates() {
+      clearTimeout(connectionTimer);
+      clearTimeout(reconnectTimer);
+      clearInterval(progressClock);
+      connectionTimer = reconnectTimer = progressClock = null;
+    },
+    chatProgressLabel() {
+      const labels = {
+        recall: "Finding related memories…",
+        waiting: "Waiting for model…",
+        thinking: "Thinking…",
+        responding: "Writing reply…",
+        preparing: "Preparing the next step…",
+        tool: "Working with your memories…",
+      };
+      const progress = this.chatProgress;
+      let text = labels[progress?.stage] || "Waiting for model…";
+      if (progress?.started_at) {
+        const seconds = Math.max(
+          0,
+          Math.floor((this.chatNow - progress.started_at) / 1000),
+        );
+        text += ` · ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+      }
+      return text;
+    },
+    async reconcileChat(ticket, reopen = false) {
+      reconnectTimer = null;
+      if (ticket !== watch || !this.chatBusy()) return;
+      try {
+        const value = await request(
+          "/api/chat/sessions/" + this.chatSessionID,
+          { signal: AbortSignal.timeout(10000) },
+        );
+        if (ticket !== watch) return;
+        this.applyChat(value);
+        if (!this.chatBusy()) return;
+        if (reopen) {
+          this.watchChat();
+          return;
+        }
+        if (events?.readyState === EventSource.OPEN) return;
+        this.chatConnection =
+          "Live updates interrupted. Checking saved progress…";
+      } catch (e) {
+        if (ticket !== watch) return;
+        this.chatConnection =
+          "Connection interrupted. Your saved conversation will reconnect automatically.";
+      }
+      reconnectTimer = setTimeout(() => this.reconcileChat(ticket, true), 2000);
+    },
     watchChat() {
       events?.close();
+      this.stopChatUpdates();
       const ticket = ++watch;
+      const alive = () => {
+        clearTimeout(connectionTimer);
+        connectionTimer = setTimeout(() => {
+          if (ticket !== watch || !this.chatBusy()) return;
+          this.chatConnection = "Checking the live connection…";
+          this.reconcileChat(ticket, true);
+        }, 15000);
+      };
       events = new EventSource(
         "/api/chat/sessions/" + this.chatSessionID + "/events",
       );
-      events.onmessage = (event) => {
-        if (ticket === watch) this.applyChat(JSON.parse(event.data));
+      const source = events;
+      progressClock = setInterval(() => {
+        this.chatNow = Date.now();
+      }, 1000);
+      source.onopen = () => {
+        if (ticket !== watch) return;
+        this.chatConnection = "";
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+        alive();
       };
-      events.onerror = () => {
-        if (ticket === watch && this.chatBusy())
-          this.chatConnection = "Reconnecting… Your accepted message is saved.";
+      source.onmessage = (event) => {
+        if (ticket !== watch) return;
+        this.applyChat(JSON.parse(event.data));
+        if (this.chatBusy()) alive();
       };
-      events.addEventListener("unavailable", (event) => {
+      source.addEventListener("progress", (event) => {
+        if (ticket !== watch) return;
+        const progress = JSON.parse(event.data);
+        if (progress.turn_id !== this.chatState?.turn_id) return;
+        this.chatProgress = progress;
+        this.chatNow = Date.now();
+        this.chatConnection = "";
+        alive();
+      });
+      source.onerror = () => {
+        if (ticket !== watch || !this.chatBusy()) return;
+        this.chatConnection =
+          "Live updates interrupted. Checking saved progress…";
+        if (!reconnectTimer)
+          reconnectTimer = setTimeout(() => this.reconcileChat(ticket), 1000);
+      };
+      source.addEventListener("unavailable", (event) => {
         if (ticket !== watch) return;
         this.chatError = JSON.parse(event.data).error;
-        this.chatConnection = "Conversation temporarily unavailable.";
-        events.close();
+        source.close();
+        this.chatConnection = "Conversation temporarily unavailable. Retrying…";
+        if (!reconnectTimer)
+          reconnectTimer = setTimeout(
+            () => this.reconcileChat(ticket, true),
+            2000,
+          );
       });
     },
     async sendChat() {

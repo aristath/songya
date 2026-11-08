@@ -138,6 +138,66 @@ func (s *Store) Upload(ctx context.Context, key, scope, filename string, reader 
 	} // Retain the complete bytes when final acknowledgement is uncertain.
 	return receipt, err
 }
+
+// Recover upload staging from its verified record-owned bytes.
+// This keeps retries usable after attachment without retaining a second file store.
+func uploadContent(root *os.Root, upload Upload) (string, error) {
+	directory, _ := uploadDirectory(upload.ID)
+	content := filepath.Join(directory, "content")
+	if _, err := root.Lstat(content); err == nil {
+		return content, nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return "", err
+	}
+	data, err := readFile(root, filepath.Join(directory, "attached.json"))
+	if err != nil {
+		return "", fmt.Errorf("Original upload bytes are unavailable; choose the original file again: %w", err)
+	}
+	var attached FileReceipt
+	if err := json.Unmarshal(data, &attached); err != nil {
+		return "", err
+	}
+	record, err := recordDirectory(root, attached.ID)
+	if err != nil {
+		return "", err
+	}
+	if _, err := attachmentName(attached.Filename); err != nil {
+		return "", err
+	}
+	source := filepath.Join(record, attached.Filename)
+	actual, err := fileHash(root, source)
+	if err != nil || actual != upload.SHA256 {
+		return "", errors.New("The saved file no longer contains the original upload bytes. Choose the original file again; no file was changed")
+	}
+	// Copy to a fresh inode: two records must not become coupled by an
+	// external in-place edit to either attachment.
+	temporary := filepath.Join(directory, fmt.Sprintf(".%x.part", randomUploadSuffix()))
+	incoming, err := root.Open(source)
+	if err != nil {
+		return "", err
+	}
+	outgoing, err := root.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		incoming.Close()
+		return "", err
+	}
+	_, copyErr := io.Copy(outgoing, incoming)
+	if err := errors.Join(copyErr, incoming.Close(), outgoing.Sync(), outgoing.Close()); err != nil {
+		return "", err
+	}
+	if actual, err := fileHash(root, temporary); err != nil || actual != upload.SHA256 {
+		return "", errors.New("Upload source changed during recovery; retained for repair")
+	}
+	if err := root.Link(temporary, content); err != nil {
+		return "", err
+	}
+	if err := syncPath(root, directory); err != nil {
+		return "", err
+	}
+	_ = root.Remove(temporary)
+	return content, nil
+}
+
 func randomUploadSuffix() []byte { data := make([]byte, 16); _, _ = rand.Read(data); return data }
 
 type contextReader struct {

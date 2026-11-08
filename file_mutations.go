@@ -117,8 +117,11 @@ func (s *Store) ChangeFile(ctx context.Context, request FileChange) (FileReceipt
 				if err != nil {
 					return err
 				}
-				uploadDir, _ := uploadDirectory(upload.ID)
-				actual, err := fileHash(root, filepath.Join(uploadDir, "content"))
+				content, err := uploadContent(root, upload)
+				if err != nil {
+					return err
+				}
+				actual, err := fileHash(root, content)
 				if err != nil {
 					return fmt.Errorf("Completed upload unavailable: %w", err)
 				}
@@ -333,9 +336,22 @@ func (s *Store) cleanupFileChange(root *os.Root, journal fileJournal) {
 		// Keep the result for lost acknowledgments and the chat's honest status.
 		receipt := FileReceipt{Key: journal.Request.Key, ID: journal.Request.ID, Filename: journal.Filename, Status: "committed", Revision: dataRevision(journal.Record)}
 		data, _ := json.Marshal(receipt)
-		if err := publishImmutable(root, filepath.Join(uploadDir, "attached.json"), data); err != nil {
+		// The first attachment receipt is immutable provenance. Later operations
+		// retain their own results in their existing file-operation journals.
+		if old, err := readFile(root, filepath.Join(uploadDir, "attached.json")); errors.Is(err, fs.ErrNotExist) {
+			if err := publishImmutable(root, filepath.Join(uploadDir, "attached.json"), data); err != nil {
+				s.note(uploadDir, err)
+				return
+			}
+		} else if err != nil {
 			s.note(uploadDir, err)
 			return
+		} else {
+			var previous FileReceipt
+			if err := json.Unmarshal(old, &previous); err != nil || !ValidID(previous.ID) {
+				s.note(uploadDir, errors.New("Attachment receipt needs repair; retained"))
+				return
+			}
 		}
 		if err := syncPath(root, uploadDir); err != nil {
 			s.note(uploadDir, err)

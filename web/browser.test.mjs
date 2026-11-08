@@ -4911,3 +4911,148 @@ test("chat retains a failed uploading message across reload and resumes when its
   await context.close();
   assert.deepEqual(errors, []);
 });
+
+test("chat shows thinking progress without saving empty drafts or exposing reasoning", async (t) => {
+  let release;
+  const gate = new Promise((resolve) => (release = resolve));
+  t.after(() => release());
+  const provider = await chatProvider(t, async (res) => {
+    streamChunk(res, {
+      role: "assistant",
+      reasoning_content: "Private reasoning sentinel",
+    });
+    await gate;
+    streamChunk(res, { content: "Here is the answer." });
+    streamFinish(res);
+  });
+  const { page, context } = await pageFor();
+  await setupBrowserChat(page, provider.base, "john-thinking");
+  const input = page.getByRole("textbox", {
+    name: "Message Songya",
+    exact: true,
+  });
+  await input.fill("Hello.");
+  await input.press("Enter");
+  await page
+    .locator(".chat-progress")
+    .getByText(/^Thinking…/)
+    .waitFor();
+  assert.equal(
+    await page.getByText("Private reasoning sentinel", { exact: true }).count(),
+    0,
+  );
+  const before = await page.evaluate(
+    () =>
+      window.Alpine.$data(document.querySelector("[x-data]")).chatState
+        .revision,
+  );
+  await input.fill("My next draft.");
+  await page.waitForTimeout(500);
+  const after = await page.evaluate(
+    () =>
+      window.Alpine.$data(document.querySelector("[x-data]")).chatState
+        .revision,
+  );
+  assert.equal(
+    after,
+    before,
+    "Thinking activity must not rewrite an empty transcript",
+  );
+  assert.equal(await input.isEnabled(), true);
+  release();
+  await page
+    .locator(".chat-message.assistant")
+    .getByText("Here is the answer.", { exact: true })
+    .waitFor();
+  assert.equal(await input.inputValue(), "My next draft.");
+  await context.close();
+  assert.deepEqual(errors, []);
+});
+
+test("chat recovers completed replies through HTTP when live events cannot reconnect", async (t) => {
+  let release;
+  const gate = new Promise((resolve) => (release = resolve));
+  t.after(() => release());
+  const provider = await chatProvider(t, async (res) => {
+    await gate;
+    streamChunk(res, { role: "assistant", content: "The saved answer." });
+    streamFinish(res);
+  });
+  const { page, context } = await pageFor();
+  await setupBrowserChat(page, provider.base, "mary-disconnected");
+  await page.route("**/api/chat/sessions/*/events", (route) => route.abort());
+  const input = page.getByRole("textbox", {
+    name: "Message Songya",
+    exact: true,
+  });
+  await input.fill("Please answer.");
+  await input.press("Enter");
+  await page
+    .locator(".chat-progress")
+    .getByText("Live updates interrupted. Checking saved progress…", {
+      exact: true,
+    })
+    .waitFor();
+  await input.fill("My unsent draft.");
+  release();
+  await page
+    .locator(".chat-progress")
+    .getByText("Reply complete.", { exact: true })
+    .waitFor();
+  await page
+    .locator(".chat-message.assistant")
+    .getByText("The saved answer.", { exact: true })
+    .waitFor();
+  assert.equal(
+    provider.calls(),
+    1,
+    "Reconnecting must never resend the user message",
+  );
+  assert.equal(await input.inputValue(), "My unsent draft.");
+  await context.close();
+  assert.deepEqual(errors, []);
+});
+
+test("chat detects a silent live connection and reloads saved progress without resending", async (t) => {
+  const provider = await chatProvider(t, (res) => {
+    streamChunk(res, { role: "assistant", content: "Recovered from silence." });
+    streamFinish(res);
+  });
+  const { page, context } = await pageFor();
+  await page.addInitScript(() => {
+    const Original = window.EventSource;
+    window.EventSource = class {
+      static OPEN = 1;
+      constructor(url) {
+        if (!url.includes("/api/chat/sessions/")) return new Original(url);
+        this.readyState = 1;
+        queueMicrotask(() => this.onopen?.(new Event("open")));
+      }
+      addEventListener() {}
+      close() {
+        this.readyState = 2;
+      }
+    };
+  });
+  await page.reload();
+  await setupBrowserChat(page, provider.base, "john-silent-stream");
+  const input = page.getByRole("textbox", {
+    name: "Message Songya",
+    exact: true,
+  });
+  await input.fill("Please answer once.");
+  await input.press("Enter");
+  await input.fill("Still typing.");
+  await page
+    .locator(".chat-progress")
+    .getByText("Reply complete.", { exact: true })
+    .waitFor({ timeout: 22000 });
+  await page
+    .locator(".chat-message.assistant")
+    .getByText("Recovered from silence.", { exact: true })
+    .waitFor();
+  assert.equal(provider.calls(), 1);
+  assert.equal(await input.inputValue(), "Still typing.");
+  await context.close();
+  assert.deepEqual(errors, []);
+});

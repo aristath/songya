@@ -538,3 +538,47 @@ func TestLongUnicodeUploadNameKeepsValidRunesAndExtension(t *testing.T) {
 		}
 	}
 }
+
+func TestConsumedUploadCanBeReusedFromVerifiedRecordBytes(t *testing.T) {
+	ctx := context.Background()
+	s, _ := Open(t.TempDir())
+	first := createRecord(t, s, Memories, map[string]any{"title": "John's letter"}, "Original words.")
+	second := createRecord(t, s, Memories, map[string]any{"title": "Mary's copy"}, "Other words.")
+	upload, err := s.Upload(ctx, "original-upload", "test", "letter.txt", strings.NewReader("Exact original bytes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.ChangeFile(ctx, FileChange{Key: "first", ID: first.ID, Revision: first.Revision, Action: "add", Upload: upload.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, _ := uploadDirectory(upload.ID)
+	if _, err := os.Stat(filepath.Join(s.path, dir, "content")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal("staging not consumed", err)
+	}
+	receipt, err := s.ChangeFile(ctx, FileChange{Key: "copy", ID: second.ID, Revision: second.Revision, Action: "add", Upload: upload.ID, Filename: "copy.txt"})
+	if err != nil || receipt.Status != "committed" {
+		t.Fatal(receipt, err)
+	}
+	text, _, err := s.ReadAttachmentText(ctx, second.ID, "copy.txt", 0, 100)
+	if err != nil || text != "Exact original bytes" {
+		t.Fatal(text, err)
+	}
+	if _, err := os.Stat(filepath.Join(s.path, dir, "content")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal("recovered staging not cleaned", err)
+	}
+	// A changed source must never be treated as the old uploaded bytes.
+	name, _ := recordName(first.ID)
+	if err := os.WriteFile(filepath.Join(s.path, filepath.Dir(name), "letter.txt"), []byte("Different bytes"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	text, _, err = s.ReadAttachmentText(ctx, second.ID, "copy.txt", 0, 100)
+	if err != nil || text != "Exact original bytes" {
+		t.Fatal("copy shares the source inode", text, err)
+	}
+	current, _ := s.Read(second.ID)
+	_, err = s.ChangeFile(ctx, FileChange{Key: "wrong-source", ID: second.ID, Revision: current.Revision, Action: "add", Upload: upload.ID})
+	if err == nil || !strings.Contains(err.Error(), "original upload bytes") {
+		t.Fatal("changed source reused", err)
+	}
+}

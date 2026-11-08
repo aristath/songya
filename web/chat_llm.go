@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -134,6 +135,9 @@ func (a *chatApp) run(ctx context.Context, id string) error {
 		if c.Status != "running" {
 			return nil
 		}
+		if c.Recall == nil {
+			a.setProgress(id, c.TurnID, "recall")
+		}
 		c, err = a.prepareRecall(ctx, id, c)
 		if err != nil {
 			return err
@@ -154,7 +158,10 @@ func (a *chatApp) run(ctx context.Context, id string) error {
 				result = map[string]any{"error": "The tool needs one JSON object. Put the field names and values inside that object. Nothing was run. Fix the arguments and try again."}
 			} else if tool == nil {
 				result = map[string]any{"error": "Unknown Songya tool; use the supplied definitions."}
+			} else if issue := chatFileArguments(c, call.Function.Name, args); issue != nil {
+				result = map[string]any{"error": issue.Error()}
 			} else {
+				a.setProgress(id, c.TurnID, "tool")
 				defaultChatOwner(tool, args, c.User)
 				key := fmt.Sprintf("chat:%s:%d:%s", id, index, call.ID)
 				result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: call.Function.Name, Arguments: args, Meta: mcp.Meta{"songya/request-key": key, "songya/original-text": originalTurnText(c), "songya/user": c.User}})
@@ -220,6 +227,7 @@ func (a *chatApp) run(ctx context.Context, id string) error {
 		if c.Temperature != nil {
 			temperature = *c.Temperature
 		}
+		a.setProgress(id, c.TurnID, "waiting")
 		stream := client.Chat.Completions.NewStreaming(streamCtx, openai.ChatCompletionNewParams{Model: s.Model, Messages: messages, Tools: definitions, Temperature: openai.Float(temperature), ParallelToolCalls: openai.Bool(false)})
 		chunks := make(chan openai.ChatCompletionChunk, 1)
 		finished := make(chan struct{})
@@ -237,7 +245,7 @@ func (a *chatApp) run(ctx context.Context, id string) error {
 		}()
 		acc := openai.ChatCompletionAccumulator{}
 		ticker := time.NewTicker(150 * time.Millisecond)
-		var draft chatMessage
+		draft := chatMessage{Role: "assistant", TurnID: c.TurnID}
 		dirty := false
 	streaming:
 		for {
@@ -249,19 +257,43 @@ func (a *chatApp) run(ctx context.Context, id string) error {
 				if !ok {
 					break streaming
 				}
+				for _, choice := range chunk.Choices {
+					delta := choice.Delta
+					stage := ""
+					// Provider extensions are marked invalid by the SDK's typed
+					// decoder, but their raw JSON is retained. Read presence only.
+					for _, name := range []string{"reasoning_content", "reasoning"} {
+						raw := delta.JSON.ExtraFields[name].Raw()
+						if raw != "" && raw != "null" && raw != `""` {
+							stage = "thinking"
+						}
+					}
+					if delta.Content != "" {
+						stage = "responding"
+					}
+					if len(delta.ToolCalls) > 0 {
+						stage = "preparing"
+					}
+					if stage != "" {
+						a.setProgress(id, c.TurnID, stage)
+					}
+				}
 				acc.AddChunk(chunk)
 				if len(acc.Choices) == 0 {
 					continue
 				}
 				m := acc.Choices[0].Message
-				draft = chatMessage{Role: "assistant", Content: m.Content, TurnID: c.TurnID}
+				nextDraft := chatMessage{Role: "assistant", Content: m.Content, TurnID: c.TurnID}
 				for _, call := range m.ToolCalls {
 					converted := chatToolCall{ID: call.ID, Type: "function"}
 					converted.Function.Name = call.Function.Name
 					converted.Function.Arguments = call.Function.Arguments
-					draft.ToolCalls = append(draft.ToolCalls, converted)
+					nextDraft.ToolCalls = append(nextDraft.ToolCalls, converted)
 				}
-				dirty = true
+				if nextDraft.Content != draft.Content || !slices.Equal(nextDraft.ToolCalls, draft.ToolCalls) {
+					draft = nextDraft
+					dirty = true
+				}
 			case <-ticker.C:
 				if !dirty {
 					continue

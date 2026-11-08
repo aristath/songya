@@ -164,6 +164,13 @@ saved history and reconnects to streaming progress; interrupted pending work
 resumes after service restart. Stable MCP request keys recover original write
 receipts if a memory was saved before its tool result could be recorded.
 
+Live progress distinguishes waiting for the model, thinking, writing, and tool work,
+with elapsed time. Reasoning text is not shown or saved. Reasoning-only chunks do
+not rewrite an empty draft. Small progress events keep the connection alive while
+unchanged conversation files are not repeatedly parsed or broadcast. If live events
+fail or become silent, the browser checks saved progress and reconnects without
+resending accepted messages or clearing a newer draft.
+
 **Pause** retains the conversation, partial reply and completed memory operations;
 it does not undo writes. **Continue saved turn** resumes paused or failed work.
 The message input stays usable during replies and sends. Sending clears it and
@@ -381,10 +388,16 @@ same retry operation to resolve an uncertain result. Replace/remove are explicit
 permanent actions; save a dirty text draft before using them.
 
 The chat composer accepts multiple files without disabling text input or queued
-messages. Select which completed uploads to include with a turn. The transcript
+messages. Files stay with the draft and are included automatically when sent.
+The transcript
 keeps upload receipts separately from the person's words; the model receives those
 receipts without binary data. Uploaded and confirmed-attached states are distinct.
 Failed memory saves do not erase completed uploads. Reloading recovers them.
+In a multi-file turn, a filename/upload pair that identifies two different submitted
+files is rejected before a file tool runs. Other file-tool rename inputs are unchanged.
+Consumed uploads can be restaged from their verified record-owned bytes for a later
+operation; changed or missing source bytes produce an explicit request for the original
+file rather than reusing the wrong bytes. This adds no permanent attachment copies.
 
 File previews use the browser's native image/media controls and safe text output.
 Media responses support HTTP ranges. Original downloads keep their actual saved

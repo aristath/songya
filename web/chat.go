@@ -105,6 +105,7 @@ type chatApp struct {
 	cancel          context.CancelFunc
 	mu              sync.Mutex
 	active          map[string]context.CancelFunc
+	progress        map[string]chatProgress
 	wg              sync.WaitGroup
 	closed          bool
 	recordsRevision atomic.Uint64
@@ -112,7 +113,7 @@ type chatApp struct {
 
 func newChatApp(store *songya.Store) *chatApp {
 	ctx, cancel := context.WithCancel(context.Background())
-	a := &chatApp{store: store, ctx: ctx, cancel: cancel, active: map[string]context.CancelFunc{}}
+	a := &chatApp{store: store, ctx: ctx, cancel: cancel, active: map[string]context.CancelFunc{}, progress: map[string]chatProgress{}}
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
@@ -283,7 +284,7 @@ func (a *chatApp) start(id string) {
 	go func() {
 		defer a.wg.Done()
 		defer cancel()
-		defer func() { a.mu.Lock(); delete(a.active, id); a.mu.Unlock() }()
+		defer func() { a.mu.Lock(); delete(a.active, id); delete(a.progress, id); a.mu.Unlock() }()
 		lease, err := a.fileLock(ctx, ".chats/"+id+".run.lock", false)
 		if err != nil {
 			return
@@ -527,7 +528,24 @@ func (a *chatApp) sendHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (a *chatApp) eventsHTTP(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if _, err := a.conversation(id); err != nil {
+	if !validChatID(id) {
+		fail(w, fmt.Errorf("invalid conversation ID"))
+		return
+	}
+	root, err := os.OpenRoot(a.store.Directory())
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	defer root.Close()
+	name := ".chats/" + id + ".json"
+	info, err := root.Lstat(name)
+	if err != nil || !info.Mode().IsRegular() {
+		fail(w, fmt.Errorf("conversation is unavailable"))
+		return
+	}
+	c, err := a.conversation(id)
+	if err != nil {
 		fail(w, err)
 		return
 	}
@@ -537,10 +555,15 @@ func (a *chatApp) eventsHTTP(w http.ResponseWriter, r *http.Request) {
 	flush := http.NewResponseController(w)
 	ticker := time.NewTicker(150 * time.Millisecond)
 	defer ticker.Stop()
-	var revision int64 = -1
-	heartbeat := time.Now()
+	revision := int64(-1)
+	previousStage, previousTurn := "", ""
+	heartbeat := time.Time{}
 	for {
-		c, err := a.conversation(id)
+		latest, err := root.Lstat(name)
+		if err == nil && (!latest.Mode().IsRegular() || !os.SameFile(info, latest) || !latest.ModTime().Equal(info.ModTime()) || latest.Size() != info.Size()) {
+			info = latest
+			c, err = a.conversation(id)
+		}
 		if err != nil {
 			data, _ := json.Marshal(map[string]any{"error": err.Error()})
 			_, _ = fmt.Fprintf(w, "event: unavailable\ndata: %s\n\n", data)
@@ -552,20 +575,26 @@ func (a *chatApp) eventsHTTP(w http.ResponseWriter, r *http.Request) {
 			if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
 				return
 			}
-			if flush.Flush() != nil {
-				return
-			}
 			revision = c.Revision
 		}
 		if c.Status != "running" && c.Status != "pending" {
+			_ = flush.Flush()
 			return
 		}
-		if time.Since(heartbeat) > 10*time.Second {
-			_, _ = fmt.Fprint(w, ": keep-alive\n\n")
-			if flush.Flush() != nil {
+		p := a.currentProgress(id)
+		if p.TurnID != c.TurnID {
+			p = chatProgress{TurnID: c.TurnID, Stage: "waiting"}
+		}
+		if p.Stage != previousStage || p.TurnID != previousTurn || time.Since(heartbeat) > 5*time.Second {
+			data, _ := json.Marshal(p)
+			if _, err := fmt.Fprintf(w, "event: progress\ndata: %s\n\n", data); err != nil {
 				return
 			}
+			previousStage, previousTurn = p.Stage, p.TurnID
 			heartbeat = time.Now()
+		}
+		if flush.Flush() != nil {
+			return
 		}
 		select {
 		case <-r.Context().Done():
