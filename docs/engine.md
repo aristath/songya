@@ -391,6 +391,12 @@ unusable; damaged calendar fields do not disable independent relative ordering.
 Date-proven constraints are derived for the displayed page without materializing
 all pairs in the store. Inferred dates are never written back.
 
+`Catalog.Timeline(ctx, query)` supplies the application with an unpaged snapshot
+from the same chronology validation. It retains explicit constraints and complete
+record timing; it does not expand every non-overlapping date pair. This lets the
+web timeline order all matching memories without losing links at page boundaries.
+The bounded `Store.Timeline` response used by tools retains its existing paging.
+
 A story's related_to relations to memories/stories define reading order; entity/topic
 links are associations. Its body supplies introductory prose. `Compose(ctx, id,
 offset, limit)` expands canonical bodies in that order, without storing copies.

@@ -49,6 +49,28 @@ returned rows without changing the records.
 Entity and topic descriptions come from their Markdown bodies, so edits update
 the table and description filter directly.
 
+The **List / Timeline** switch keeps the graph and chat in place. Timeline shows
+memories using event dates and usable before/after relationships, never creation
+or update timestamps. Exact dates, closed/open ranges and undated accounts retain
+their saved precision. Overlapping periods do not establish a complete order.
+An undated memory linked to dated events can appear among them with **Date unknown**
+and its explicit links; the view does not fill in a date. Independent relative
+sequences, unplaced memories and unusable timing remain visible in named sections.
+
+Each timeline entry shows its ID, owner, configured color, excerpt and timing
+links. **Edit dates** and **Edit order** open the existing record editor; adding an
+`after` link uses Connections, while missing date controls can be added with
+**Add event dates**. Changes preserve the record's ID, body and other metadata.
+Saved edits and chat/tool writes refresh the timeline through the existing event
+stream. A temporary refresh failure retains readable entries and retries.
+
+The library's search, owner and column filters still apply. Timeline adds
+**Related to** and **Timing** inside the collapsed **Filters** panel to find one
+subject, unknown dates, ranges or conflicts. The record-kind filter is reserved for List; returning to List
+restores its previous selection. The layout remains intrinsic without breakpoints.
+`GET /api/timeline` returns a snapshot with all matching memories and explicit
+ordering constraints, so links cannot disappear between separately fetched pages.
+
 ## Chat
 
 Choose **Talking as** to set the owner for a conversation. Existing owners and

@@ -97,6 +97,17 @@ func (s *Store) Timeline(ctx context.Context, q Query) (Timeline, error) {
 	if err != nil {
 		return Timeline{}, err
 	}
+	return timeline(ctx, c, q, false)
+}
+
+// Timeline analyzes a catalogue snapshot for an application view. It returns all
+// matching records and explicit constraints, without the quadratic date-pair
+// expansion used by the bounded tool page. Dates themselves remain authoritative.
+func (c Catalog) Timeline(ctx context.Context, q Query) (Timeline, error) {
+	return timeline(ctx, c, q, true)
+}
+
+func timeline(ctx context.Context, c Catalog, q Query, full bool) (Timeline, error) {
 	c = userCatalog(c, q.User)
 	records := catalogMap(c)
 	diagnostics := append([]Diagnostic{}, c.Diagnostics...)
@@ -250,7 +261,12 @@ func (s *Store) Timeline(ctx context.Context, q Query) (Timeline, error) {
 			related[id] = true
 		}
 	}
-	selected := searchCatalog(c, q)
+	var selected SearchResult
+	if full {
+		selected = SearchResult{Matches: rankMatches(c, q)}
+	} else {
+		selected = searchCatalog(c, q)
+	}
 	result := Timeline{Groups: map[string][]string{}, Records: []TemporalRecord{}, Constraints: []TemporalConstraint{}, Next: selected.Next, Truncated: selected.Truncated}
 	displayed := map[string]bool{}
 	for _, match := range selected.Matches {
@@ -266,6 +282,10 @@ func (s *Store) Timeline(ctx context.Context, q Query) (Timeline, error) {
 			}
 		}
 		relations := append([]Relation{}, r.Relations[:min(16, len(r.Relations))]...)
+		if full {
+			episode = r.Time
+			relations = append([]Relation{}, r.Relations...)
+		}
 		for i := range relations {
 			relations[i].Type = clip(relations[i].Type, 128)
 			relations[i].Target = clip(relations[i].Target, 128)
@@ -276,10 +296,12 @@ func (s *Store) Timeline(ctx context.Context, q Query) (Timeline, error) {
 		result.Records = append(result.Records, TemporalRecord{User: clip(r.User, 160), ID: r.ID, Title: clip(r.Title, 160), Time: episode, Relations: relations, Unordered: !related[r.ID], Unconfirmed: r.Unconfirmed, DetailsTruncated: len(r.Relations) > len(relations) || episode != r.Time || len(r.Title) > 160 || len(r.User) > 160})
 		displayed[r.ID] = true
 	}
-	for _, a := range result.Records {
-		for _, b := range result.Records {
-			if a.ID != b.ID && !latest[a.ID].IsZero() && !earliest[b.ID].IsZero() && latest[a.ID].Before(earliest[b.ID]) {
-				add(a.ID, b.ID, "non-overlapping episode bounds")
+	if !full {
+		for _, a := range result.Records {
+			for _, b := range result.Records {
+				if a.ID != b.ID && !latest[a.ID].IsZero() && !earliest[b.ID].IsZero() && latest[a.ID].Before(earliest[b.ID]) {
+					add(a.ID, b.ID, "non-overlapping episode bounds")
+				}
 			}
 		}
 	}
@@ -296,5 +318,8 @@ func (s *Store) Timeline(ctx context.Context, q Query) (Timeline, error) {
 		return a.After < b.After
 	})
 	result.Diagnostics = boundedDiagnostics(diagnostics)
+	if full {
+		result.Diagnostics = diagnostics
+	}
 	return result, nil
 }

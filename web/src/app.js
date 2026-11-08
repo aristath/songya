@@ -7,6 +7,7 @@ import { defaultKindColors } from "./palette.js";
 import { typesUI } from "./types.js";
 import { newID } from "./ids.js";
 import { storyUI } from "./story.js";
+import { timelineUI } from "./timeline.js";
 
 async function request(path, options = {}) {
   const response = await fetch(path, {
@@ -40,6 +41,7 @@ Alpine.data("songya", () => {
     ...recallUI(request),
     ...typesUI(request),
     ...storyUI(request),
+    ...timelineUI(request),
     theme: document.documentElement.dataset.theme || "system",
     setTheme() {
       document.documentElement.dataset.theme = this.theme;
@@ -119,6 +121,9 @@ Alpine.data("songya", () => {
         );
         if (ticket !== graphListing) return;
         graphData = data;
+        this.timelineSubjects = data.nodes
+          .filter((node) => ["entities", "topics"].includes(node.kind))
+          .sort((a, b) => (a.title || a.id).localeCompare(b.title || b.id));
         this.graphKindColors = data.kind_colors || { ...defaultKindColors };
         this.graphOwners = [
           ...new Set([
@@ -239,7 +244,7 @@ Alpine.data("songya", () => {
         if (listingFailure && this.failure === listingFailure)
           this.failure = "";
         listingFailure = "";
-        return true;
+        return await this.refreshTimeline();
       } catch (e) {
         if (ticket === listing) this.failure = listingFailure = e.message;
         return false;
@@ -653,6 +658,18 @@ Alpine.data("songya", () => {
         type: "time",
         time: { start: null, end: null },
         value: '{"start":null,"end":null}',
+        text: "",
+        system: false,
+      });
+      this.metadataChanged();
+    },
+    addEventDates() {
+      this.fields.push({
+        index: -1,
+        key: "time",
+        type: "time",
+        time: { date: null, earliest: null, latest: null },
+        value: '{"date":null,"earliest":null,"latest":null}',
         text: "",
         system: false,
       });

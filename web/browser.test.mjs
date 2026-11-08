@@ -13,8 +13,64 @@ import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { chromium } from "playwright";
+import { arrangeTimeline } from "./src/timeline.js";
 let root, processHandle, url, browser, embeddingMock;
 const errors = [];
+
+test("timeline placement preserves dates, respects partial order, and retains unplaced accounts", () => {
+  const record = (id, title, time = {}) => ({
+    id,
+    title,
+    time,
+    issues: [],
+    relations: [],
+  });
+  const input = [
+    record("a", "Mary's walk", { date: "2001-01-01" }),
+    record("b", "John's later visit"),
+    record("c", "A broad period", {
+      earliest: "1990-01-01",
+      latest: "2010-12-31",
+    }),
+    record("d", "A memory without timing"),
+    record("e", "An independent first event"),
+    record("f", "An independent next event"),
+  ];
+  const before = JSON.stringify(input);
+  const result = arrangeTimeline(input, [
+    { before: "a", after: "b", usable: true },
+    { before: "b", after: "c", usable: true },
+    { before: "e", after: "f", usable: true },
+  ]);
+  const ids = result.map((entry) => entry.id);
+  assert.ok(
+    ids.indexOf("a") < ids.indexOf("b") && ids.indexOf("b") < ids.indexOf("c"),
+    "Links take precedence over overlapping range starts",
+  );
+  assert.equal(
+    result.find((entry) => entry.id === "b").dateLabel,
+    "Date unknown",
+  );
+  assert.equal(result.find((entry) => entry.id === "b").section, "dated");
+  assert.equal(result.find((entry) => entry.id === "d").section, "undated");
+  assert.equal(result.find((entry) => entry.id === "e").section, "relative");
+  assert.ok(ids.indexOf("e") < ids.indexOf("f"));
+  assert.equal(
+    JSON.stringify(input),
+    before,
+    "Presentation must not alter stored dates or links",
+  );
+  const conflicted = arrangeTimeline(input, [
+    { before: "a", after: "b", usable: false },
+  ]);
+  assert.equal(conflicted.find((entry) => entry.id === "a").timing, "conflict");
+  assert.equal(
+    conflicted.find((entry) => entry.id === "a").section,
+    "dated",
+    "A conflict must not hide a known calendar position",
+  );
+  assert.equal(conflicted.find((entry) => entry.id === "b").section, "review");
+});
 before(
   async () => {
     root = mkdtempSync(join(tmpdir(), "songya-ui-browser-"));
@@ -3769,6 +3825,284 @@ test("empty stories remain readable and closing a loading story cancels its page
     assert.deepEqual(errors, []);
   } finally {
     release();
+    await context.close();
+  }
+});
+
+test("timeline shows uncertainty and lets dates and after links be corrected in the existing records", async () => {
+  const subject = await save(
+    "---\nname: Timeline case Mary\n---\nA fictional person.",
+    "entities",
+  );
+  const add = (title, time = {}, relations = [], user = "ari") =>
+    save(
+      "---\nuser: " +
+        user +
+        "\ntitle: Timeline case " +
+        title +
+        "\ntime: " +
+        JSON.stringify(time) +
+        "\nrelations: " +
+        JSON.stringify(relations) +
+        "\n---\nJohn remembers " +
+        title +
+        ".",
+    );
+  const related = { type: "related_to", target: subject.id };
+  const exact = await add("walk", { date: "2000-01-01" }, [related]);
+  const range = await add(
+    "journey",
+    { earliest: "2001-01-01", latest: "2003-12-31" },
+    [related],
+  );
+  const linked = await add("visit", {}, [
+    related,
+    { type: "after", target: exact.id },
+  ]);
+  const unknown = await add("unplaced");
+  const relativeFirst = await add("first undated event");
+  const relativeNext = await add("next undated event", {}, [
+    { type: "after", target: relativeFirst.id },
+  ]);
+  const conflict = await add("conflicting date", { date: "1990-01-01" }, [
+    { type: "after", target: exact.id },
+  ]);
+  const missing = await add("missing order target", {}, [
+    { type: "after", target: "m_000000000000" },
+  ]);
+  const other = await add(
+    "other person's memory",
+    { date: "2005-01-01" },
+    [],
+    "timeline_other",
+  );
+  const originals = await Promise.all(
+    [
+      exact,
+      range,
+      linked,
+      unknown,
+      relativeFirst,
+      relativeNext,
+      conflict,
+      missing,
+      other,
+    ].map(async (r) => (await fetch(url + "/api/records/" + r.id)).json()),
+  );
+  const { page, context } = await pageFor();
+  const panel = page.getByRole("tabpanel", { name: "Timeline", exact: true });
+  const dialog = page.locator('dialog[x-ref="editorDialog"]');
+  const card = (id) => panel.locator('[data-memory-id="' + id + '"]');
+  try {
+    await page.locator(".library-filters > summary").click();
+    await page
+      .getByLabel("Search records", { exact: true })
+      .fill("Timeline case");
+    await page.waitForFunction(
+      (id) =>
+        window.Alpine.$data(document.body).records.some((r) => r.id === id),
+      unknown.id,
+    );
+    await page.locator(".library-filters > summary").click();
+    await page.getByRole("tab", { name: "Timeline", exact: true }).click();
+    await card(unknown.id).waitFor();
+    await page.waitForFunction(
+      () => !window.Alpine.$data(document.body).timelineBusy,
+    );
+    assert.match(await card(range.id).textContent(), /2001-01-01 – 2003-12-31/);
+    assert.match(await card(linked.id).textContent(), /Date unknown/);
+    assert.match(
+      await card(linked.id).textContent(),
+      /Shown here using before\/after links/,
+    );
+    assert.ok(
+      await panel
+        .getByRole("region", {
+          name: "Known order, dates unknown",
+          exact: true,
+        })
+        .locator('[data-memory-id="' + relativeNext.id + '"]')
+        .count(),
+    );
+    assert.match(await card(missing.id).textContent(), /unavailable record/);
+    assert.match(await card(conflict.id).textContent(), /Timing conflict/);
+    assert.ok((await card(exact.id).textContent()).includes(exact.id));
+    for (const original of originals)
+      assert.equal(
+        (await (await fetch(url + "/api/records/" + original.id)).json())
+          .version,
+        original.version,
+        "Reading the timeline must not alter memories",
+      );
+    await page.locator(".library-filters > summary").click();
+    await page
+      .getByLabel("Timeline timing", { exact: true })
+      .selectOption("unknown");
+    assert.ok(await card(unknown.id).count());
+    assert.equal(await card(range.id).count(), 0);
+    await page.getByLabel("Timeline timing", { exact: true }).selectOption("");
+    await page
+      .getByLabel("Timeline subject", { exact: true })
+      .selectOption(subject.id);
+    assert.deepEqual(
+      new Set(
+        await panel
+          .locator(".timeline-entry")
+          .evaluateAll((els) => els.map((el) => el.dataset.memoryId)),
+      ),
+      new Set([exact.id, range.id, linked.id]),
+    );
+    await page.getByLabel("Timeline subject", { exact: true }).selectOption("");
+    await page.locator(".library-filters > summary").click();
+    for (const [width, theme] of [
+      [1320, "dark"],
+      [390, "light"],
+    ]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.getByLabel("Color theme", { exact: true }).selectOption(theme);
+      await panel.scrollIntoViewIfNeeded();
+      assert.equal(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+        true,
+      );
+      await page.screenshot({
+        path: "/tmp/songya-ui-review/timeline-" + width + ".png",
+        fullPage: true,
+      });
+    }
+    await page.setViewportSize({ width: 1320, height: 900 });
+    await card(unknown.id)
+      .getByRole("button", {
+        name: "Edit dates Timeline case unplaced",
+        exact: true,
+      })
+      .click();
+    await dialog
+      .getByLabel("Exact event date", { exact: true })
+      .fill("2002-06-15");
+    await dialog
+      .getByLabel("Exact event date", { exact: true })
+      .dispatchEvent("change");
+    await dialog.getByRole("button", { name: "Save", exact: true }).click();
+    await page.waitForFunction(() => !window.Alpine.$data(document.body).dirty);
+    await dialog
+      .getByRole("button", { name: "Close record", exact: true })
+      .click();
+    await page.waitForFunction(
+      (id) =>
+        window.Alpine.$data(document.body).timelineRecords.find(
+          (r) => r.id === id,
+        )?.time.date === "2002-06-15",
+      unknown.id,
+    );
+    assert.match(await card(unknown.id).textContent(), /2002-06-15/);
+    await card(relativeFirst.id)
+      .getByRole("button", {
+        name: "Edit order Timeline case first undated event",
+        exact: true,
+      })
+      .click();
+    await dialog
+      .getByLabel("Find a record", { exact: true })
+      .fill("Timeline case unplaced");
+    await dialog
+      .locator(".target-results")
+      .getByRole("button")
+      .filter({ hasText: "Timeline case unplaced" })
+      .click();
+    assert.equal(
+      await dialog.getByLabel("Relationship", { exact: true }).inputValue(),
+      "after",
+    );
+    await dialog
+      .getByRole("button", { name: "Add connection", exact: true })
+      .click();
+    await dialog.getByRole("button", { name: "Save", exact: true }).click();
+    await page.waitForFunction(() => !window.Alpine.$data(document.body).dirty);
+    await dialog
+      .getByRole("button", { name: "Close record", exact: true })
+      .click();
+    await page.waitForFunction(
+      (id) =>
+        window.Alpine.$data(document.body).timelineRecords.find(
+          (r) => r.id === id,
+        )?.section === "dated",
+      relativeFirst.id,
+    );
+    assert.match(
+      await card(relativeFirst.id).textContent(),
+      /After Timeline case unplaced/,
+    );
+    const corrected = await (
+      await fetch(url + "/api/records/" + relativeFirst.id)
+    ).json();
+    assert.match(corrected.source, new RegExp("target: " + unknown.id));
+    assert.match(corrected.source, /type: after/);
+    assert.equal(
+      corrected.draft.body,
+      originals.find((r) => r.id === relativeFirst.id).draft.body,
+    );
+    const latest = await (
+      await fetch(url + "/api/records/" + linked.id)
+    ).json();
+    const changedSource = latest.source.replace(
+      /^time:.*$/m,
+      'time: {date: "2004-01-01", earliest: null, latest: null}',
+    );
+    assert.notEqual(
+      changedSource,
+      latest.source,
+      "Fixture must update a real stored date field",
+    );
+    await save(changedSource, "memories", linked.id, latest.version);
+    await page.waitForFunction(
+      (id) =>
+        window.Alpine.$data(document.body).timelineRecords.find(
+          (r) => r.id === id,
+        )?.time.date === "2004-01-01",
+      linked.id,
+    );
+    let failTimeline = true;
+    await page.route("**/api/timeline?*", async (route) => {
+      if (failTimeline) {
+        failTimeline = false;
+        return route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Temporary timeline failure" }),
+        });
+      }
+      return route.continue();
+    });
+    await page.locator(".library-filters > summary").click();
+    await page.getByLabel("Owner", { exact: true }).selectOption("ari");
+    await panel
+      .getByRole("alert")
+      .getByText(/Temporary timeline failure/)
+      .waitFor();
+    assert.ok(
+      await card(exact.id).isVisible(),
+      "A failed refresh keeps healthy memories readable",
+    );
+    await page.waitForFunction(
+      () =>
+        !window.Alpine.$data(document.body).timelineError &&
+        !window.Alpine.$data(document.body).timelineBusy,
+    );
+    assert.equal(
+      await card(other.id).count(),
+      0,
+      "Owner changes exclude other collections",
+    );
+    await page.locator(".library-filters > summary").click();
+    await page.getByRole("tab", { name: "List", exact: true }).click();
+    await page.locator("#library-list").waitFor({ state: "visible" });
+    assert.equal(await page.locator("#library-list").isVisible(), true);
+    assert.equal(await panel.isVisible(), false);
+    assert.deepEqual(errors, []);
+  } finally {
     await context.close();
   }
 });

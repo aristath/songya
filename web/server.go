@@ -38,6 +38,7 @@ func Handler(store *songya.Store) *Application {
 	chat.registerRecall(mux)
 	chat.registerTypes(mux)
 	mux.HandleFunc("GET /api/records/events", chat.recordEventsHTTP)
+	mux.HandleFunc("GET /api/timeline", chat.timelineHTTP)
 	files, _ := fs.Sub(assets, "assets")
 	page := template.Must(template.ParseFS(assets, "assets/index.html"))
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {

@@ -577,7 +577,29 @@
         >
           <div class="library-heading">
             <h2>Library</h2>
-            <span x-text="rows().length+' records'"></span>
+            <div class="library-view" role="tablist" aria-label="Library view">
+              <button
+                id="library-list-tab"
+                role="tab"
+                aria-controls="library-list"
+                :aria-selected="libraryView==='list'"
+                @click="setLibraryView('list')"
+              >
+                List
+              </button>
+              <button
+                id="library-timeline-tab"
+                role="tab"
+                aria-controls="library-timeline"
+                :aria-selected="libraryView==='timeline'"
+                @click="setLibraryView('timeline')"
+              >
+                Timeline
+              </button>
+            </div>
+            <span
+              x-text="libraryView==='timeline'?timelineEntries().length+' memories':rows().length+' records'"
+            ></span>
             <div class="library-settings">
               <button @click="openTypeSettings()">Type settings</button>
               <button @click="openRecallSettings()">Retrieval settings</button>
@@ -606,7 +628,7 @@
                   type="search"
                   x-model="filters.description"
               /></label>
-              <label
+              <label x-show="libraryView==='list'"
                 >Record type<select
                   aria-label="Record type filter"
                   x-model="kind"
@@ -669,6 +691,35 @@
                     ></option
                   ></template></select
               ></label>
+              <div class="timeline-controls" x-show="libraryView==='timeline'">
+                <label
+                  >Related to<select
+                    aria-label="Timeline subject"
+                    x-model="timelineRelatedTo"
+                  >
+                    <option value="">Any person, place or topic</option>
+                    <template
+                      x-for="subject in timelineSubjects"
+                      :key="subject.id"
+                      ><option
+                        :value="subject.id"
+                        x-text="(subject.title||subject.id)+' ('+subject.id+')'"
+                      ></option
+                    ></template></select
+                ></label>
+                <label
+                  >Timing<select
+                    aria-label="Timeline timing"
+                    x-model="timelineTiming"
+                  >
+                    <option value="">All memories</option>
+                    <option value="exact">Exact dates</option>
+                    <option value="range">Date ranges</option>
+                    <option value="unknown">No recorded date</option>
+                    <option value="conflict">Timing conflicts</option>
+                  </select></label
+                >
+              </div>
             </div>
           </details>
           <details x-show="diagnostics.length">
@@ -678,98 +729,239 @@
             ></template>
           </details>
           <div
-            class="table-scroll"
-            tabindex="0"
-            role="region"
-            aria-label="Records table"
+            id="library-list"
+            x-show="libraryView==='list'"
+            class="library-list-panel"
+            role="tabpanel"
+            aria-labelledby="library-list-tab"
           >
-            <table>
-              <colgroup>
-                <col />
-                <col />
-                <col />
-                <col />
-                <col />
-                <col />
-                <col />
-                <col />
-              </colgroup>
-              <thead>
-                <tr>
-                  <template
-                    x-for="column in [{key:'title',label:'Title'},{key:'updated_at',label:'Last updated'},{key:'description',label:'Description'},{key:'kind',label:'Record type'},{key:'type',label:'Type'},{key:'aliases',label:'Aliases'},{key:'user',label:'Owner'}]"
-                    :key="column.key"
-                    ><th scope="col" :aria-sort="sortOrder(column.key)">
-                      <button
-                        @click="sort(column.key)"
-                        :aria-label="'Sort by '+column.label"
-                      >
-                        <span x-text="column.label"></span
-                        ><span
+            <div
+              class="table-scroll"
+              tabindex="0"
+              role="region"
+              aria-label="Records table"
+            >
+              <table>
+                <colgroup>
+                  <col />
+                  <col />
+                  <col />
+                  <col />
+                  <col />
+                  <col />
+                  <col />
+                  <col />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <template
+                      x-for="column in [{key:'title',label:'Title'},{key:'updated_at',label:'Last updated'},{key:'description',label:'Description'},{key:'kind',label:'Record type'},{key:'type',label:'Type'},{key:'aliases',label:'Aliases'},{key:'user',label:'Owner'}]"
+                      :key="column.key"
+                      ><th scope="col" :aria-sort="sortOrder(column.key)">
+                        <button
+                          @click="sort(column.key)"
+                          :aria-label="'Sort by '+column.label"
+                        >
+                          <span x-text="column.label"></span
+                          ><span
+                            aria-hidden="true"
+                            x-text="sortKey===column.key ? ascending ? '↑' : '↓' : '↕'"
+                          ></span>
+                        </button></th
+                    ></template>
+                    <th scope="col">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="record in rows()" :key="record.source"
+                    ><tr class="record">
+                      <td class="title-cell">
+                        <i
+                          class="color-dot"
                           aria-hidden="true"
-                          x-text="sortKey===column.key ? ascending ? '↑' : '↓' : '↕'"
-                        ></span>
-                      </button></th
-                  ></template>
-                  <th scope="col">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <template x-for="record in rows()" :key="record.source"
-                  ><tr class="record">
-                    <td class="title-cell">
-                      <i
-                        class="color-dot"
-                        aria-hidden="true"
-                        :style="{backgroundColor:colorCSS(record.color||graphKindColors[record.kind])}"
-                      ></i>
-                      <button
-                        class="text-button"
-                        @click="open(record.id, false, true)"
-                        :disabled="!record.id||busy||loading"
-                        x-text="label(record)"
-                      ></button
-                      ><small x-text="record.id||record.source"></small>
-                    </td>
-                    <td class="updated-cell">
-                      <time
-                        :datetime="record.updated_at||null"
-                        :title="record.updated_at||'No update date recorded'"
-                        x-text="updatedLabel(record.updated_at)"
-                      ></time>
-                    </td>
-                    <td
-                      class="description-cell"
-                      x-text="record.description||'—'"
-                    ></td>
-                    <td x-text="record.kind"></td>
-                    <td x-text="typeLabel(record.type,record.kind)||'—'"></td>
-                    <td
-                      class="aliases-cell"
-                      x-text="(record.aliases||[]).join(', ')||'—'"
-                    ></td>
-                    <td x-text="record.user||'Shared'"></td>
-                    <td class="row-actions">
-                      <button
-                        @click="open(record.id)"
-                        :aria-label="'Edit '+label(record)"
-                        :disabled="!record.id||busy||loading"
-                      >
-                        Edit</button
-                      ><button
-                        class="danger"
-                        @click="remove(record)"
-                        :aria-label="'Delete '+label(record)"
-                        :disabled="!record.id||record.pending||busy||loading"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr></template
-                >
-              </tbody>
-            </table>
-            <p class="empty" x-show="!rows().length">No matching records.</p>
+                          :style="{backgroundColor:colorCSS(record.color||graphKindColors[record.kind])}"
+                        ></i>
+                        <button
+                          class="text-button"
+                          @click="open(record.id, false, true)"
+                          :disabled="!record.id||busy||loading"
+                          x-text="label(record)"
+                        ></button
+                        ><small x-text="record.id||record.source"></small>
+                      </td>
+                      <td class="updated-cell">
+                        <time
+                          :datetime="record.updated_at||null"
+                          :title="record.updated_at||'No update date recorded'"
+                          x-text="updatedLabel(record.updated_at)"
+                        ></time>
+                      </td>
+                      <td
+                        class="description-cell"
+                        x-text="record.description||'—'"
+                      ></td>
+                      <td x-text="record.kind"></td>
+                      <td x-text="typeLabel(record.type,record.kind)||'—'"></td>
+                      <td
+                        class="aliases-cell"
+                        x-text="(record.aliases||[]).join(', ')||'—'"
+                      ></td>
+                      <td x-text="record.user||'Shared'"></td>
+                      <td class="row-actions">
+                        <button
+                          @click="open(record.id)"
+                          :aria-label="'Edit '+label(record)"
+                          :disabled="!record.id||busy||loading"
+                        >
+                          Edit</button
+                        ><button
+                          class="danger"
+                          @click="remove(record)"
+                          :aria-label="'Delete '+label(record)"
+                          :disabled="!record.id||record.pending||busy||loading"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr></template
+                  >
+                </tbody>
+              </table>
+              <p class="empty" x-show="!rows().length">No matching records.</p>
+            </div>
+          </div>
+          <div
+            id="library-timeline"
+            class="timeline"
+            role="tabpanel"
+            aria-labelledby="library-timeline-tab"
+            x-show="libraryView==='timeline'"
+            x-cloak
+            :aria-busy="timelineBusy"
+          >
+            <details class="timeline-explanation">
+              <summary>How dates and order are shown</summary>
+              <p>
+                Ranges can overlap. Row order alone does not establish which
+                event happened first. Undated memories stay visible so you can
+                add dates or before/after links.
+              </p>
+            </details>
+            <p class="muted" role="status" x-show="timelineBusy">
+              Updating timeline…
+            </p>
+            <div class="error" role="alert" x-show="timelineError">
+              <p x-text="'Could not update the timeline. '+timelineError"></p>
+              <button @click="refreshTimeline()" :disabled="timelineBusy">
+                Retry timeline
+              </button>
+            </div>
+            <template x-for="section in timelineSections()" :key="section.id">
+              <section class="timeline-section" :aria-label="section.title">
+                <h3 x-text="section.title"></h3>
+                <p
+                  class="muted"
+                  x-show="section.id!=='dated'"
+                  x-text="section.note"
+                ></p>
+                <div class="timeline-entries">
+                  <template x-for="entry in section.entries" :key="entry.id">
+                    <article
+                      class="timeline-entry"
+                      :data-memory-id="entry.id"
+                      :style="{'--entry-color':colorCSS(entry.color)}"
+                    >
+                      <div class="timeline-date">
+                        <span class="timeline-dot" aria-hidden="true"></span
+                        ><strong x-text="entry.dateLabel"></strong
+                        ><small
+                          x-show="entry.timing!=='unknown'"
+                          x-text="entry.timing==='conflict'?'Timing conflict':entry.timing==='exact'?'Exact date':entry.timing==='range'?'Date range':'Date unknown'"
+                        ></small>
+                      </div>
+                      <div class="timeline-account">
+                        <button
+                          class="text-button timeline-title"
+                          @click="open(entry.id,false,true)"
+                          :disabled="busy||loading"
+                          x-text="entry.title"
+                        ></button>
+                        <div class="timeline-identity">
+                          <code x-text="entry.id"></code
+                          ><span x-text="entry.user"></span>
+                        </div>
+                        <p
+                          class="timeline-placement"
+                          x-show="entry.linkPlacement"
+                        >
+                          Shown here using before/after links. No event date is
+                          recorded.
+                        </p>
+                        <p class="timeline-excerpt" x-text="entry.excerpt"></p>
+                        <p class="record-warning" x-show="entry.pending">
+                          This record has unfinished changes.
+                        </p>
+                        <template x-for="issue in entry.issues" :key="issue"
+                          ><p class="timeline-issue" x-text="issue"></p
+                        ></template>
+                        <div class="timeline-links" x-show="entry.links.length">
+                          <template
+                            x-for="link in entry.links"
+                            :key="link.relation+link.id"
+                            ><div
+                              :class="{'timeline-issue':link.usable===false}"
+                            >
+                              <span x-text="link.relation+' '"></span
+                              ><button
+                                class="text-button"
+                                @click="open(link.id,false,true)"
+                                :disabled="busy||loading||link.missing"
+                                x-text="link.title||link.id"
+                              ></button
+                              ><small x-show="link.usable===false">
+                                (unusable link)</small
+                              >
+                              <small x-show="link.outside">
+                                (outside this view)</small
+                              >
+                            </div></template
+                          >
+                        </div>
+                        <div class="timeline-actions">
+                          <button
+                            @click="editTimelineDates(entry.id)"
+                            :aria-label="'Edit dates '+entry.title"
+                            :disabled="busy||loading"
+                          >
+                            Edit dates</button
+                          ><button
+                            @click="editTimelineOrder(entry.id)"
+                            :aria-label="'Edit order '+entry.title"
+                            :disabled="busy||loading"
+                          >
+                            Edit order
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  </template>
+                </div>
+              </section>
+            </template>
+            <p
+              class="empty"
+              x-show="!timelineBusy&&!timelineEntries().length&&!timelineError"
+            >
+              No memories match these filters.
+            </p>
+            <details x-show="timelineDiagnostics.length">
+              <summary>Timeline details needing attention</summary>
+              <template
+                x-for="(issue,index) in timelineDiagnostics"
+                :key="index"
+                ><p x-text="issue.path+': '+issue.message"></p
+              ></template>
+            </details>
           </div>
         </section>
       </div>
@@ -878,6 +1070,13 @@
             @click="addLifetimeDates()"
           >
             Add lifetime dates
+          </button>
+          <button
+            type="button"
+            x-show="selected?.kind!=='entities'&&!fields.some(field=>field.key==='time')"
+            @click="addEventDates()"
+          >
+            Add event dates
           </button>
           <label x-show="!selected?.id"
             >Record type<select
