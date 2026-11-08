@@ -3534,3 +3534,241 @@ test("Catppuccin color presets and custom colors persist on network HTTP and rec
     await context.close();
   }
 });
+
+test("stories display composed memories with IDs, recover pages, and edit only their own source", async () => {
+  const longText =
+    "# A long afternoon\n\n" +
+    "Mary remembered the lake. αβ. ".repeat(900) +
+    "\n\nEnd of the long memory.";
+  const first = await save(source("Reader first memory", longText));
+  const second = await save(
+    source(
+      "Reader second memory",
+      "John returned the next morning. <img src=x onerror=alert(1)>",
+    ),
+  );
+  const nested = await save(
+    "---\nuser: ari\ntitle: Reader nested story\nrelations:\n  - {type: related_to, target: " +
+      second.id +
+      "}\n  - {type: related_to, target: " +
+      first.id +
+      "}\n---\nNested introduction.",
+    "stories",
+  );
+  const missing = "m_000000000000";
+  const root = await save(
+    "---\nuser: ari\ntitle: Reader complete story\nrelations:\n  - {type: related_to, target: " +
+      first.id +
+      "}\n  - {type: related_to, target: " +
+      nested.id +
+      "}\n  - {type: related_to, target: " +
+      missing +
+      "}\n---\nA story introduction.",
+    "stories",
+  );
+  const initialFirst = await (
+    await fetch(url + "/api/records/" + first.id)
+  ).json();
+  const initialSecond = await (
+    await fetch(url + "/api/records/" + second.id)
+  ).json();
+  const { page, context } = await pageFor({ width: 1320, height: 900 });
+  const dialog = page.locator('dialog[x-ref="editorDialog"]');
+  let failedPage = false;
+  try {
+    await page.route(
+      "**/api/stories/" + root.id + "/compose?offset=*",
+      async (route) => {
+        if (
+          new URL(route.request().url()).searchParams.get("offset") !== "0" &&
+          !failedPage
+        ) {
+          failedPage = true;
+          return route.fulfill({
+            status: 503,
+            contentType: "application/json",
+            body: JSON.stringify({ error: "Temporary story read failure" }),
+          });
+        }
+        return route.continue();
+      },
+    );
+    await page
+      .getByRole("button", { name: "Reader complete story", exact: true })
+      .click();
+    const reader = dialog.getByRole("article", { name: "Composed story" });
+    await reader
+      .getByRole("alert")
+      .getByText(/Temporary story read failure/)
+      .waitFor();
+    assert.match(await reader.textContent(), /A story introduction/);
+    assert.match(await reader.textContent(), /Mary remembered/);
+    await page.waitForFunction(
+      () => window.Alpine.$data(document.body).storyComplete,
+    );
+    assert.equal(failedPage, true);
+    assert.deepEqual(
+      await reader.locator(".story-memory-id:visible").allTextContents(),
+      [first.id, second.id, first.id, missing],
+    );
+    const passages = reader.locator(".story-part-body");
+    assert.equal(
+      await passages.filter({ hasText: "End of the long memory." }).count(),
+      2,
+    );
+    assert.equal(
+      await reader.locator("img").count(),
+      0,
+      "Saved HTML is displayed as text",
+    );
+    await reader
+      .getByText("Story details needing attention", { exact: true })
+      .click();
+    assert.match(await reader.textContent(), /missing record/);
+    assert.equal(
+      await dialog.locator(".inspection-metadata").isVisible(),
+      false,
+    );
+    for (const width of [1320, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const part = reader
+        .locator(".story-part")
+        .filter({ hasText: first.id })
+        .first();
+      const idBounds = await part.locator(".story-memory-id").boundingBox();
+      const textBounds = await part.locator(".story-part-body").boundingBox();
+      assert.ok(
+        idBounds.x + idBounds.width <= textBounds.x,
+        "Memory ID stays to the left of its passage",
+      );
+      assert.equal(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+        true,
+      );
+      await dialog.evaluate((el) => {
+        el.scrollTop = 0;
+      });
+      await dialog.screenshot({
+        path: "/tmp/songya-ui-review/story-reader-" + width + ".png",
+      });
+    }
+    await dialog.getByRole("tab", { name: "Source", exact: true }).click();
+    const code = dialog.locator(".cm-content");
+    await code.waitFor({ state: "visible" });
+    assert.match(await code.innerText(), /A story introduction/);
+    assert.doesNotMatch(await code.innerText(), /Mary remembered/);
+    await dialog.getByRole("tab", { name: "Story", exact: true }).click();
+    await dialog.getByRole("button", { name: "Edit", exact: true }).click();
+    const editor = dialog.getByRole("textbox", {
+      name: "Record text",
+      exact: true,
+    });
+    await editor.waitFor();
+    assert.equal((await editor.innerText()).trim(), "A story introduction.");
+    await editor.fill("A revised introduction.");
+    await dialog.getByRole("button", { name: "Save", exact: true }).click();
+    await page.waitForFunction(() => !window.Alpine.$data(document.body).dirty);
+    const updatedRoot = await (
+      await fetch(url + "/api/records/" + root.id)
+    ).json();
+    assert.match(updatedRoot.source, /A revised introduction/);
+    assert.doesNotMatch(updatedRoot.source, /Mary remembered/);
+    for (const id of [first.id, nested.id, missing])
+      assert.ok(updatedRoot.source.includes(id));
+    assert.equal(
+      (await (await fetch(url + "/api/records/" + first.id)).json()).version,
+      initialFirst.version,
+    );
+    assert.equal(
+      (await (await fetch(url + "/api/records/" + second.id)).json()).version,
+      initialSecond.version,
+    );
+    assert.equal(
+      (await (await fetch(url + "/api/records/" + nested.id)).json()).version,
+      nested.version,
+    );
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
+
+test("empty stories remain readable and closing a loading story cancels its pages", async () => {
+  const empty = await save(source("Reader empty story", ""), "stories");
+  const ordinary = await save(
+    source("Reader ordinary memory", "John remembers a quiet morning."),
+  );
+  const { page, context } = await pageFor();
+  const dialog = page.locator('dialog[x-ref="editorDialog"]');
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  try {
+    await page
+      .getByRole("button", { name: "Reader empty story", exact: true })
+      .click();
+    await dialog
+      .getByText("This story has no text or linked memories yet.", {
+        exact: true,
+      })
+      .waitFor();
+    await dialog
+      .getByRole("button", { name: "Close record", exact: true })
+      .click();
+    await page.route(
+      "**/api/stories/" + empty.id + "/compose?offset=*",
+      async (route) => {
+        await gate;
+        try {
+          await route.abort();
+        } catch {
+          /* Closing the reader already cancelled it. */
+        }
+      },
+    );
+    const requested = page.waitForRequest((request) =>
+      request.url().includes("/api/stories/" + empty.id + "/compose"),
+    );
+    await page
+      .getByRole("button", { name: "Reader empty story", exact: true })
+      .click();
+    const request = await requested;
+    const cancelled = page.waitForEvent("requestfailed", {
+      predicate: (event) => event === request,
+    });
+    await dialog
+      .getByRole("button", { name: "Close record", exact: true })
+      .click();
+    release();
+    await cancelled;
+    await page
+      .getByRole("button", { name: "Reader ordinary memory", exact: true })
+      .click();
+    await dialog
+      .getByRole("textbox", { name: "Record text", exact: true })
+      .waitFor();
+    assert.equal(
+      (
+        await dialog
+          .getByRole("textbox", { name: "Record text", exact: true })
+          .innerText()
+      ).trim(),
+      "John remembers a quiet morning.",
+    );
+    assert.equal(
+      await dialog.getByRole("article", { name: "Composed story" }).isVisible(),
+      false,
+    );
+    assert.deepEqual(
+      await page.evaluate(() => window.Alpine.$data(document.body).storyParts),
+      [],
+    );
+    assert.deepEqual(errors, []);
+  } finally {
+    release();
+    await context.close();
+  }
+});

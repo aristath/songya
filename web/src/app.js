@@ -6,6 +6,7 @@ import { recallUI } from "./recall.js";
 import { defaultKindColors } from "./palette.js";
 import { typesUI } from "./types.js";
 import { newID } from "./ids.js";
+import { storyUI } from "./story.js";
 
 async function request(path, options = {}) {
   const response = await fetch(path, {
@@ -38,6 +39,7 @@ Alpine.data("songya", () => {
     ...chatUI(request),
     ...recallUI(request),
     ...typesUI(request),
+    ...storyUI(request),
     theme: document.documentElement.dataset.theme || "system",
     setTheme() {
       document.documentElement.dataset.theme = this.theme;
@@ -307,6 +309,7 @@ Alpine.data("songya", () => {
       if (!this.$refs.editorDialog.open) this.$refs.editorDialog.showModal();
     },
     closeDialog() {
+      this.resetStory();
       this.$refs.editorDialog.close();
       this.dialogOpen = false;
       code?.destroy();
@@ -319,6 +322,7 @@ Alpine.data("songya", () => {
       attempt = null;
     },
     edit() {
+      this.resetStory();
       this.inspecting = false;
       this.mount();
     },
@@ -382,6 +386,8 @@ Alpine.data("songya", () => {
           };
         }
         this.inspecting = inspect;
+        if (inspect && saved.selected.kind === "stories")
+          saved = { ...saved, mode: "visual" };
         if (!this.classificationUser)
           this.classificationUser =
             this.chatUser || this.classificationUsers()[0] || "";
@@ -399,6 +405,7 @@ Alpine.data("songya", () => {
       }
     },
     install(saved) {
+      this.resetStory();
       this.conflict = false;
       this.recordIssues = saved.issues || [];
       this.selected = saved.selected;
@@ -464,6 +471,10 @@ Alpine.data("songya", () => {
       this.visualIssue = "";
       this.$nextTick(() => {
         if (!this.selected) return;
+        if (this.readingStory() && this.mode === "visual") {
+          if (!this.storyError) this.loadStory();
+          return;
+        }
         if (this.mode === "source") {
           code = codeEditor(
             this.$refs.source.firstElementChild,

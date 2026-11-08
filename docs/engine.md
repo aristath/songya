@@ -401,6 +401,12 @@ lengths skip shared prefixes during paging. Output defaults to 4 KiB, capped at
 16 KiB, with byte offsets and continuation. Unicode stays whole; binary fragments
 use base64. Story order and event chronology are independent.
 
+`ComposeParts` uses the same traversal and continuation offsets, returning record
+IDs, kinds, titles and body fragments for the web reader instead of a flat text
+copy. Each part's `start` identifies its occurrence in the composed byte stream;
+fragments on consecutive pages join by ID and start. Repeated memories retain
+separate occurrences. Reading or composing never changes the source records.
+
 Graph/timeline summaries bound descriptive fields and mark `details_truncated`.
 Search summaries likewise abbreviate details; read the source for full metadata.
 These display limits never change authoritative content or relationship semantics.

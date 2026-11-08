@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -44,6 +45,23 @@ func Handler(store *songya.Store) *Application {
 		_ = page.Execute(w, nil)
 	})
 	mux.Handle("GET /assets/", http.StripPrefix("/assets/", http.FileServerFS(files)))
+	mux.HandleFunc("GET /api/stories/{id}/compose", func(w http.ResponseWriter, r *http.Request) {
+		offset := 0
+		if raw := r.URL.Query().Get("offset"); raw != "" {
+			var err error
+			offset, err = strconv.Atoi(raw)
+			if err != nil {
+				writeStatus(w, 400, map[string]any{"error": "Story offset must be a whole number."})
+				return
+			}
+		}
+		page, err := store.ComposeParts(r.Context(), r.PathValue("id"), offset, 16384)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		write(w, page)
+	})
 	mux.HandleFunc("GET /api/graph", func(w http.ResponseWriter, r *http.Request) {
 		colors := chat.colorConfiguration(r)
 		catalog, err := store.Scan(r.Context())

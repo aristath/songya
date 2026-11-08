@@ -610,6 +610,42 @@ dialog::backdrop {
   overflow-wrap: anywhere;
   font-size: 0.9rem;
 }
+.story-reader {
+  padding: 1.5rem;
+  min-width: 0;
+}
+.story-part {
+  display: grid;
+  grid-template-columns: 12ch minmax(0, 1fr);
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+.story-memory-id {
+  padding-top: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.story-intro .story-part-body {
+  grid-column: 1/-1;
+}
+.story-part-body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.story-part-body h3 {
+  font-size: 1rem;
+  margin: 0 0 0.6rem;
+}
+.story-part-body > div > :first-child {
+  margin-top: 0;
+}
+.story-part-body pre {
+  overflow-x: auto;
+}
+.story-part-body img {
+  max-width: 100%;
+}
 .connections h3,
 .connections h4 {
   font-size: 1rem;

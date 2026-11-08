@@ -827,7 +827,7 @@
           x-show="recordIssues.length"
           x-text="recordIssues.join('; ')"
         ></p>
-        <dl class="inspection-metadata" x-show="inspecting">
+        <dl class="inspection-metadata" x-show="inspecting && !readingStory()">
           <template x-for="(field,index) in fields" :key="index"
             ><div>
               <dt x-text="field.key"></dt>
@@ -842,6 +842,7 @@
               role="tab"
               :aria-selected="mode==='visual'"
               @click="switchMode('visual')"
+              x-text="readingStory()?'Story':'Visual'"
             >
               Visual</button
             ><button
@@ -1158,7 +1159,57 @@
           ></template>
           <p class="muted" x-show="!incoming().length">No incoming links.</p>
         </div>
-        <div :inert="busy||loading" class="prose-wrap" x-show="mode==='visual'">
+        <article
+          class="story-reader"
+          aria-label="Composed story"
+          :aria-busy="storyBusy"
+          x-show="readingStory() && mode==='visual'"
+        >
+          <template x-for="part in storyParts" :key="part.id+':'+part.start">
+            <section
+              class="story-part"
+              :class="{'story-intro':part.kind==='stories'}"
+            >
+              <code
+                class="story-memory-id"
+                x-show="part.kind!=='stories'"
+                x-text="part.id"
+              ></code>
+              <div class="story-part-body">
+                <h3
+                  x-show="part.title && part.id!==selected?.id"
+                  x-text="part.title"
+                ></h3>
+                <div x-html="storyHTML(part.text)"></div>
+              </div>
+            </section>
+          </template>
+          <p class="muted" role="status" x-show="storyBusy">Loading story…</p>
+          <p class="muted" x-show="storyComplete && !storyParts.length">
+            This story has no text or linked memories yet.
+          </p>
+          <div class="error" role="alert" x-show="storyError">
+            <p x-text="'Could not finish loading the story. '+storyError"></p>
+            <button @click="loadStory()" :disabled="storyBusy">
+              Retry loading story
+            </button>
+          </div>
+          <p class="record-warning" x-show="storyUnconfirmed">
+            Some linked records have unfinished changes. The available saved
+            text is shown.
+          </p>
+          <details x-show="storyDiagnostics.length">
+            <summary>Story details needing attention</summary>
+            <template x-for="message in storyDiagnostics" :key="message"
+              ><p x-text="message"></p
+            ></template>
+          </details>
+        </article>
+        <div
+          :inert="busy||loading"
+          class="prose-wrap"
+          x-show="mode==='visual' && !readingStory()"
+        >
           <p class="error" x-show="visualIssue" x-text="visualIssue"></p>
           <div x-ref="visual" class="visual-editor"><div x-ignore></div></div>
         </div>

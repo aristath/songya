@@ -229,6 +229,20 @@ Unrecognized time data stays editable as YAML. Connection controls offer the fiv
 structural types. A story’s outgoing relations can be moved up/down to set reading
 order; incoming links show their derived reverse labels.
 
+Opening a saved story displays its composed account, with each memory's ID in a
+column to the left of its title and text. The introduction and linked memories
+come directly from their saved records, including nested stories and repeated
+memories in reading order. Entity and topic associations are not story passages.
+Long stories load automatically in pages; a failed page retains everything already
+read, retries temporary failures, and offers a retry button. Missing references
+and unfinished records remain visible.
+The reader uses `GET /api/stories/{id}/compose?offset=…`; offsets are the composer's
+byte positions, not memory indexes. It joins page fragments before rendering
+Markdown.
+The default reading view hides the raw metadata dump. Source, Connections and Edit
+retain the underlying record controls; editing a story changes its introduction
+and links, never a copy of its linked memories.
+
 `Store.SaveSource` uses the existing batch journal and a stable write key. It
 replaces the full document while preserving the engine's identity/clock rules.
 The read snapshot's revision prevents silent overwrites by concurrent writers.
