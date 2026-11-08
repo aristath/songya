@@ -235,7 +235,7 @@ to. A reply must confirm a committed attachment, not only a saved memory.
 
 Images have previews; supported audio/video have controls and seeking. Plain text
 has a bounded preview. Every file can be downloaded unchanged. HTML, SVG and other
-active formats are downloads, not application content. Duplicate/reserved names
+active formats are downloads, not application content. Duplicate, reserved, or overlong names
 receive a reported safe filename; existing bytes are never silently overwritten.
 Use **Replace** or **Remove permanently** deliberately. Deleting a record removes
 its files too, while keeping existing incoming-link checks.

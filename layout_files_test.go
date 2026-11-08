@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func TestFolderConversionPreservesBytesMetadataHistoryAndResumes(t *testing.T) {
@@ -482,5 +484,57 @@ func TestAcceptedFileJournalBeforeClaimWinsOverLaterStaleTextWrite(t *testing.T)
 	}
 	if _, err := s.Update(doc.ID, latest.Revision, nil, "A concurrent edit"); err != nil {
 		t.Fatal("current edit could not proceed", err)
+	}
+}
+
+func TestDuplicateMaximumLengthFilenameGetsAUsableDistinctName(t *testing.T) {
+	ctx := context.Background()
+	s, _ := Open(t.TempDir())
+	doc := createRecord(t, s, Memories, nil, "John's files")
+	filename := strings.Repeat("a", 251) + ".txt"
+	for i := range 2 {
+		key := fmt.Sprintf("long-name-%d", i)
+		upload, err := s.Upload(ctx, key, "test", filename, strings.NewReader("Original bytes"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		receipt, err := s.ChangeFile(ctx, FileChange{Key: key, ID: doc.ID, Revision: doc.Revision, Action: "add", Upload: upload.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(receipt.Filename) > 255 || !strings.HasSuffix(receipt.Filename, ".txt") {
+			t.Fatal("unusable reported filename", receipt.Filename)
+		}
+		doc, _ = s.Read(doc.ID)
+	}
+	files, err := s.Attachments(ctx, doc.ID)
+	if err != nil || len(files.Files) != 2 {
+		t.Fatal(files, err)
+	}
+}
+
+func TestLongUnicodeUploadNameKeepsValidRunesAndExtension(t *testing.T) {
+	ctx := context.Background()
+	s, _ := Open(t.TempDir())
+	doc := createRecord(t, s, Memories, nil, "Mary kept a note")
+	name := strings.Repeat("界", 100) + ".txt"
+	upload, err := s.Upload(ctx, "long-unicode", "test", name, strings.NewReader("Exact bytes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(upload.Filename) > 255 || !utf8.ValidString(upload.Filename) || !strings.HasSuffix(upload.Filename, ".txt") {
+		t.Fatal(upload)
+	}
+	receipt, err := s.ChangeFile(ctx, FileChange{Key: "long-unicode", ID: doc.ID, Revision: doc.Revision, Action: "add", Upload: upload.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Filename != upload.Filename {
+		t.Fatal("actual filename was not reported", receipt)
+	}
+	for _, hostile := range []string{strings.Repeat("a", 260) + "/secret.txt", strings.Repeat("a", 260) + "\x00.txt"} {
+		if _, err := s.Upload(ctx, hostile, "test", hostile, strings.NewReader("Keep out")); err == nil {
+			t.Fatal("truncation hid a hostile name")
+		}
 	}
 }

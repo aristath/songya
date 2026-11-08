@@ -609,6 +609,10 @@ tr:hover td {
   color: var(--success);
   background: var(--success-bg);
 }
+.success,
+.error {
+  overflow-wrap: anywhere;
+}
 .error {
   color: var(--error);
   background: var(--error-bg);

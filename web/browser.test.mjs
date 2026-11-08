@@ -4580,3 +4580,63 @@ test("chat uploads supply receipts to text-only tools and confirm attached files
   await context.close();
   assert.deepEqual(errors, []);
 });
+
+test("maximum-length duplicate filenames stay distinct and fit a phone's file cards", async () => {
+  const record = await save(
+    source("John's long filenames", "Preserve the account."),
+  );
+  const filename = "a".repeat(251) + ".txt";
+  const { page, context } = await pageFor({ width: 390, height: 844 });
+  await editRecord(page, "John's long filenames");
+  await page.locator(".record-files input[type=file][multiple]").setInputFiles([
+    {
+      name: filename,
+      mimeType: "text/plain",
+      buffer: Buffer.from("First original file"),
+    },
+    {
+      name: filename,
+      mimeType: "text/plain",
+      buffer: Buffer.from("Second original file"),
+    },
+  ]);
+  await page.waitForFunction(
+    () => document.querySelectorAll(".record-files .file-card").length === 2,
+  );
+  const files = (
+    await (await fetch(url + "/api/records/" + record.id + "/files")).json()
+  ).files;
+  assert.equal(new Set(files.map((file) => file.filename)).size, 2);
+  assert.ok(files.every((file) => Buffer.byteLength(file.filename) <= 255));
+  assert.deepEqual(
+    new Set(
+      await Promise.all(
+        files.map(async (file) =>
+          (
+            await fetch(
+              url +
+                "/api/records/" +
+                record.id +
+                "/files/" +
+                encodeURIComponent(file.filename),
+            )
+          ).text(),
+        ),
+      ),
+    ),
+    new Set(["First original file", "Second original file"]),
+  );
+  const dialog = page.locator("dialog[x-ref=editorDialog]");
+  await dialog.locator(".file-card").last().scrollIntoViewIfNeeded();
+  await dialog.evaluate((element) => (element.scrollLeft = 0));
+  const dimensions = await dialog.evaluate((element) => ({
+    width: element.clientWidth,
+    scroll: element.scrollWidth,
+  }));
+  assert.ok(
+    dimensions.scroll <= dimensions.width + 1,
+    JSON.stringify(dimensions),
+  );
+  await context.close();
+  assert.deepEqual(errors, []);
+});

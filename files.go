@@ -46,7 +46,31 @@ func uploadName(name string) (string, error) {
 	if strings.HasPrefix(name, ".") && name != "." && name != ".." {
 		name = "attachment-" + name
 	}
-	return attachmentName(name)
+	if _, err := attachmentName(name); err != nil {
+		return "", err
+	}
+	return fitFilename(name, ""), nil
+}
+
+// Fit the filesystem's filename byte limit without cutting a UTF-8 rune.
+// Keep the extension when it fits; collision suffixes reserve their own space.
+func fitFilename(name, suffix string) string {
+	extension := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, extension)
+	available := 255 - len(extension) - len(suffix)
+	if available < 1 {
+		return filenamePrefix(name, 255-len(suffix)) + suffix
+	}
+	return filenamePrefix(stem, available) + suffix + extension
+}
+func filenamePrefix(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	for limit > 0 && !utf8.RuneStart(value[limit]) {
+		limit--
+	}
+	return value[:limit]
 }
 
 // Refuse symlinked record directories as well as symlinked files. os.Root also

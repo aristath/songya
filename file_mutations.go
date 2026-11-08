@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -59,13 +58,12 @@ func readFileJournal(root *os.Root, directory string) (fileJournal, error) {
 	return journal, nil
 }
 func uniqueFilename(root *os.Root, directory, name string) (string, error) {
-	extension := filepath.Ext(name)
-	stem := strings.TrimSuffix(name, extension)
 	for n := 1; ; n++ {
-		candidate := name
+		suffix := ""
 		if n > 1 {
-			candidate = fmt.Sprintf("%s (%d)%s", stem, n, extension)
+			suffix = fmt.Sprintf(" (%d)", n)
 		}
+		candidate := fitFilename(name, suffix)
 		if _, err := root.Lstat(filepath.Join(directory, candidate)); errors.Is(err, fs.ErrNotExist) {
 			return candidate, nil
 		} else if err != nil {
