@@ -14,7 +14,7 @@ import (
 	"github.com/aristath/songya"
 )
 
-func TestThinkingProgressDoesNotRewriteOrExposeReasoning(t *testing.T) {
+func TestThinkingProgressStreamsReasoningWithoutRewritingEveryChunk(t *testing.T) {
 	store, _ := songya.Open(t.TempDir())
 	release := make(chan struct{})
 	sent := make(chan struct{})
@@ -22,7 +22,7 @@ func TestThinkingProgressDoesNotRewriteOrExposeReasoning(t *testing.T) {
 	defer once.Do(func() { close(release) })
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for i := 0; i < 5; i++ {
-			chatChunk(w, map[string]any{"reasoning_content": "private reasoning sentinel"}, nil)
+			chatChunk(w, map[string]any{"reasoning_content": "Model reasoning sentinel"}, nil)
 			time.Sleep(180 * time.Millisecond)
 		}
 		close(sent)
@@ -72,6 +72,9 @@ func TestThinkingProgressDoesNotRewriteOrExposeReasoning(t *testing.T) {
 				t.Fatal(err)
 			}
 			if progress.Stage == "thinking" {
+				if !strings.Contains(progress.Reasoning, "Model reasoning sentinel") || progress.MessageIndex != len(before.Messages) {
+					t.Fatal("reasoning missing or attached to the wrong message", progress)
+				}
 				found = true
 				break
 			}
@@ -90,13 +93,36 @@ func TestThinkingProgressDoesNotRewriteOrExposeReasoning(t *testing.T) {
 		t.Fatal("reasoning-only chunks rewrote the transcript", before.Revision, after.Revision, after.Draft)
 	}
 	data, _ := json.Marshal(after)
-	if strings.Contains(string(data), "private reasoning sentinel") {
+	if strings.Contains(string(data), "Model reasoning sentinel") {
 		t.Fatal("private reasoning was saved")
+	}
+	deadline = time.Now().Add(6 * time.Second)
+	var checkpoint chatConversation
+	for time.Now().Before(deadline) {
+		checkpoint, _ = app.chat.conversation(id)
+		if checkpoint.Draft != nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if checkpoint.Draft == nil || checkpoint.Revision != before.Revision+1 || checkpoint.Draft.Reasoning != strings.Repeat("Model reasoning sentinel", 5) {
+		t.Fatal("reasoning checkpoint missing or written repeatedly", checkpoint.Revision, checkpoint.Draft)
 	}
 	once.Do(func() { close(release) })
 	c := waitChat(t, app, id, "done")
-	if c.Messages[len(c.Messages)-1].Content != "Finished." {
-		t.Fatal(c.Messages)
+	message := c.Messages[len(c.Messages)-1]
+	if message.Content != "Finished." || message.Reasoning != strings.Repeat("Model reasoning sentinel", 5) {
+		t.Fatal("answer or reasoning not retained", message)
+	}
+	outgoing, _ := json.Marshal(messageParam(message))
+	if strings.Contains(string(outgoing), "Model reasoning sentinel") || strings.Contains(string(outgoing), "reasoning") {
+		t.Fatal("display-only reasoning was sent back to the model", string(outgoing))
+	}
+	reopened := Handler(store)
+	defer reopened.Close()
+	saved, err := reopened.chat.conversation(id)
+	if err != nil || saved.Messages[len(saved.Messages)-1].Reasoning != message.Reasoning {
+		t.Fatal("reasoning lost after reopening", err)
 	}
 }
 

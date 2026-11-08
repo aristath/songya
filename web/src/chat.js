@@ -484,9 +484,25 @@ export function chatUI(request) {
         ...messages.map((m) => m.turn_id),
         ...queue.map((m) => m.id),
       ]);
+      let draft = this.chatState?.draft;
+      const progress = this.chatProgress;
+      if (
+        this.chatBusy() &&
+        progress?.reasoning &&
+        progress.turn_id === this.chatState?.turn_id &&
+        progress.message_index === messages.length
+      ) {
+        draft = {
+          ...draft,
+          role: "assistant",
+          turn_id: progress.turn_id,
+          reasoning: progress.reasoning,
+          thinking: progress.stage === "thinking",
+        };
+      }
       return [
         ...visible,
-        ...(this.chatState?.draft ? [this.chatState.draft] : []),
+        ...(draft ? [draft] : []),
         ...queue.map((m) => ({
           role: "user",
           content: m.text,
@@ -697,6 +713,7 @@ export function chatUI(request) {
         this.chatProgress = progress;
         this.chatNow = Date.now();
         this.chatConnection = "";
+        if (this.chatFollow) this.$nextTick(() => this.scrollChat());
         alive();
       });
       source.onerror = () => {

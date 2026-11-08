@@ -28,6 +28,7 @@ type chatToolCall struct {
 	} `json:"function"`
 }
 type chatMessage struct {
+	Reasoning  string          `json:"reasoning,omitempty"`
 	Uploads    []songya.Upload `json:"uploads,omitempty"`
 	Role       string          `json:"role"`
 	Content    string          `json:"content"`
@@ -556,7 +557,7 @@ func (a *chatApp) eventsHTTP(w http.ResponseWriter, r *http.Request) {
 	ticker := time.NewTicker(150 * time.Millisecond)
 	defer ticker.Stop()
 	revision := int64(-1)
-	previousStage, previousTurn := "", ""
+	previousStage, previousTurn, previousReasoning := "", "", ""
 	heartbeat := time.Time{}
 	for {
 		latest, err := root.Lstat(name)
@@ -585,12 +586,12 @@ func (a *chatApp) eventsHTTP(w http.ResponseWriter, r *http.Request) {
 		if p.TurnID != c.TurnID {
 			p = chatProgress{TurnID: c.TurnID, Stage: "waiting"}
 		}
-		if p.Stage != previousStage || p.TurnID != previousTurn || time.Since(heartbeat) > 5*time.Second {
+		if p.Stage != previousStage || p.TurnID != previousTurn || p.Reasoning != previousReasoning && time.Since(heartbeat) >= 300*time.Millisecond || time.Since(heartbeat) > 5*time.Second {
 			data, _ := json.Marshal(p)
 			if _, err := fmt.Fprintf(w, "event: progress\ndata: %s\n\n", data); err != nil {
 				return
 			}
-			previousStage, previousTurn = p.Stage, p.TurnID
+			previousStage, previousTurn, previousReasoning = p.Stage, p.TurnID, p.Reasoning
 			heartbeat = time.Now()
 		}
 		if flush.Flush() != nil {

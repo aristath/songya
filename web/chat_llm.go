@@ -246,7 +246,9 @@ func (a *chatApp) run(ctx context.Context, id string) error {
 		acc := openai.ChatCompletionAccumulator{}
 		ticker := time.NewTicker(150 * time.Millisecond)
 		draft := chatMessage{Role: "assistant", TurnID: c.TurnID}
-		dirty := false
+		var reasoning strings.Builder
+		dirty, visibleDirty := false, false
+		lastCheckpoint := time.Now()
 	streaming:
 		for {
 			select {
@@ -261,11 +263,14 @@ func (a *chatApp) run(ctx context.Context, id string) error {
 					delta := choice.Delta
 					stage := ""
 					// Provider extensions are marked invalid by the SDK's typed
-					// decoder, but their raw JSON is retained. Read presence only.
+					// decoder, but their raw JSON is retained.
 					for _, name := range []string{"reasoning_content", "reasoning"} {
 						raw := delta.JSON.ExtraFields[name].Raw()
-						if raw != "" && raw != "null" && raw != `""` {
+						var part string
+						if json.Unmarshal([]byte(raw), &part) == nil && part != "" {
+							reasoning.WriteString(part)
 							stage = "thinking"
+							break
 						}
 					}
 					if delta.Content != "" {
@@ -275,7 +280,7 @@ func (a *chatApp) run(ctx context.Context, id string) error {
 						stage = "preparing"
 					}
 					if stage != "" {
-						a.setProgress(id, c.TurnID, stage)
+						a.setModelProgress(id, stage, len(c.Messages), reasoning.String())
 					}
 				}
 				acc.AddChunk(chunk)
@@ -283,26 +288,29 @@ func (a *chatApp) run(ctx context.Context, id string) error {
 					continue
 				}
 				m := acc.Choices[0].Message
-				nextDraft := chatMessage{Role: "assistant", Content: m.Content, TurnID: c.TurnID}
+				nextDraft := chatMessage{Role: "assistant", Content: m.Content, TurnID: c.TurnID, Reasoning: reasoning.String()}
 				for _, call := range m.ToolCalls {
 					converted := chatToolCall{ID: call.ID, Type: "function"}
 					converted.Function.Name = call.Function.Name
 					converted.Function.Arguments = call.Function.Arguments
 					nextDraft.ToolCalls = append(nextDraft.ToolCalls, converted)
 				}
-				if nextDraft.Content != draft.Content || !slices.Equal(nextDraft.ToolCalls, draft.ToolCalls) {
+				changed := nextDraft.Content != draft.Content || !slices.Equal(nextDraft.ToolCalls, draft.ToolCalls)
+				if changed || nextDraft.Reasoning != draft.Reasoning {
 					draft = nextDraft
 					dirty = true
+					visibleDirty = visibleDirty || changed
 				}
 			case <-ticker.C:
-				if !dirty {
+				if !dirty || !visibleDirty && time.Since(lastCheckpoint) < 5*time.Second {
 					continue
 				}
 				_, err = a.edit(a.ctx, id, func(current *chatConversation) error { current.Draft = &draft; return nil })
 				if err != nil {
 					break streaming
 				}
-				dirty = false
+				dirty, visibleDirty = false, false
+				lastCheckpoint = time.Now()
 			}
 		}
 		ticker.Stop()

@@ -8,10 +8,12 @@ import (
 
 // Progress is transient connection state, never testimony or a saved record.
 type chatProgress struct {
-	TurnID    string `json:"turn_id"`
-	Stage     string `json:"stage"`
-	StartedAt int64  `json:"started_at"`
-	UpdatedAt int64  `json:"updated_at"`
+	TurnID       string `json:"turn_id"`
+	Stage        string `json:"stage"`
+	StartedAt    int64  `json:"started_at"`
+	UpdatedAt    int64  `json:"updated_at"`
+	MessageIndex int    `json:"message_index"`
+	Reasoning    string `json:"reasoning,omitempty"`
 }
 
 func (a *chatApp) setProgress(id, turn, stage string) {
@@ -22,9 +24,24 @@ func (a *chatApp) setProgress(id, turn, stage string) {
 	if p.TurnID != turn {
 		p = chatProgress{TurnID: turn, StartedAt: now}
 	}
+	if stage == "waiting" {
+		p.Reasoning = ""
+		p.MessageIndex = 0
+	}
 	p.Stage, p.UpdatedAt = stage, now
 	a.progress[id] = p
 }
+
+// Only the current model request is streamed here. Its final reasoning is stored
+// with that assistant message, separately from the reply and original testimony.
+func (a *chatApp) setModelProgress(id, stage string, index int, reasoning string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	p := a.progress[id]
+	p.Stage, p.MessageIndex, p.Reasoning, p.UpdatedAt = stage, index, reasoning, time.Now().UnixMilli()
+	a.progress[id] = p
+}
+
 func (a *chatApp) currentProgress(id string) chatProgress {
 	a.mu.Lock()
 	defer a.mu.Unlock()

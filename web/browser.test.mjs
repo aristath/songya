@@ -4912,17 +4912,26 @@ test("chat retains a failed uploading message across reload and resumes when its
   assert.deepEqual(errors, []);
 });
 
-test("chat shows thinking progress without saving empty drafts or exposing reasoning", async (t) => {
-  let release;
+test("chat reasoning stays open while streaming, collapses for the reply, and can be reopened", async (t) => {
+  let release, moreThoughts, finish;
   const gate = new Promise((resolve) => (release = resolve));
-  t.after(() => release());
+  const thoughts = new Promise((resolve) => (moreThoughts = resolve));
+  const finished = new Promise((resolve) => (finish = resolve));
+  t.after(() => {
+    moreThoughts();
+    release();
+    finish();
+  });
   const provider = await chatProvider(t, async (res) => {
     streamChunk(res, {
       role: "assistant",
-      reasoning_content: "Private reasoning sentinel",
+      reasoning_content: "Model reasoning sentinel",
     });
+    await thoughts;
+    streamChunk(res, { reasoning: " More live reasoning." });
     await gate;
     streamChunk(res, { content: "Here is the answer." });
+    await finished;
     streamFinish(res);
   });
   const { page, context } = await pageFor();
@@ -4937,10 +4946,13 @@ test("chat shows thinking progress without saving empty drafts or exposing reaso
     .locator(".chat-progress")
     .getByText(/^Thinking…/)
     .waitFor();
-  assert.equal(
-    await page.getByText("Private reasoning sentinel", { exact: true }).count(),
-    0,
-  );
+  const reasoning = page
+    .locator(".chat-reasoning")
+    .filter({ hasText: "Model reasoning sentinel" });
+  await reasoning
+    .getByText("Model reasoning sentinel", { exact: true })
+    .waitFor();
+  assert.equal(await reasoning.getAttribute("open"), "");
   const before = await page.evaluate(
     () =>
       window.Alpine.$data(document.querySelector("[x-data]")).chatState
@@ -4959,12 +4971,44 @@ test("chat shows thinking progress without saving empty drafts or exposing reaso
     "Thinking activity must not rewrite an empty transcript",
   );
   assert.equal(await input.isEnabled(), true);
+  moreThoughts();
+  await reasoning
+    .locator("pre")
+    .getByText("Model reasoning sentinel More live reasoning.", { exact: true })
+    .waitFor();
+  assert.equal(await reasoning.getAttribute("open"), "");
   release();
   await page
     .locator(".chat-message.assistant")
     .getByText("Here is the answer.", { exact: true })
     .waitFor();
   assert.equal(await input.inputValue(), "My next draft.");
+  assert.equal(await reasoning.getAttribute("open"), null);
+  await reasoning.locator("summary").click();
+  await reasoning
+    .getByText("Model reasoning sentinel More live reasoning.", { exact: true })
+    .waitFor();
+  assert.equal(await reasoning.getAttribute("open"), "");
+  finish();
+  await page
+    .locator(".chat-progress")
+    .getByText("Reply complete.", { exact: true })
+    .waitFor();
+  assert.equal(
+    await reasoning.getAttribute("open"),
+    "",
+    "A manual expansion must survive later reply updates",
+  );
+  await page.reload();
+  const savedReasoning = page
+    .locator(".chat-reasoning")
+    .filter({ hasText: "Model reasoning sentinel" });
+  await savedReasoning.locator("summary").waitFor();
+  assert.equal(await savedReasoning.getAttribute("open"), null);
+  await savedReasoning.locator("summary").click();
+  await savedReasoning
+    .getByText("Model reasoning sentinel More live reasoning.", { exact: true })
+    .waitFor();
   await context.close();
   assert.deepEqual(errors, []);
 });

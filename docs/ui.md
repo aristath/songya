@@ -165,8 +165,13 @@ resumes after service restart. Stable MCP request keys recover original write
 receipts if a memory was saved before its tool result could be recorded.
 
 Live progress distinguishes waiting for the model, thinking, writing, and tool work,
-with elapsed time. Reasoning text is not shown or saved. Reasoning-only chunks do
-not rewrite an empty draft. Small progress events keep the connection alive while
+with elapsed time. Provider reasoning streams in an open **Thinking…** section.
+When reasoning ends, that section collapses and the answer or next tool step appears.
+You can expand **Reasoning** afterward, including after reopening the conversation.
+Reasoning is stored separately from the reply and never becomes original testimony,
+memory prose, or part of subsequent model requests. Streaming uses small progress
+events, with reasoning checkpoints at most once every five seconds, rather than
+rewriting the full transcript for every reasoning token. Progress keeps the connection alive while
 unchanged conversation files are not repeatedly parsed or broadcast. If live events
 fail or become silent, the browser checks saved progress and reconnects without
 resending accepted messages or clearing a newer draft.

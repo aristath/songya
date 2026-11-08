@@ -323,6 +323,20 @@
                         x-text="' · '+message.status"
                       ></span>
                     </p>
+                    <details
+                      class="chat-reasoning"
+                      x-show="message.reasoning"
+                      x-data="{ wasThinking: false }"
+                      x-effect="if(!!message.thinking!==wasThinking){$el.open=!!message.thinking;wasThinking=!!message.thinking}"
+                    >
+                      <summary
+                        x-text="message.thinking ? 'Thinking…' : 'Reasoning'"
+                      ></summary>
+                      <pre
+                        x-text="message.reasoning"
+                        x-effect="if(message.thinking){$nextTick(()=>{$el.scrollTop=$el.scrollHeight})}"
+                      ></pre>
+                    </details>
                     <div
                       class="chat-prose"
                       x-show="message.content"
