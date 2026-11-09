@@ -50,7 +50,7 @@ export function portraitsUI() {
       this.pictureError = "";
       if (!this.isProfilePicture(file))
         this.changePicture({
-          record: file.record || "",
+          record: file.record === this.selected?.id ? "" : file.record || "",
           filename: file.filename,
           x: 0.5,
           y: 0.5,

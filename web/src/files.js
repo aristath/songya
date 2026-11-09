@@ -74,6 +74,17 @@ export function recordFiles(request, id) {
 export function filesUI(request) {
   let generation = 0;
   return {
+    activePhoto: null,
+    photoError: "",
+    showPhoto(file) {
+      this.activePhoto = { ...file, record: file.record || this.selected.id };
+      this.photoError = "";
+      this.$refs.photoDialog.showModal();
+    },
+    closePhoto() {
+      this.$refs.photoDialog.close();
+      this.activePhoto = null;
+    },
     recordFiles: [],
     editorUploads: [],
     filesBusy: false,
@@ -252,6 +263,14 @@ export function filesUI(request) {
           (item) => item.upload !== upload.upload,
         );
         await this.refreshAfterFileChange();
+        if (
+          this.activePhoto?.record === this.selected?.id &&
+          this.activePhoto.filename === file.filename
+        )
+          this.activePhoto = {
+            ...this.activePhoto,
+            ...this.recordFiles.find((item) => item.filename === file.filename),
+          };
       } catch (e) {
         this.filesError = e.message;
       } finally {

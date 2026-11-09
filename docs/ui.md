@@ -433,8 +433,17 @@ hide connecting lines whose endpoints are hidden. They affect only the graph.
 
 
 Entities can also select pictures from directly linked memories. These appear in
-**Pictures from linked memories**, labelled with the source memory’s title.
+**Photos from linked memories**, below the entity’s own files, in both view
+and edit mode. Each photo links back to its source memory.
 The saved `profile_picture` adds `record: m_...` to identify the source record;
 `filename` identifies its existing attachment. No file is copied or moved.
 Changing back to an entity’s own attachment clears that external reference.
 Focus, zoom, graph display and removal work the same for both sources.
+
+Photo galleries use intrinsic masonry columns, retaining each image's proportions.
+Click a thumbnail to open a photo dialog with the original preview, filename,
+size, download link and available actions. The gallery itself shows no file
+names, sizes or action buttons. Escape closes the photo and returns focus to its
+thumbnail without closing the record. Profile selection opens the existing crop
+editor; it remains a draft until the record is saved. Linked files are replaced
+or removed only from their source memory. Story photos use the same viewer.

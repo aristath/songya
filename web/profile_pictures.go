@@ -48,7 +48,7 @@ func (a *chatApp) profilePictures(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, file := range listing.Files {
 			if file.Preview == "image" {
-				pictures = append(pictures, map[string]any{"record": record.ID, "title": record.Title, "revision": listing.Revision, "filename": file.Filename})
+				pictures = append(pictures, map[string]any{"record": record.ID, "title": record.Title, "revision": listing.Revision, "filename": file.Filename, "bytes": file.Bytes})
 			}
 		}
 	}

@@ -1519,3 +1519,54 @@ blockquote {
   border: 2px solid var(--ctp-mauve);
   border-radius: 50%;
 }
+
+/* Intrinsic columns keep the original image proportions without breakpoints. */
+.photo-masonry {
+  columns: 12rem;
+  column-gap: 0.75rem;
+}
+.photo-tile {
+  break-inside: avoid;
+  margin: 0 0 0.75rem;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: var(--surface);
+}
+.photo-open {
+  display: block;
+  inline-size: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+.photo-open img {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+}
+.photo-tile figcaption {
+  padding: 0.5rem;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.photo-dialog {
+  inline-size: min(60rem, calc(100% - 2rem));
+  max-block-size: calc(100dvh - 2rem);
+  overflow: auto;
+}
+.photo-detail {
+  padding: 1rem;
+}
+.photo-detail h2 {
+  overflow-wrap: anywhere;
+  min-inline-size: 0;
+  flex: 1 1 12rem;
+}
+.photo-full {
+  display: block;
+  max-inline-size: 100%;
+  max-block-size: 65dvh;
+  margin-inline: auto;
+  object-fit: contain;
+}

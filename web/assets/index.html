@@ -1528,15 +1528,31 @@
                 <div x-html="storyHTML(part.text, part.id)"></div>
                 <div x-data="fileViewer(part.id)">
                   <p class="error" x-show="fileError" x-text="fileError"></p>
-                  <div class="file-grid">
-                    <template x-for="file in files" :key="file.filename"
-                      ><figure class="file-card">
-                        <template x-if="file.preview==='image'"
-                          ><img
+                  <div class="photo-masonry">
+                    <template
+                      x-for="file in files.filter(file=>file.preview==='image')"
+                      :key="file.filename"
+                    >
+                      <figure class="photo-tile">
+                        <button
+                          class="photo-open"
+                          @click="showPhoto({...file,record:part.id,title:part.title})"
+                          :aria-label="'Open photo '+file.filename"
+                        >
+                          <img
                             loading="lazy"
-                            :src="fileURL(part.id,file.filename,true)"
+                            :src="fileURL(part.id,file.filename,true)+'&thumbnail=1'"
                             :alt="file.filename"
-                        /></template>
+                          />
+                        </button>
+                      </figure>
+                    </template>
+                  </div>
+                  <div class="file-grid">
+                    <template
+                      x-for="file in files.filter(file=>file.preview!=='image')"
+                      :key="file.filename"
+                      ><figure class="file-card">
                         <template x-if="file.preview==='audio'"
                           ><audio
                             controls
@@ -1691,45 +1707,6 @@
         ></p>
         <section
           class="record-files"
-          aria-label="Profile pictures from memories"
-          x-show="selected?.kind==='entities' && !inspecting && (profilePictures.length || profilePicturesError)"
-        >
-          <h3>Pictures from linked memories</h3>
-          <p class="muted">
-            Choose a profile picture without moving or copying its file.
-          </p>
-          <p
-            class="error"
-            x-show="profilePicturesError"
-            x-text="profilePicturesError"
-            role="alert"
-          ></p>
-          <div class="file-grid">
-            <template
-              x-for="file in profilePictures"
-              :key="file.record+':'+file.filename"
-            >
-              <figure class="file-card">
-                <img
-                  loading="lazy"
-                  :src="portraitURL(file.record,file,file.revision)"
-                  :alt="file.filename"
-                />
-                <figcaption>
-                  <span x-text="file.title"></span
-                  ><span class="muted" x-text="file.filename"></span>
-                </figcaption>
-                <button
-                  :disabled="busy||loading||filesBusy"
-                  @click="choosePicture(file)"
-                  x-text="isProfilePicture(file)?'Edit profile picture':'Use as profile picture'"
-                ></button>
-              </figure>
-            </template>
-          </div>
-        </section>
-        <section
-          class="record-files"
           aria-label="Record files"
           x-show="!readingStory() || mode==='source'"
           @dragover.prevent
@@ -1769,15 +1746,31 @@
           >
             Attach uploaded files / retry
           </button>
-          <div class="file-grid">
-            <template x-for="file in recordFiles" :key="file.filename"
-              ><figure class="file-card">
-                <template x-if="file.preview==='image'"
-                  ><img
+          <div class="photo-masonry" aria-label="Attached photos">
+            <template
+              x-for="file in recordFiles.filter(file=>file.preview==='image')"
+              :key="file.filename"
+            >
+              <figure class="photo-tile">
+                <button
+                  class="photo-open"
+                  @click="showPhoto(file)"
+                  :aria-label="'Open photo '+file.filename"
+                >
+                  <img
                     loading="lazy"
-                    :src="fileURL(selected?.id,file.filename,true)"
+                    :src="fileURL(selected?.id,file.filename,true)+'&thumbnail=1'"
                     :alt="file.filename"
-                /></template>
+                  />
+                </button>
+              </figure>
+            </template>
+          </div>
+          <div class="file-grid">
+            <template
+              x-for="file in recordFiles.filter(file=>file.preview!=='image')"
+              :key="file.filename"
+              ><figure class="file-card">
                 <template x-if="file.preview==='audio'"
                   ><audio
                     controls
@@ -1812,12 +1805,6 @@
                   ></span>
                 </figcaption>
                 <div class="file-actions" x-show="!inspecting">
-                  <button
-                    x-show="selected?.kind==='entities' && file.preview==='image'"
-                    :disabled="busy||loading||filesBusy"
-                    @click="choosePicture(file)"
-                    x-text="isProfilePicture(file)?'Edit profile picture':'Use as profile picture'"
-                  ></button>
                   <label class="file-picker"
                     >Replace<input
                       type="file"
@@ -1841,6 +1828,46 @@
           >
             No files attached.
           </p>
+        </section>
+        <section
+          class="record-files"
+          aria-label="Photos from memories"
+          x-show="selected?.kind==='entities' && (profilePictures.length || profilePicturesError)"
+        >
+          <h3>Photos from linked memories</h3>
+          <p
+            class="error"
+            role="alert"
+            x-show="profilePicturesError"
+            x-text="profilePicturesError"
+          ></p>
+          <div class="photo-masonry">
+            <template
+              x-for="file in profilePictures"
+              :key="file.record+':'+file.filename"
+            >
+              <figure class="photo-tile">
+                <button
+                  class="photo-open"
+                  @click="showPhoto(file)"
+                  :aria-label="'Open photo '+file.filename"
+                >
+                  <img
+                    loading="lazy"
+                    :src="portraitURL(file.record,file,file.revision)"
+                    :alt="file.filename"
+                  />
+                </button>
+                <figcaption>
+                  <a
+                    href="#"
+                    @click.prevent="open(file.record,false,true)"
+                    x-text="file.title"
+                  ></a>
+                </figcaption>
+              </figure>
+            </template>
+          </div>
         </section>
         <div class="editor-footer" x-show="!inspecting">
           <span class="muted">Changes stay in your draft until you save.</span
@@ -1882,6 +1909,85 @@
           ></template>
         </details>
       </div>
+    </dialog>
+    <dialog
+      x-ref="photoDialog"
+      class="photo-dialog"
+      aria-label="Photo details"
+      @cancel.prevent="closePhoto()"
+      @click.self="closePhoto()"
+      @close="activePhoto=null"
+    >
+      <template x-if="activePhoto">
+        <div class="photo-detail">
+          <div class="file-heading">
+            <h2 x-text="activePhoto.filename"></h2>
+            <button @click="closePhoto()" aria-label="Close photo">
+              Close
+            </button>
+          </div>
+          <img
+            class="photo-full"
+            @load="photoError=''"
+            :src="fileURL(activePhoto.record,activePhoto.filename,true)+'&v='+encodeURIComponent(activePhoto.record===selected?.id?selected.version:activePhoto.revision||'')"
+            :alt="activePhoto.filename"
+            @error="photoError='This photo could not be displayed. You can still download the original file.'"
+          />
+          <p
+            class="error"
+            role="alert"
+            x-show="photoError"
+            x-text="photoError"
+          ></p>
+          <p
+            class="muted"
+            x-show="activePhoto.bytes!=null"
+            x-text="(activePhoto.bytes||0).toLocaleString()+' bytes'"
+          ></p>
+          <p x-show="activePhoto.record!==selected?.id">
+            Memory:
+            <a
+              href="#"
+              @click.prevent="const id=activePhoto.record;closePhoto();open(id,false,true)"
+              x-text="activePhoto.title"
+            ></a>
+          </p>
+          <div class="file-actions">
+            <a :href="fileURL(activePhoto.record,activePhoto.filename)" download
+              >Download original</a
+            >
+            <button
+              x-show="!inspecting && selected?.kind==='entities'"
+              :disabled="busy||loading||filesBusy"
+              @click="const file=activePhoto;closePhoto();choosePicture(file)"
+              x-text="isProfilePicture(activePhoto)?'Edit profile picture':'Use as profile picture'"
+            ></button>
+            <template x-if="!inspecting && activePhoto.record===selected?.id">
+              <div class="file-actions">
+                <label class="file-picker"
+                  >Replace<input
+                    type="file"
+                    :disabled="dirty||filesBusy||busy"
+                    @change="replaceRecordFile(activePhoto,$event.target.files[0]);$event.target.value=''"
+                /></label>
+                <button
+                  class="danger"
+                  :disabled="dirty||filesBusy||busy"
+                  @click="const file=activePhoto;await removeRecordFile(file);if(!recordFiles.some(item=>item.filename===file.filename)) closePhoto()"
+                >
+                  Remove permanently
+                </button>
+              </div>
+            </template>
+          </div>
+          <p
+            class="error"
+            role="alert"
+            x-show="filesError"
+            x-text="filesError"
+          ></p>
+        </div>
+      </template>
     </dialog>
     <dialog
       class="type-settings-dialog"

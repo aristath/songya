@@ -5127,6 +5127,9 @@ test("entity profile pictures preserve originals, crop consistently, and survive
     mimeType: "image/png",
     buffer: bytes,
   });
+  await page
+    .getByRole("button", { name: "Open photo portrait.png", exact: true })
+    .click();
   const choose = page.getByRole("button", {
     name: "Use as profile picture",
     exact: true,
@@ -5192,6 +5195,9 @@ test("entity profile pictures preserve originals, crop consistently, and survive
     await page.getByLabel("Profile picture zoom", { exact: true }).inputValue(),
     "2",
   );
+  await page
+    .getByRole("button", { name: "Open photo portrait.png", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "Edit profile picture", exact: true })
     .click();
@@ -5334,10 +5340,33 @@ test("entity portraits can reference linked memory photos without copying files"
   }
   await editRecord(page, "John linked portrait");
   const gallery = page.getByRole("region", {
-    name: "Profile pictures from memories",
+    name: "Photos from memories",
   });
-  assert.equal(await gallery.locator(".file-card").count(), 1);
-  await gallery
+  assert.equal(await gallery.locator(".photo-tile").count(), 1);
+  await gallery.getByRole("button", { name: "Open photo same.png" }).click();
+  const photo = page.getByRole("dialog", {
+    name: "Photo details",
+    exact: true,
+  });
+  await photo.waitFor();
+  assert.equal(
+    await photo
+      .getByRole("link", { name: "Download original" })
+      .getAttribute("href"),
+    `/api/records/${memory.id}/files/same.png`,
+  );
+  assert.equal(
+    await photo.getByRole("button", { name: "Remove permanently" }).count(),
+    0,
+    "Linked files are managed on their source memory",
+  );
+  await page.keyboard.press("Escape");
+  assert.equal(
+    await page.locator('dialog[x-ref="editorDialog"]').isVisible(),
+    true,
+  );
+  await gallery.getByRole("button", { name: "Open photo same.png" }).click();
+  await photo
     .getByRole("button", { name: "Use as profile picture", exact: true })
     .click();
   await page.getByLabel("Profile picture zoom", { exact: true }).fill("1.75");
@@ -5376,12 +5405,45 @@ test("entity portraits can reference linked memory photos without copying files"
     "1.75",
   );
   await page
+    .getByRole("button", { name: "Open photo same.png", exact: true })
+    .click();
+  await page
     .getByRole("button", { name: "Edit profile picture", exact: true })
     .click();
   assert.equal(
     await page.getByLabel("Profile picture zoom", { exact: true }).inputValue(),
     "1.75",
   );
+  await page.getByRole("button", { name: "Close record", exact: true }).click();
+  await page.evaluate(
+    (id) => window.Alpine.$data(document.body).open(id, false, true),
+    entity.id,
+  );
+  const readGallery = page.getByRole("region", {
+    name: "Photos from memories",
+  });
+  await readGallery
+    .getByRole("button", { name: "Open photo same.png" })
+    .click();
+  const viewer = page.getByRole("dialog", {
+    name: "Photo details",
+    exact: true,
+  });
+  assert.equal(
+    await viewer
+      .getByRole("button", { name: "Use as profile picture" })
+      .isVisible(),
+    false,
+  );
+  await viewer
+    .getByRole("link", { name: "John photo memory", exact: true })
+    .click();
+  await page.waitForFunction(
+    (id) => window.Alpine.$data(document.body).selected?.id === id,
+    memory.id,
+  );
+  await page.getByRole("button", { name: "Close record", exact: true }).click();
+  await editRecord(page, "John linked portrait");
   const beforeRevision = graph.nodes.find((n) => n.id === entity.id).revision;
   const originalMemory = await (
     await fetch(url + "/api/records/" + memory.id)
@@ -5423,6 +5485,116 @@ test("entity portraits can reference linked memory photos without copying files"
       .getByRole("button", { name: "Remove profile picture", exact: true })
       .isEnabled(),
     true,
+  );
+  await context.close();
+  assert.deepEqual(errors, []);
+});
+
+test("photo masonry opens accessible details and keeps file actions in the viewer", async () => {
+  const record = await save(
+    source("Mary gallery", "Preserve these words."),
+    "entities",
+  );
+  const { page, context } = await pageFor();
+  const bytes = Buffer.from(
+    await page.evaluate(() => {
+      const c = document.createElement("canvas");
+      c.width = 240;
+      c.height = 160;
+      c.getContext("2d").fillRect(0, 0, 240, 160);
+      return c.toDataURL("image/png").split(",")[1];
+    }),
+    "base64",
+  );
+  await editRecord(page, "Mary gallery");
+  await page.locator(".record-files input[type=file][multiple]").setInputFiles([
+    { name: "first.png", mimeType: "image/png", buffer: bytes },
+    { name: "second.png", mimeType: "image/png", buffer: bytes },
+  ]);
+  const gallery = page.getByLabel("Attached photos", { exact: true });
+  await gallery
+    .getByRole("button", { name: "Open photo second.png" })
+    .waitFor();
+  assert.equal(await gallery.locator("figcaption").count(), 0);
+  assert.equal(
+    await gallery.getByRole("button", { name: "Remove permanently" }).count(),
+    0,
+  );
+  await gallery.getByRole("button", { name: "Open photo first.png" }).click();
+  const viewer = page.getByRole("dialog", {
+    name: "Photo details",
+    exact: true,
+  });
+  await viewer.waitFor();
+  await page.waitForFunction(
+    () => document.querySelector(".photo-full")?.naturalWidth === 240,
+  );
+  assert.equal(
+    await viewer.getByRole("heading", { name: "first.png" }).isVisible(),
+    true,
+  );
+  assert.equal(
+    await viewer
+      .getByRole("link", { name: "Download original" })
+      .getAttribute("href"),
+    `/api/records/${record.id}/files/first.png`,
+  );
+  for (const colorScheme of ["dark", "light"]) {
+    await page.emulateMedia({ colorScheme });
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.equal(
+      await viewer.evaluate((el) => el.scrollWidth <= el.clientWidth),
+      true,
+    );
+  }
+  const replacement = Buffer.from(
+    await page.evaluate(() => {
+      const c = document.createElement("canvas");
+      c.width = 120;
+      c.height = 80;
+      c.getContext("2d").fillRect(0, 0, 120, 80);
+      return c.toDataURL("image/png").split(",")[1];
+    }),
+    "base64",
+  );
+  page.once("dialog", (dialog) => dialog.accept());
+  await viewer
+    .locator("input[type=file]")
+    .setInputFiles({
+      name: "replacement.png",
+      mimeType: "image/png",
+      buffer: replacement,
+    });
+  await page.waitForFunction(
+    () => document.querySelector(".photo-full")?.naturalWidth === 120,
+  );
+  assert.deepEqual(
+    Buffer.from(
+      await (
+        await fetch(url + `/api/records/${record.id}/files/first.png`)
+      ).arrayBuffer(),
+    ),
+    replacement,
+  );
+  await page.screenshot({ path: "/tmp/songya-photo-details.png" });
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await viewer.getByRole("button", { name: "Remove permanently" }).click();
+  assert.equal(
+    await viewer.isVisible(),
+    true,
+    "Cancel leaves the photo and viewer intact",
+  );
+  page.once("dialog", (dialog) => dialog.accept());
+  await viewer.getByRole("button", { name: "Remove permanently" }).click();
+  await viewer.waitFor({ state: "hidden" });
+  assert.equal(await gallery.getByRole("button").count(), 1);
+  assert.equal(
+    await page.locator('dialog[x-ref="editorDialog"]').isVisible(),
+    true,
+  );
+  assert.equal(
+    (await (await fetch(url + "/api/records/" + record.id)).json()).draft.body,
+    "Preserve these words.",
   );
   await context.close();
   assert.deepEqual(errors, []);
