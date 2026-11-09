@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const indexFormat = 13
+const indexFormat = 14
 
 // Diagnostic identifies a recoverable problem without hiding healthy records.
 type Diagnostic struct {

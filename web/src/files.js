@@ -102,8 +102,10 @@ export function filesUI(request) {
       this.editorUploads = [];
       this.fileText = {};
       this.filesError = "";
+      this.profilePictures = [];
+      this.profilePicturesError = "";
       try {
-        const [listing, uploads] = await Promise.all([
+        const [listing, uploads, portraits] = await Promise.all([
           id
             ? request(`/api/records/${id}/files`)
             : Promise.resolve({ files: [] }),
@@ -111,11 +113,19 @@ export function filesUI(request) {
             "/api/uploads?" +
               new URLSearchParams({ scope: this.editorFileScope() }),
           ),
+          id && this.selected?.kind === "entities"
+            ? request(`/api/records/${id}/profile-pictures`).catch((error) => ({
+                pictures: [],
+                diagnostics: [error.message],
+              }))
+            : Promise.resolve({ pictures: [], diagnostics: [] }),
           // A newly saved draft may still have completed uploads in the new-record scope.
         ]);
         if (ticket !== generation) return;
         this.recordFiles = listing.files;
         this.editorUploads = uploads.uploads;
+        this.profilePictures = portraits.pictures;
+        this.profilePicturesError = (portraits.diagnostics || []).join(" ");
         this.filesError = (listing.diagnostics || [])
           .map((d) => d.message)
           .join(" ");

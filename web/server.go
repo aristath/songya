@@ -74,11 +74,19 @@ func Handler(store *songya.Store) *Application {
 		nodes := []map[string]any{}
 		links := []map[string]string{}
 		seen := map[[3]string]bool{}
+		byID := map[string]songya.Record{}
+		for _, record := range catalog.Records {
+			byID[record.ID] = record
+		}
 		for _, record := range catalog.Records {
 			if record.ID == "" {
 				continue
 			}
-			nodes = append(nodes, map[string]any{"id": record.ID, "title": record.Title, "aliases": record.Aliases, "kind": record.Kind, "user": record.User, "color": colors.RecordColor(record), "profile_picture": record.ProfilePicture, "revision": record.Revision})
+			revision := record.Revision
+			if record.ProfilePicture != nil && record.ProfilePicture.Record != "" {
+				revision += byID[record.ProfilePicture.Record].Revision
+			}
+			nodes = append(nodes, map[string]any{"id": record.ID, "title": record.Title, "aliases": record.Aliases, "kind": record.Kind, "user": record.User, "color": colors.RecordColor(record), "profile_picture": record.ProfilePicture, "revision": revision})
 			relations := append([]songya.Relation{}, record.Relations...)
 			for _, target := range record.Redirects {
 				relations = append(relations, songya.Relation{Type: "redirects", Target: target})

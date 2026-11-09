@@ -20,3 +20,11 @@ func TestProfilePictureMalformedFieldsDoNotHideRecords(t *testing.T) {
 		t.Fatal(p)
 	}
 }
+
+func TestProfilePictureCanReferenceAnotherRecord(t *testing.T) {
+	doc := Parse([]byte("---\nprofile_picture: {record: m_123456789abc, filename: photo.HEIC, x: 0.3, y: 0.8, zoom: 2}\n---\nIdentity words."))
+	p := doc.ProfilePicture()
+	if p == nil || p.Record != "m_123456789abc" || p.Filename != "photo.HEIC" || p.X != .3 || p.Y != .8 || p.Zoom != 2 {
+		t.Fatal(p)
+	}
+}

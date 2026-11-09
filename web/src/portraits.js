@@ -1,7 +1,7 @@
 import { fileURL } from "./files.js";
 
 export const portraitURL = (id, picture, revision = "") =>
-  fileURL(id, picture.filename, true) +
+  fileURL(picture.record || id, picture.filename, true) +
   "&thumbnail=1&v=" +
   encodeURIComponent(revision);
 
@@ -36,6 +36,8 @@ export function portraitsUI() {
     previewURL = "";
   return {
     pictureError: "",
+    profilePictures: [],
+    profilePicturesError: "",
     entityPicture() {
       return this.selected?.kind === "entities"
         ? this.fields.find((f) => f.key === "profile_picture")
@@ -46,8 +48,9 @@ export function portraitsUI() {
       if (this.mode === "source") await this.switchMode("visual");
       if (this.mode !== "visual" || this.inspecting) return;
       this.pictureError = "";
-      if (this.entityPicture()?.filename !== file.filename)
+      if (!this.isProfilePicture(file))
         this.changePicture({
+          record: file.record || "",
           filename: file.filename,
           x: 0.5,
           y: 0.5,
@@ -57,6 +60,25 @@ export function portraitsUI() {
         this.$refs.editorDialog
           .querySelector(".portrait-editor")
           .scrollIntoView({ block: "nearest", behavior: "smooth" }),
+      );
+    },
+    isProfilePicture(file) {
+      const picture = this.entityPicture();
+      return (
+        picture?.filename === file.filename &&
+        (picture.record || this.selected?.id) ===
+          (file.record || this.selected?.id)
+      );
+    },
+    profileRevision(revision) {
+      const picture = this.entityPicture();
+      return (
+        revision +
+        (this.profilePictures.find(
+          (file) =>
+            file.record === picture?.record &&
+            file.filename === picture?.filename,
+        )?.revision || "")
       );
     },
     changePicture(patch) {
@@ -94,7 +116,7 @@ export function portraitsUI() {
       canvas.width = canvas.height = 256;
       canvas.hidden = true;
       if (!picture || !id) return;
-      const url = portraitURL(id, picture, revision);
+      const url = portraitURL(id, picture, this.profileRevision(revision));
       if (url !== previewURL) {
         previewURL = url;
         previewImage = new Image();

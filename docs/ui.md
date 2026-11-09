@@ -430,3 +430,11 @@ against the original file’s modification time and size.
 The graph’s bottom-left colour legend also contains checkboxes for memories,
 entities, topics and stories. These controls combine with the owner filter and
 hide connecting lines whose endpoints are hidden. They affect only the graph.
+
+
+Entities can also select pictures from directly linked memories. These appear in
+**Pictures from linked memories**, labelled with the source memory’s title.
+The saved `profile_picture` adds `record: m_...` to identify the source record;
+`filename` identifies its existing attachment. No file is copied or moved.
+Changing back to an entity’s own attachment clears that external reference.
+Focus, zoom, graph display and removal work the same for both sources.

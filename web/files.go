@@ -9,6 +9,7 @@ import (
 )
 
 func (a *chatApp) registerFiles(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/records/{id}/profile-pictures", a.profilePictures)
 	mux.HandleFunc("PUT /api/uploads/{key}", func(w http.ResponseWriter, r *http.Request) {
 		receipt, err := a.store.Upload(r.Context(), r.PathValue("key"), r.URL.Query().Get("scope"), r.URL.Query().Get("filename"), r.Body)
 		if err != nil {

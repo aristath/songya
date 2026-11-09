@@ -5282,3 +5282,148 @@ test("graph legend checkboxes filter kinds in both views", async () => {
   await context.close();
   assert.deepEqual(errors, []);
 });
+
+test("entity portraits can reference linked memory photos without copying files", async () => {
+  const entity = await save(
+    source("John linked portrait", "Keep identity words."),
+    "entities",
+  );
+  const memory = await save(
+    source(
+      "John photo memory",
+      "Keep memory words.",
+      `relations:\n  - type: related_to\n    target: ${entity.id}\n`,
+    ),
+  );
+  const other = await save(source("Other photo memory", "Not linked to John."));
+  const { page, context } = await pageFor();
+  const bytes = Buffer.from(
+    await page.evaluate(() => {
+      const c = document.createElement("canvas");
+      c.width = c.height = 16;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "green";
+      ctx.fillRect(0, 0, 16, 16);
+      return c.toDataURL().split(",")[1];
+    }),
+    "base64",
+  );
+  for (const record of [memory, other]) {
+    const upload = await (
+      await fetch(
+        url +
+          "/api/uploads/" +
+          crypto.randomUUID() +
+          "?scope=test&filename=same.png",
+        { method: "PUT", body: bytes },
+      )
+    ).json();
+    const receipt = await (
+      await fetch(url + "/api/records/" + record.id + "/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: crypto.randomUUID(),
+          revision: record.version,
+          action: "add",
+          upload: upload.upload,
+        }),
+      })
+    ).json();
+    assert.equal(receipt.status, "committed");
+  }
+  await editRecord(page, "John linked portrait");
+  const gallery = page.getByRole("region", {
+    name: "Profile pictures from memories",
+  });
+  assert.equal(await gallery.locator(".file-card").count(), 1);
+  await gallery
+    .getByRole("button", { name: "Use as profile picture", exact: true })
+    .click();
+  await page.getByLabel("Profile picture zoom", { exact: true }).fill("1.75");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await waitText(page, "Saved");
+  const graph = await (await fetch(url + "/api/graph")).json();
+  assert.deepEqual(
+    graph.nodes.find((n) => n.id === entity.id).profile_picture,
+    { record: memory.id, filename: "same.png", x: 0.5, y: 0.5, zoom: 1.75 },
+  );
+  const entityFiles = await (
+    await fetch(url + "/api/records/" + entity.id + "/files")
+  ).json();
+  assert.equal(
+    entityFiles.files.length,
+    0,
+    "No attachment copied into the entity",
+  );
+  assert.deepEqual(
+    Buffer.from(
+      await (
+        await fetch(url + "/api/records/" + memory.id + "/files/same.png")
+      ).arrayBuffer(),
+    ),
+    bytes,
+  );
+  await page.getByRole("button", { name: "Close record", exact: true }).click();
+  await page.reload();
+  await editRecord(page, "John linked portrait");
+  await page.waitForFunction(() => {
+    const c = document.querySelector(".portrait-preview");
+    return c && !c.hidden;
+  });
+  assert.equal(
+    await page.getByLabel("Profile picture zoom", { exact: true }).inputValue(),
+    "1.75",
+  );
+  await page
+    .getByRole("button", { name: "Edit profile picture", exact: true })
+    .click();
+  assert.equal(
+    await page.getByLabel("Profile picture zoom", { exact: true }).inputValue(),
+    "1.75",
+  );
+  const beforeRevision = graph.nodes.find((n) => n.id === entity.id).revision;
+  const originalMemory = await (
+    await fetch(url + "/api/records/" + memory.id)
+  ).json();
+  await save(
+    originalMemory.source + "\nOne more detail.",
+    "memories",
+    memory.id,
+    originalMemory.version,
+  );
+  const changedGraph = await (await fetch(url + "/api/graph")).json();
+  assert.notEqual(
+    changedGraph.nodes.find((n) => n.id === entity.id).revision,
+    beforeRevision,
+    "Source changes invalidate the graph image cache",
+  );
+  const listing = await (
+    await fetch(url + "/api/records/" + memory.id + "/files")
+  ).json();
+  await fetch(url + "/api/records/" + memory.id + "/files", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      key: crypto.randomUUID(),
+      revision: listing.revision,
+      action: "remove",
+      filename: "same.png",
+    }),
+  });
+  await page.getByRole("button", { name: "Close record", exact: true }).click();
+  await page.reload();
+  await editRecord(page, "John linked portrait");
+  await page
+    .getByRole("alert")
+    .filter({ hasText: "This image could not be displayed" })
+    .waitFor();
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Remove profile picture", exact: true })
+      .isEnabled(),
+    true,
+  );
+  await context.close();
+  assert.deepEqual(errors, []);
+});

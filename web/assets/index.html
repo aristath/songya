@@ -1636,7 +1636,7 @@
             ></canvas>
             <div class="portrait-focus" x-show="entityPicture()">
               <img
-                :src="entityPicture() && selected?.id ? portraitURL(selected.id,entityPicture(),selected.version) : ''"
+                :src="entityPicture() && selected?.id ? portraitURL(selected.id,entityPicture(),profileRevision(selected.version)) : ''"
                 alt="Choose the profile picture focus point"
                 @click="pictureFocus($event)"
               />
@@ -1689,6 +1689,45 @@
           x-text="pictureError"
           role="alert"
         ></p>
+        <section
+          class="record-files"
+          aria-label="Profile pictures from memories"
+          x-show="selected?.kind==='entities' && !inspecting && (profilePictures.length || profilePicturesError)"
+        >
+          <h3>Pictures from linked memories</h3>
+          <p class="muted">
+            Choose a profile picture without moving or copying its file.
+          </p>
+          <p
+            class="error"
+            x-show="profilePicturesError"
+            x-text="profilePicturesError"
+            role="alert"
+          ></p>
+          <div class="file-grid">
+            <template
+              x-for="file in profilePictures"
+              :key="file.record+':'+file.filename"
+            >
+              <figure class="file-card">
+                <img
+                  loading="lazy"
+                  :src="portraitURL(file.record,file,file.revision)"
+                  :alt="file.filename"
+                />
+                <figcaption>
+                  <span x-text="file.title"></span
+                  ><span class="muted" x-text="file.filename"></span>
+                </figcaption>
+                <button
+                  :disabled="busy||loading||filesBusy"
+                  @click="choosePicture(file)"
+                  x-text="isProfilePicture(file)?'Edit profile picture':'Use as profile picture'"
+                ></button>
+              </figure>
+            </template>
+          </div>
+        </section>
         <section
           class="record-files"
           aria-label="Record files"
@@ -1777,7 +1816,7 @@
                     x-show="selected?.kind==='entities' && file.preview==='image'"
                     :disabled="busy||loading||filesBusy"
                     @click="choosePicture(file)"
-                    x-text="entityPicture()?.filename===file.filename?'Edit profile picture':'Use as profile picture'"
+                    x-text="isProfilePicture(file)?'Edit profile picture':'Use as profile picture'"
                   ></button>
                   <label class="file-picker"
                     >Replace<input

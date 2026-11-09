@@ -7,6 +7,7 @@ import (
 
 // ProfilePicture refers to an original attachment. Cropping never changes its bytes.
 type ProfilePicture struct {
+	Record   string  `json:"record,omitempty" yaml:"record,omitempty"`
 	Filename string  `json:"filename" yaml:"filename"`
 	X        float64 `json:"x" yaml:"x"`
 	Y        float64 `json:"y" yaml:"y"`
@@ -24,6 +25,10 @@ func (d *Document) ProfilePicture() *ProfilePicture {
 	}
 	filename, _ := values["filename"].(string)
 	if _, err := attachmentName(filename); err != nil {
+		return nil
+	}
+	record, _ := values["record"].(string)
+	if record != "" && !ValidID(record) {
 		return nil
 	}
 	number := func(key string, fallback, low, high float64) float64 {
@@ -47,5 +52,5 @@ func (d *Document) ProfilePicture() *ProfilePicture {
 		}
 		return math.Max(low, math.Min(high, n))
 	}
-	return &ProfilePicture{Filename: filename, X: number("x", .5, 0, 1), Y: number("y", .5, 0, 1), Zoom: number("zoom", 1, 1, 5)}
+	return &ProfilePicture{Record: record, Filename: filename, X: number("x", .5, 0, 1), Y: number("y", .5, 0, 1), Zoom: number("zoom", 1, 1, 5)}
 }
