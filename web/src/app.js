@@ -119,6 +119,7 @@ Alpine.data("songya", () => {
         }
       });
     },
+    graphWeightStatus: "",
     async refreshGraph() {
       const ticket = ++graphListing;
       try {
@@ -130,6 +131,7 @@ Alpine.data("songya", () => {
         );
         if (ticket !== graphListing) return;
         graphData = data;
+        this.graphWeightStatus = data.weights?.status || "";
         this.timelineSubjects = data.nodes
           .filter((node) => ["entities", "topics"].includes(node.kind))
           .sort((a, b) => (a.title || a.id).localeCompare(b.title || b.id));

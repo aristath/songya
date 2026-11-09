@@ -5558,13 +5558,11 @@ test("photo masonry opens accessible details and keeps file actions in the viewe
     "base64",
   );
   page.once("dialog", (dialog) => dialog.accept());
-  await viewer
-    .locator("input[type=file]")
-    .setInputFiles({
-      name: "replacement.png",
-      mimeType: "image/png",
-      buffer: replacement,
-    });
+  await viewer.locator("input[type=file]").setInputFiles({
+    name: "replacement.png",
+    mimeType: "image/png",
+    buffer: replacement,
+  });
   await page.waitForFunction(
     () => document.querySelector(".photo-full")?.naturalWidth === 120,
   );
@@ -5596,6 +5594,83 @@ test("photo masonry opens accessible details and keeps file actions in the viewe
     (await (await fetch(url + "/api/records/" + record.id)).json()).draft.body,
     "Preserve these words.",
   );
+  await context.close();
+  assert.deepEqual(errors, []);
+});
+
+test("weighted graph sizes render cached scores and update after event-date edits", async () => {
+  const john = await save(
+    source("John weighted graph", "An identity."),
+    "entities",
+  );
+  const mary = await save(
+    source("Mary weighted graph", "Another identity."),
+    "entities",
+  );
+  const today = new Date().toISOString().slice(0, 10);
+  const event = (title, id, date) =>
+    source(
+      title,
+      "An experience.",
+      `time:\n  date: ${date}\nrelations:\n  - type: related_to\n    target: ${id}\n`,
+    );
+  const first = await save(event("John's recent event", john.id, today));
+  await save(event("John's other recent event", john.id, today));
+  await save(event("Mary's older event", mary.id, "1990-01-01"));
+  const { page, context } = await pageFor();
+  await page.locator(".graph-legend").scrollIntoViewIfNeeded();
+  await page.waitForFunction(
+    async (ids) => {
+      const data = await (await fetch("/api/graph")).json();
+      const [a, b] = ids.map((id) => data.nodes.find((n) => n.id === id));
+      return a?.weight > 0.99 && b?.weight > 0 && b.weight < 0.2;
+    },
+    [john.id, mary.id],
+  );
+  await page.evaluate(() => {
+    window.weightRadii = [];
+    const arc = CanvasRenderingContext2D.prototype.arc;
+    CanvasRenderingContext2D.prototype.arc = function (x, y, r, ...args) {
+      if (this.canvas.closest(".graph-canvas")) {
+        window.weightRadii.push(r);
+        if (window.weightRadii.length > 10000)
+          window.weightRadii.splice(0, 5000);
+      }
+      return arc.call(this, x, y, r, ...args);
+    };
+    return window.Alpine.$data(document.body).refreshGraph();
+  });
+  const graph = await (await fetch(url + "/api/graph")).json();
+  const weights = [john, mary].map(
+    (r) => graph.nodes.find((n) => n.id === r.id).weight,
+  );
+  await page.waitForFunction(
+    (values) =>
+      values.every((v) =>
+        window.weightRadii.some(
+          (r) => Math.abs(r - 4 * Math.sqrt(1 + v)) < 1e-6,
+        ),
+      ),
+    weights,
+  );
+  const saved = await (await fetch(url + "/api/records/" + first.id)).json();
+  await save(
+    event("John's recent event", john.id, "1990-01-01"),
+    "memories",
+    first.id,
+    saved.version,
+  );
+  await page.waitForFunction(async (id) => {
+    const graph = await (await fetch("/api/graph")).json();
+    const node = graph.nodes.find((n) => n.id === id);
+    return node?.weight > 0.5 && node.weight < 0.7;
+  }, john.id);
+  await page.waitForFunction(() =>
+    window.weightRadii.some((r) => r > 4.9 && r < 5.3),
+  );
+  await page.getByRole("button", { name: "3D", exact: true }).click();
+  await page.getByRole("button", { name: "2D", exact: true }).click();
+  assert.equal(await page.locator(".graph-weight-status").isVisible(), true);
   await context.close();
   assert.deepEqual(errors, []);
 });

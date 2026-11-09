@@ -166,7 +166,7 @@ func (a *chatApp) run(ctx context.Context, id string) error {
 				key := fmt.Sprintf("chat:%s:%d:%s", id, index, call.ID)
 				result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: call.Function.Name, Arguments: args, Meta: mcp.Meta{"songya/request-key": key, "songya/original-text": originalTurnText(c), "songya/user": c.User}})
 				if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
-					a.recordsRevision.Add(1)
+					a.recordsChanged()
 				}
 				if ctx.Err() != nil {
 					return ctx.Err()

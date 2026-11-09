@@ -110,11 +110,15 @@ type chatApp struct {
 	wg              sync.WaitGroup
 	closed          bool
 	recordsRevision atomic.Uint64
+	weights         *graphWeights
 }
 
 func newChatApp(store *songya.Store) *chatApp {
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &chatApp{store: store, ctx: ctx, cancel: cancel, active: map[string]context.CancelFunc{}, progress: map[string]chatProgress{}}
+	a.weights = newGraphWeights(a)
+	a.wg.Add(1)
+	go a.runGraphWeights()
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()

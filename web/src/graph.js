@@ -13,7 +13,8 @@ function label(text) {
   return element;
 }
 
-const nodeRadius = (node) => 4 * Math.sqrt(1 + node.connections);
+const nodeValue = (node) => 1 + Math.max(0, Number(node.weight) || 0);
+const nodeRadius = (node) => 4 * Math.sqrt(nodeValue(node));
 
 export function memoryGraph(
   container,
@@ -70,7 +71,7 @@ export function memoryGraph(
         ? colors.surface1
         : resolveColor(nodeColor(node), colors),
     )
-    .nodeVal((node) => 1 + node.connections)
+    .nodeVal(nodeValue)
     .nodeLabel((node) => label(node.title || node.id))
     .linkColor((link) =>
       !matches ||
@@ -152,7 +153,7 @@ export function memoryGraph(
             opacity: matches && !matches.has(node.id) ? 0.2 : 1,
           }),
         );
-        const diameter = 8 * Math.cbrt(1 + node.connections);
+        const diameter = 8 * Math.cbrt(nodeValue(node));
         sprite.scale.set(diameter, diameter, 1);
         sprites.add(sprite);
         return sprite;
@@ -212,7 +213,7 @@ export function memoryGraph(
         );
         graph.centerAt(x, y, 650).zoom(zoom, 650);
       } else {
-        const distance = 100 + Math.cbrt(1 + node.connections) * 12;
+        const distance = 100 + Math.cbrt(nodeValue(node)) * 12;
         graph.cameraPosition({ x, y, z: z + distance }, { x, y, z }, 650);
       }
     },
@@ -233,24 +234,38 @@ export function memoryGraph(
     },
     update(data) {
       // Both renderers mutate data. Give each its own nodes and links.
-      const nodes = data.nodes.map((node) => ({ ...node, connections: 0 }));
+      const nodes = data.nodes.map((node) => ({ ...node }));
       const byID = new Map(nodes.map((node) => [node.id, node]));
       const links = data.links
         .filter((link) => byID.has(link.source) && byID.has(link.target))
         .map((link) => ({ ...link }));
-      for (const link of links) {
-        byID.get(link.source).connections++;
-        byID.get(link.target).connections++;
-      }
       const stamp = JSON.stringify([
         nodes.map((node) => node.id),
         links.map((link) => [link.source, link.target, link.type]),
       ]);
       if (stamp === layoutStamp) {
         // Color and label changes do not need a new force layout or camera fit.
-        for (const node of graph.graphData().nodes)
+        let sizeChanged = false;
+        for (const node of graph.graphData().nodes) {
+          sizeChanged ||= node.weight !== byID.get(node.id)?.weight;
           Object.assign(node, byID.get(node.id));
-        graph.nodeColor(graph.nodeColor()).nodeLabel(graph.nodeLabel());
+        }
+        graph
+          .nodeVal(nodeValue)
+          .nodeColor(graph.nodeColor())
+          .nodeLabel(graph.nodeLabel());
+        if (sizeChanged) {
+          if (flat) {
+            graph.d3Force("collide").radius((node) => nodeRadius(node) + 4);
+            graph
+              .d3Force("link")
+              .distance(
+                (link) =>
+                  nodeRadius(link.source) + nodeRadius(link.target) + 28,
+              );
+          }
+          if (!fit) graph.d3ReheatSimulation();
+        }
         refreshPictures();
         return;
       }

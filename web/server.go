@@ -71,6 +71,7 @@ func Handler(store *songya.Store) *Application {
 			fail(w, err)
 			return
 		}
+		weights, weightStatus := chat.weights.snapshot()
 		nodes := []map[string]any{}
 		links := []map[string]string{}
 		seen := map[[3]string]bool{}
@@ -86,7 +87,7 @@ func Handler(store *songya.Store) *Application {
 			if record.ProfilePicture != nil && record.ProfilePicture.Record != "" {
 				revision += byID[record.ProfilePicture.Record].Revision
 			}
-			nodes = append(nodes, map[string]any{"id": record.ID, "title": record.Title, "aliases": record.Aliases, "kind": record.Kind, "user": record.User, "color": colors.RecordColor(record), "profile_picture": record.ProfilePicture, "revision": revision})
+			nodes = append(nodes, map[string]any{"id": record.ID, "title": record.Title, "aliases": record.Aliases, "kind": record.Kind, "user": record.User, "color": colors.RecordColor(record), "profile_picture": record.ProfilePicture, "revision": revision, "weight": weights[record.ID].Weight, "weight_calculated_at": weights[record.ID].CalculatedAt})
 			relations := append([]songya.Relation{}, record.Relations...)
 			for _, target := range record.Redirects {
 				relations = append(relations, songya.Relation{Type: "redirects", Target: target})
@@ -99,7 +100,7 @@ func Handler(store *songya.Store) *Application {
 				}
 			}
 		}
-		write(w, map[string]any{"nodes": nodes, "links": links, "kind_colors": colors.KindColors, "color_user": colors.User})
+		write(w, map[string]any{"nodes": nodes, "links": links, "weights": weightStatus, "kind_colors": colors.KindColors, "color_user": colors.User})
 	})
 	mux.HandleFunc("GET /api/records", func(w http.ResponseWriter, r *http.Request) {
 		colors := chat.colorConfiguration(r)
@@ -282,7 +283,7 @@ func Handler(store *songya.Store) *Application {
 		}
 		receipt, err := store.SaveSource(songya.WithTypeUser(r.Context(), input.ClassificationUser), input.Key, input.ID, input.Kind, input.Version, input.Source)
 		if receipt.Status != "not_accepted" && receipt.Status != "" {
-			chat.recordsRevision.Add(1)
+			chat.recordsChanged()
 		}
 		if err != nil {
 			if receipt.Status == "not_accepted" {
@@ -319,7 +320,7 @@ func Handler(store *songya.Store) *Application {
 			fail(w, err)
 			return
 		}
-		chat.recordsRevision.Add(1)
+		chat.recordsChanged()
 		write(w, map[string]any{"deleted": true})
 	})
 	// Requests from other sites must not mutate a locally running store.

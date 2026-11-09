@@ -447,3 +447,33 @@ names, sizes or action buttons. Escape closes the photo and returns focus to its
 thumbnail without closing the record. Profile selection opens the existing crop
 editor; it remains a draft until the record is saved. Linked files are replaced
 or removed only from their source memory. Story photos use the same viewer.
+
+
+Graph point sizes use deterministic weights, independently of visibility filters.
+Each distinct reachable memory contributes once through its strongest path, up to
+five hops. Hop multipliers are 0.5, 0.4, 0.3, 0.2 and 0.1. Relation multipliers are
+1 in both directions for `related_to`; 1 toward a `caused_by` cause and 0.75 toward
+its effects; 0.8 toward a `part_of` whole and 0.5 toward its parts. Ordering,
+possible identity matches and redirects do not contribute. Every intermediate
+record divides the path strength by the square root of its unique neighbour
+count; the starting record does not. This reduces shortcuts through broad hubs.
+
+A memory's recency multiplier is `0.25 + 0.75 * 2^(-age_in_years / 5)` using UTC
+event dates and 365.2425 days per year. A bounded interval uses the average across
+the interval. Unknown or one-sided dates use 0.5. Future dates receive no bonus.
+Entity lifetime dates and file timestamps are not used as event dates. The 2D
+radius is `4 * sqrt(1 + weight)`; 3D uses the corresponding volume scaling. Photos,
+collision spacing and ordinary points use the same weights.
+
+`graph-weights.json` is the single rebuildable repository-wide weight cache. It
+also retains source revisions, neighbours and pending work so restarts can detect
+edits and removed connections. A web worker calculates at most one queued record
+per second. Results expire after 24 hours. Never-calculated records come first,
+then the oldest expired calculation; affected records have priority. Ties between
+never-calculated records favour the most connected records, then ID. Existing
+records edited through the UI, chat or external clients recalculate immediately
+when detected; affected neighbours queue for the regular worker. Edits outside
+the web process are detected on its roughly one-second scan. Cached sizes remain
+visible during refreshes. The chart shows progress during its initial pass.
+Cache writes use synced atomic replacement and retry after failures; failures do
+not block record access. No memory files or client protocols are changed.

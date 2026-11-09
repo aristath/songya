@@ -64,7 +64,7 @@ func (a *chatApp) registerFiles(mux *http.ServeMux) {
 		request.ID = r.PathValue("id")
 		receipt, err := a.store.ChangeFile(r.Context(), request)
 		// A pending effect may already be visible; clients must refresh after either result.
-		a.recordsRevision.Add(1)
+		a.recordsChanged()
 		if err != nil {
 			writeStatus(w, http.StatusConflict, map[string]any{"error": err.Error(), "receipt": receipt})
 			return

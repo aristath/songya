@@ -1570,3 +1570,9 @@ blockquote {
   margin-inline: auto;
   object-fit: contain;
 }
+
+.graph-weight-status {
+  font-size: 0.75rem;
+  color: var(--muted);
+  flex-basis: 100%;
+}

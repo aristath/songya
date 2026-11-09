@@ -49,7 +49,7 @@ func (a *chatApp) typeSettingsHTTP(w http.ResponseWriter, r *http.Request) {
 			writeStatus(w, 503, map[string]any{"error": fmt.Sprintf("Type settings work is saved for recovery. Retry this same save: %v", err), "receipt": receipt})
 			return
 		}
-		a.recordsRevision.Add(1)
+		a.recordsChanged()
 		if receipt.Status != "committed" {
 			writeStatus(w, 503, map[string]any{"error": "Settings work is retained; retry the same save.", "receipt": receipt})
 			return
