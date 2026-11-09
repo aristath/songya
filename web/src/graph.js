@@ -1,6 +1,8 @@
 import ForceGraph3D from "3d-force-graph";
 import ForceGraph from "force-graph";
 import { forceCollide } from "d3-force-3d";
+import { CanvasTexture, Sprite, SpriteMaterial, SRGBColorSpace } from "three";
+import { portraitURL, paintPortrait } from "./portraits.js";
 
 import { currentPalette, resolveColor, defaultKindColors } from "./palette.js";
 
@@ -30,6 +32,37 @@ export function memoryGraph(
   let fit = true,
     matches = null,
     layoutStamp = "";
+  let destroyed = false;
+  const pictures = new Map(),
+    sprites = new Set();
+  const imageFor = (node) => {
+    if (!node.profile_picture) return null;
+    const url = portraitURL(node.id, node.profile_picture, node.revision);
+    if (!pictures.has(url)) {
+      const image = new Image();
+      pictures.set(url, image);
+      image.onload = () => {
+        if (!destroyed) refreshPictures();
+      };
+      image.onerror = () => {
+        image.retry = setTimeout(() => {
+          if (destroyed || pictures.get(url) !== image) return;
+          pictures.delete(url);
+          refreshPictures();
+        }, 30000);
+      };
+      image.src = url;
+    }
+    const image = pictures.get(url);
+    return image.complete && image.naturalWidth ? image : null;
+  };
+  const disposeSprites = () => {
+    for (const sprite of sprites) {
+      sprite.material.map?.dispose();
+      sprite.material.dispose();
+    }
+    sprites.clear();
+  };
   const graph = new (flat ? ForceGraph : ForceGraph3D)(container)
     .backgroundColor(colors.crust)
     .nodeColor((node) =>
@@ -60,6 +93,29 @@ export function memoryGraph(
     });
   if (flat) {
     graph
+      .nodeCanvasObjectMode(() => "after")
+      .nodeCanvasObject((node, ctx) => {
+        const image = imageFor(node);
+        if (!image) return;
+        const radius = nodeRadius(node);
+        ctx.save();
+        if (matches && !matches.has(node.id)) ctx.globalAlpha = 0.2;
+        paintPortrait(
+          ctx,
+          image,
+          node.profile_picture,
+          node.x - radius,
+          node.y - radius,
+          radius * 2,
+        );
+        ctx.strokeStyle = resolveColor(nodeColor(node), colors);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.restore();
+      });
+    graph
       .warmupTicks(80)
       .d3Force(
         "collide",
@@ -70,7 +126,44 @@ export function memoryGraph(
       .distance(
         (link) => nodeRadius(link.source) + nodeRadius(link.target) + 28,
       );
-  } else graph.showNavInfo(false).nodeOpacity(1).linkOpacity(0.35);
+  } else {
+    graph
+      .showNavInfo(false)
+      .nodeOpacity(1)
+      .linkOpacity(0.35)
+      .nodeThreeObject((node) => {
+        const image = imageFor(node);
+        if (!image) return undefined;
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 256;
+        const ctx = canvas.getContext("2d");
+        paintPortrait(ctx, image, node.profile_picture, 4, 4, 248);
+        ctx.strokeStyle = resolveColor(nodeColor(node), colors);
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.arc(128, 128, 124, 0, Math.PI * 2);
+        ctx.stroke();
+        const texture = new CanvasTexture(canvas);
+        texture.colorSpace = SRGBColorSpace;
+        const sprite = new Sprite(
+          new SpriteMaterial({
+            map: texture,
+            transparent: true,
+            opacity: matches && !matches.has(node.id) ? 0.2 : 1,
+          }),
+        );
+        const diameter = 8 * Math.cbrt(1 + node.connections);
+        sprite.scale.set(diameter, diameter, 1);
+        sprites.add(sprite);
+        return sprite;
+      });
+  }
+  const refreshPictures = () => {
+    if (!flat) {
+      disposeSprites();
+      graph.nodeThreeObject(graph.nodeThreeObject());
+    }
+  };
   // Read the native CSS theme; no viewport queries or layout breakpoints.
   // The interval also catches device-theme changes without replacing graph data.
   const restyle = () => {
@@ -81,6 +174,7 @@ export function memoryGraph(
       .backgroundColor(colors.crust)
       .nodeColor(graph.nodeColor())
       .linkColor(graph.linkColor());
+    refreshPictures();
   };
   const paletteTimer = setInterval(restyle, 500);
   const resize = new ResizeObserver(() => {
@@ -98,6 +192,7 @@ export function memoryGraph(
     highlight(ids) {
       matches = ids === null ? null : new Set(ids);
       graph.nodeColor(graph.nodeColor()).linkColor(graph.linkColor());
+      refreshPictures();
     },
     focus(id) {
       if (!id) {
@@ -122,6 +217,13 @@ export function memoryGraph(
       }
     },
     destroy() {
+      destroyed = true;
+      disposeSprites();
+      for (const image of pictures.values()) {
+        image.onload = image.onerror = null;
+        clearTimeout(image.retry);
+      }
+      pictures.clear();
       clearInterval(paletteTimer);
       resize.disconnect();
       visibility.disconnect();
@@ -149,11 +251,25 @@ export function memoryGraph(
         for (const node of graph.graphData().nodes)
           Object.assign(node, byID.get(node.id));
         graph.nodeColor(graph.nodeColor()).nodeLabel(graph.nodeLabel());
+        refreshPictures();
         return;
       }
       layoutStamp = stamp;
       fit = true;
+      disposeSprites();
       graph.graphData({ nodes, links });
+      const active = new Set(
+        nodes
+          .filter((n) => n.profile_picture)
+          .map((n) => portraitURL(n.id, n.profile_picture, n.revision)),
+      );
+      for (const [url, image] of pictures)
+        if (!active.has(url)) {
+          image.onload = null;
+          image.onerror = null;
+          clearTimeout(image.retry);
+          pictures.delete(url);
+        }
     },
   };
 }

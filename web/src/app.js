@@ -1,4 +1,5 @@
 import Alpine from "alpinejs";
+import { portraitsUI } from "./portraits.js";
 import { filesUI, recordFiles } from "./files.js";
 import { codeEditor, richEditor } from "./editors.js";
 import { memoryGraph } from "./graph.js";
@@ -44,6 +45,7 @@ Alpine.data("songya", () => {
   return {
     ...chatUI(request),
     ...filesUI(request),
+    ...portraitsUI(),
     ...recallUI(request),
     ...typesUI(request),
     ...storyUI(request),
@@ -99,6 +101,7 @@ Alpine.data("songya", () => {
     graphOwner: "",
     graphOwners: [],
     graphKindColors: { ...defaultKindColors },
+    graphKinds: { memories: true, entities: true, topics: true, stories: true },
     async init() {
       this.$watch("recallDraft", () => this.keepRecallDraft());
       this.refreshGraph();
@@ -173,6 +176,7 @@ Alpine.data("songya", () => {
         }
         nodes = nodes.filter((node) => visible.has(node.id));
       }
+      nodes = nodes.filter((node) => this.graphKinds[node.kind] !== false);
       const ids = new Set(nodes.map((node) => node.id));
       const links = graphData.links.filter(
         (link) => ids.has(link.source) && ids.has(link.target),
@@ -189,9 +193,11 @@ Alpine.data("songya", () => {
         if (this.graphQuery) this.searchGraph();
         this.graphStatus = nodes.length
           ? ""
-          : this.graphOwner
-            ? "No records for this owner."
-            : "No records yet.";
+          : Object.values(this.graphKinds).every((value) => !value)
+            ? "No record kinds selected."
+            : this.graphOwner
+              ? "No records for this owner."
+              : "No records yet.";
       } catch {
         this.graphStatus =
           "Graph unavailable. You can still browse the library.";

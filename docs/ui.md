@@ -407,3 +407,26 @@ file rather than reusing the wrong bytes. This adds no permanent attachment copi
 File previews use the browser's native image/media controls and safe text output.
 Media responses support HTTP ranges. Original downloads keep their actual saved
 filename and bytes. Active formats are served as downloads with restrictive headers.
+
+
+## Entity profile pictures
+
+In an entity’s Files section, choose **Use as profile picture** on an attached
+image. Click the full image to set its focus point, or use the horizontal and
+vertical focus sliders. Adjust zoom while watching the round preview, then use
+**Save**. **Edit profile picture** keeps the existing framing; **Reset framing**
+centres it, and **Remove profile picture** clears only the selection.
+
+The original file is never cropped or rewritten. The entity’s ordinary Markdown
+header stores `profile_picture: {filename: portrait.jpg, x: 0.5, y: 0.5, zoom: 1}`.
+Focus coordinates range from 0 to 1 and zoom from 1 to 5. Both graph renderers use
+the same crop. Unavailable pictures fall back to ordinary coloured graph nodes.
+
+The web host needs `ffmpeg` on its PATH for browser-sized image previews,
+including HEIC/HEIF. Original downloads remain available if conversion fails.
+Previews use bounded concurrency and a timeout, and browsers revalidate them
+against the original file’s modification time and size.
+
+The graph’s bottom-left colour legend also contains checkboxes for memories,
+entities, topics and stories. These controls combine with the owner filter and
+hide connecting lines whose endpoints are hidden. They affect only the graph.

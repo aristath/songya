@@ -78,7 +78,7 @@ func Handler(store *songya.Store) *Application {
 			if record.ID == "" {
 				continue
 			}
-			nodes = append(nodes, map[string]any{"id": record.ID, "title": record.Title, "aliases": record.Aliases, "kind": record.Kind, "user": record.User, "color": colors.RecordColor(record)})
+			nodes = append(nodes, map[string]any{"id": record.ID, "title": record.Title, "aliases": record.Aliases, "kind": record.Kind, "user": record.User, "color": colors.RecordColor(record), "profile_picture": record.ProfilePicture, "revision": record.Revision})
 			relations := append([]songya.Relation{}, record.Relations...)
 			for _, target := range record.Redirects {
 				relations = append(relations, songya.Relation{Type: "redirects", Target: target})
@@ -327,15 +327,16 @@ func Handler(store *songya.Store) *Application {
 }
 
 type Field struct {
-	Time        *songya.RecordTime `json:"time,omitempty"`
-	Protected   string             `json:"protected,omitempty"`
-	Index       int                `json:"index"`
-	Text        string             `json:"text"`
-	Type        string             `json:"type"`
-	Assignments map[string]string  `json:"assignments,omitempty"`
-	Key         string             `json:"key"`
-	Value       string             `json:"value"`
-	System      bool               `json:"system"`
+	ProfilePicture *songya.ProfilePicture `json:"profile_picture,omitempty"`
+	Time           *songya.RecordTime     `json:"time,omitempty"`
+	Protected      string                 `json:"protected,omitempty"`
+	Index          int                    `json:"index"`
+	Text           string                 `json:"text"`
+	Type           string                 `json:"type"`
+	Assignments    map[string]string      `json:"assignments,omitempty"`
+	Key            string                 `json:"key"`
+	Value          string                 `json:"value"`
+	System         bool                   `json:"system"`
 }
 type Draft struct {
 	Body     string   `json:"body"`
@@ -384,6 +385,12 @@ func describe(source string, kind songya.Destination) Draft {
 			protected = strings.Join(lines[key.Line:end], "")
 		}
 		f := Field{Index: i / 2, Text: value.Value, Type: typ, Key: name, Value: string(data), System: system, Protected: protected}
+		if name == "profile_picture" && kind == songya.Entities {
+			if picture := doc.ProfilePicture(); picture != nil {
+				f.ProfilePicture = picture
+				f.Type = "profile_picture"
+			}
+		}
 		if name == "types" {
 			f.Assignments = doc.Types()
 		}

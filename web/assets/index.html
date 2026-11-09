@@ -640,37 +640,57 @@
               aria-label="Graph colors"
               :title="'Default record colors; type colors take precedence. Colors for '+(classificationUser||'no selected user')"
             >
-              <span
-                ><i
+              <label
+                ><input
+                  type="checkbox"
+                  aria-label="Show entities in graph"
+                  x-model="graphKinds.entities"
+                  @change="renderGraph()"
+                /><i
                   class="entity-dot"
                   data-kind="entities"
                   :style="{backgroundColor:colorCSS(graphKindColors.entities)}"
                 ></i
-                >Entities</span
+                >Entities</label
               >
-              <span
-                ><i
+              <label
+                ><input
+                  type="checkbox"
+                  aria-label="Show memories in graph"
+                  x-model="graphKinds.memories"
+                  @change="renderGraph()"
+                /><i
                   class="memory-dot"
                   data-kind="memories"
                   :style="{backgroundColor:colorCSS(graphKindColors.memories)}"
                 ></i
-                >Memories</span
+                >Memories</label
               >
-              <span
-                ><i
+              <label
+                ><input
+                  type="checkbox"
+                  aria-label="Show topics in graph"
+                  x-model="graphKinds.topics"
+                  @change="renderGraph()"
+                /><i
                   class="topic-dot"
                   data-kind="topics"
                   :style="{backgroundColor:colorCSS(graphKindColors.topics)}"
                 ></i
-                >Topics</span
+                >Topics</label
               >
-              <span
-                ><i
+              <label
+                ><input
+                  type="checkbox"
+                  aria-label="Show stories in graph"
+                  x-model="graphKinds.stories"
+                  @change="renderGraph()"
+                /><i
                   class="story-dot"
                   data-kind="stories"
                   :style="{backgroundColor:colorCSS(graphKindColors.stories)}"
                 ></i
-                >Stories</span
+                >Stories</label
               >
             </div>
           </section>
@@ -1091,6 +1111,13 @@
       </div>
       <div class="editor-shell">
         <div class="editor-heading">
+          <canvas
+            class="entity-portrait"
+            role="img"
+            aria-label="Entity profile picture"
+            x-effect="drawEntityPicture($el, entityPicture(), selected?.id, selected?.version)"
+            x-show="entityPicture()"
+          ></canvas>
           <button
             class="back"
             @click="back()"
@@ -1244,7 +1271,10 @@
             are automatic.
           </p>
           <template x-for="(field,index) in fields" :key="index"
-            ><div class="metadata-field" x-show="field.key!=='types'">
+            ><div
+              class="metadata-field"
+              x-show="field.key!=='types' && field.type!=='profile_picture'"
+            >
               <input
                 list="metadata-keys"
                 aria-label="Metadata name"
@@ -1588,6 +1618,78 @@
           <div x-ref="source"><div x-ignore></div></div>
         </div>
         <section
+          class="portrait-editor"
+          x-show="selected?.kind==='entities' && entityPicture() && !inspecting && mode==='visual'"
+          aria-label="Profile picture editor"
+        >
+          <h3>Profile picture</h3>
+          <p>
+            Click the image to choose the focus point. Adjust zoom to frame the
+            picture. Changes are kept in your draft until you save.
+          </p>
+          <fieldset :disabled="busy||loading||filesBusy">
+            <canvas
+              class="portrait-preview"
+              role="img"
+              aria-label="Profile picture crop preview"
+              x-effect="drawEntityPicture($el, entityPicture(), selected?.id, selected?.version)"
+            ></canvas>
+            <div class="portrait-focus" x-show="entityPicture()">
+              <img
+                :src="entityPicture() && selected?.id ? portraitURL(selected.id,entityPicture(),selected.version) : ''"
+                alt="Choose the profile picture focus point"
+                @click="pictureFocus($event)"
+              />
+              <span
+                class="portrait-crosshair"
+                :style="'left:'+(entityPicture()?.x*100)+'%;top:'+(entityPicture()?.y*100)+'%'"
+                aria-hidden="true"
+                >+</span
+              >
+            </div>
+            <label
+              >Horizontal focus<input
+                aria-label="Horizontal focus"
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                :value="entityPicture()?.x"
+                @input="changePicture({x:Number($event.target.value)})"
+            /></label>
+            <label
+              >Vertical focus<input
+                aria-label="Vertical focus"
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                :value="entityPicture()?.y"
+                @input="changePicture({y:Number($event.target.value)})"
+            /></label>
+            <label
+              >Zoom<input
+                aria-label="Profile picture zoom"
+                type="range"
+                min="1"
+                max="5"
+                step="0.05"
+                :value="entityPicture()?.zoom"
+                @input="changePicture({zoom:Number($event.target.value)})"
+            /></label>
+            <button @click="changePicture({x:0.5,y:0.5,zoom:1})">
+              Reset framing
+            </button>
+            <button @click="clearPicture()">Remove profile picture</button>
+          </fieldset>
+        </section>
+        <p
+          class="error"
+          x-show="selected?.kind==='entities' && pictureError"
+          x-text="pictureError"
+          role="alert"
+        ></p>
+        <section
           class="record-files"
           aria-label="Record files"
           x-show="!readingStory() || mode==='source'"
@@ -1671,6 +1773,12 @@
                   ></span>
                 </figcaption>
                 <div class="file-actions" x-show="!inspecting">
+                  <button
+                    x-show="selected?.kind==='entities' && file.preview==='image'"
+                    :disabled="busy||loading||filesBusy"
+                    @click="choosePicture(file)"
+                    x-text="entityPicture()?.filename===file.filename?'Edit profile picture':'Use as profile picture'"
+                  ></button>
                   <label class="file-picker"
                     >Replace<input
                       type="file"

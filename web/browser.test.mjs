@@ -5100,3 +5100,185 @@ test("chat detects a silent live connection and reloads saved progress without r
   await context.close();
   assert.deepEqual(errors, []);
 });
+
+test("entity profile pictures preserve originals, crop consistently, and survive reload and missing files", async () => {
+  const record = await save(
+    source("Mary portrait", "Original identifying words."),
+    "entities",
+  );
+  const { page, context } = await pageFor();
+  const bytes = Buffer.from(
+    await page.evaluate(() => {
+      const c = document.createElement("canvas");
+      c.width = 200;
+      c.height = 100;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "red";
+      ctx.fillRect(0, 0, 100, 100);
+      ctx.fillStyle = "blue";
+      ctx.fillRect(100, 0, 100, 100);
+      return c.toDataURL("image/png").split(",")[1];
+    }),
+    "base64",
+  );
+  await editRecord(page, "Mary portrait");
+  await page.locator(".record-files input[type=file][multiple]").setInputFiles({
+    name: "portrait.png",
+    mimeType: "image/png",
+    buffer: bytes,
+  });
+  const choose = page.getByRole("button", {
+    name: "Use as profile picture",
+    exact: true,
+  });
+  await choose.waitFor();
+  await choose.click();
+  await page.getByLabel("Horizontal focus", { exact: true }).fill("1");
+  await page.getByLabel("Profile picture zoom", { exact: true }).fill("2");
+  await page.waitForFunction(() => {
+    const c = document.querySelector(".entity-portrait");
+    if (!c || c.hidden) return false;
+    const p = c.getContext("2d").getImageData(128, 128, 1, 1).data;
+    return p[2] > 240 && p[0] < 10;
+  });
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await waitText(page, "Saved");
+  let graph = await (await fetch(url + "/api/graph")).json();
+  assert.deepEqual(
+    graph.nodes.find((n) => n.id === record.id).profile_picture,
+    { filename: "portrait.png", x: 1, y: 0.5, zoom: 2 },
+  );
+  assert.deepEqual(
+    Buffer.from(
+      await (
+        await fetch(url + "/api/records/" + record.id + "/files/portrait.png")
+      ).arrayBuffer(),
+    ),
+    bytes,
+  );
+  await page.evaluate(() => {
+    window.portraitRenders = [];
+    const original = CanvasRenderingContext2D.prototype.drawImage;
+    CanvasRenderingContext2D.prototype.drawImage = function (image, ...args) {
+      if (
+        image instanceof HTMLImageElement &&
+        image.src.includes("portrait.png") &&
+        !this.canvas.classList.contains("entity-portrait")
+      )
+        window.portraitRenders.push({
+          width: this.canvas.width,
+          crop: args.slice(0, 4),
+        });
+      return original.call(this, image, ...args);
+    };
+  });
+  await page.getByRole("button", { name: "Close record", exact: true }).click();
+  await page.locator(".graph-legend").scrollIntoViewIfNeeded();
+  await page.waitForFunction(() => window.portraitRenders.length > 0);
+  assert.ok(
+    (await page.evaluate(() => window.portraitRenders)).some(
+      (x) => x.crop[0] === 150 && x.crop[2] === 50,
+    ),
+  );
+  await page.evaluate(() => (window.portraitRenders = []));
+  await page.getByRole("button", { name: "3D", exact: true }).click();
+  await page.waitForFunction(() =>
+    window.portraitRenders.some((x) => x.width === 256),
+  );
+  await page.getByRole("button", { name: "2D", exact: true }).click();
+  await page.reload();
+  await editRecord(page, "Mary portrait");
+  assert.equal(
+    await page.getByLabel("Profile picture zoom", { exact: true }).inputValue(),
+    "2",
+  );
+  await page
+    .getByRole("button", { name: "Edit profile picture", exact: true })
+    .click();
+  assert.equal(
+    await page.getByLabel("Profile picture zoom", { exact: true }).inputValue(),
+    "2",
+    "Editing does not reset crop",
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page
+    .getByLabel("Profile picture zoom", { exact: true })
+    .scrollIntoViewIfNeeded();
+  assert.equal(
+    await page
+      .locator(".portrait-editor")
+      .evaluate((el) => el.scrollWidth <= el.clientWidth),
+    true,
+  );
+  await page.screenshot({ path: "/tmp/songya-profile-editor.png" });
+  await page
+    .getByRole("button", { name: "Remove profile picture", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await waitText(page, "Saved");
+  graph = await (await fetch(url + "/api/graph")).json();
+  assert.equal(
+    graph.nodes.find((n) => n.id === record.id).profile_picture,
+    null,
+  );
+  assert.equal(
+    (await (await fetch(url + "/api/records/" + record.id)).json()).draft.body,
+    "Original identifying words.",
+  );
+  assert.equal(
+    (await (await fetch(url + "/api/records/" + record.id + "/files")).json())
+      .files.length,
+    1,
+  );
+  const current = await (await fetch(url + "/api/records/" + record.id)).json();
+  await save(
+    current.source.replace(
+      "---\n",
+      "---\nprofile_picture: {filename: missing.png, x: 0.5, y: 0.5, zoom: 1}\n",
+    ),
+    "entities",
+    record.id,
+    current.version,
+  );
+  await page.getByRole("button", { name: "Close record", exact: true }).click();
+  await page.reload();
+  await editRecord(page, "Mary portrait");
+  await page
+    .getByRole("alert")
+    .filter({ hasText: "This image could not be displayed" })
+    .waitFor();
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Remove profile picture", exact: true })
+      .isEnabled(),
+    true,
+  );
+  await context.close();
+  assert.deepEqual(errors, []);
+});
+
+test("graph legend checkboxes filter kinds in both views", async () => {
+  const { page, context } = await pageFor();
+  await page.locator(".graph-legend").scrollIntoViewIfNeeded();
+  for (const kind of ["entities", "memories", "topics", "stories"]) {
+    const box = page.getByLabel("Show " + kind + " in graph", { exact: true });
+    assert.equal(await box.isChecked(), true);
+    await box.uncheck();
+  }
+  await page.getByText("No record kinds selected.", { exact: true }).waitFor();
+  await page.getByLabel("Show entities in graph", { exact: true }).check();
+  await page.getByRole("button", { name: "3D", exact: true }).click();
+  assert.equal(
+    await page
+      .getByLabel("Show memories in graph", { exact: true })
+      .isChecked(),
+    false,
+  );
+  for (const kind of ["memories", "topics", "stories"])
+    await page
+      .getByLabel("Show " + kind + " in graph", { exact: true })
+      .check();
+  await context.close();
+  assert.deepEqual(errors, []);
+});

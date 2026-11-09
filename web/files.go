@@ -86,6 +86,16 @@ func (a *chatApp) registerFiles(mux *http.ServeMux) {
 			return
 		}
 		defer file.Close()
+		if info.Preview == "image" && r.URL.Query().Get("preview") == "1" {
+			if r.URL.Query().Get("thumbnail") == "1" {
+				imagePreview(w, r, file, 512)
+				return
+			}
+			if info.MediaType == "image/heic" || info.MediaType == "image/heif" {
+				imagePreview(w, r, file, 1600)
+				return
+			}
+		}
 		disposition := "attachment"
 		media := "application/octet-stream"
 		if r.URL.Query().Get("preview") == "1" && info.Preview != "download" {

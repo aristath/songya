@@ -124,13 +124,13 @@ func attachmentInfo(file *os.File, name string) (Attachment, error) {
 	}
 	media := http.DetectContentType(head[:n])
 	if media == "application/octet-stream" || media == "application/ogg" {
-		if detected := map[string]string{".flac": "audio/flac", ".m4a": "audio/mp4", ".aac": "audio/aac", ".ogg": "audio/ogg", ".ogv": "video/ogg", ".webm": "video/webm"}[strings.ToLower(filepath.Ext(name))]; detected != "" {
+		if detected := map[string]string{".heic": "image/heic", ".heif": "image/heif", ".flac": "audio/flac", ".m4a": "audio/mp4", ".aac": "audio/aac", ".ogg": "audio/ogg", ".ogv": "video/ogg", ".webm": "video/webm"}[strings.ToLower(filepath.Ext(name))]; detected != "" {
 			media = detected
 		}
 	}
 	preview := "download"
 	switch strings.Split(media, ";")[0] {
-	case "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif":
+	case "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/heic", "image/heif":
 		preview = "image"
 	case "audio/mpeg", "audio/ogg", "audio/wave", "audio/wav", "audio/flac", "audio/aac", "audio/mp4", "audio/webm":
 		preview = "audio"

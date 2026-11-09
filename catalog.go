@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const indexFormat = 12
+const indexFormat = 13
 
 // Diagnostic identifies a recoverable problem without hiding healthy records.
 type Diagnostic struct {
@@ -30,26 +30,27 @@ type Diagnostic struct {
 
 // Record is the derived search/graph view. Source Markdown is authoritative.
 type Record struct {
-	User        string            `json:"user,omitempty"`
-	ID          string            `json:"id"`
-	Source      string            `json:"source"`
-	Kind        Destination       `json:"kind"`
-	Revision    string            `json:"-"`
-	UpdatedAt   string            `json:"updated_at,omitempty"`
-	Pending     bool              `json:"pending,omitempty"`
-	Unconfirmed bool              `json:"unconfirmed,omitempty"`
-	Title       string            `json:"title"`
-	Name        string            `json:"name,omitempty"`
-	Aliases     []string          `json:"aliases,omitempty"`
-	Description string            `json:"description,omitempty"`
-	Type        string            `json:"type,omitempty"`
-	Types       map[string]string `json:"types,omitempty"`
-	Relations   []Relation        `json:"relations,omitempty"`
-	Redirects   []string          `json:"redirects,omitempty"`
-	Time        RecordTime        `json:"time"`
-	Body        string            `json:"body"`
-	Context     string            `json:"context,omitempty"`
-	Diagnostics []string          `json:"diagnostics,omitempty"`
+	User           string            `json:"user,omitempty"`
+	ID             string            `json:"id"`
+	Source         string            `json:"source"`
+	Kind           Destination       `json:"kind"`
+	Revision       string            `json:"-"`
+	UpdatedAt      string            `json:"updated_at,omitempty"`
+	Pending        bool              `json:"pending,omitempty"`
+	Unconfirmed    bool              `json:"unconfirmed,omitempty"`
+	Title          string            `json:"title"`
+	Name           string            `json:"name,omitempty"`
+	Aliases        []string          `json:"aliases,omitempty"`
+	Description    string            `json:"description,omitempty"`
+	Type           string            `json:"type,omitempty"`
+	Types          map[string]string `json:"types,omitempty"`
+	Relations      []Relation        `json:"relations,omitempty"`
+	Redirects      []string          `json:"redirects,omitempty"`
+	Time           RecordTime        `json:"time"`
+	Body           string            `json:"body"`
+	ProfilePicture *ProfilePicture   `json:"profile_picture,omitempty"`
+	Context        string            `json:"context,omitempty"`
+	Diagnostics    []string          `json:"diagnostics,omitempty"`
 }
 type Catalog struct {
 	Records     []Record     `json:"records"`
@@ -110,6 +111,9 @@ func recordFromDocument(source string, d *Document, kind Destination) Record {
 	r.Type = r.Types[r.User]
 	r.Redirects = nodeStrings("redirects", d)
 	r.Time = recordTime(metadataField(&d.Frontmatter, "time"), kind)
+	if kind == Entities {
+		r.ProfilePicture = d.ProfilePicture()
+	}
 	if r.Title == "" {
 		r.Title = d.ID
 		if r.Title == "" {
