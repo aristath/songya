@@ -3,7 +3,11 @@ package songya
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path"
 	"sort"
 	"strings"
 )
@@ -14,6 +18,7 @@ type RecallRequest struct {
 	Message  string   `json:"message,omitempty"`
 	Messages []string `json:"messages,omitempty"`
 	Owners   []string `json:"owners"`
+	KnownIDs []string `json:"known_ids,omitempty"`
 }
 type RecallHop struct {
 	From string `json:"from"`
@@ -42,9 +47,15 @@ type SemanticRecallResult struct {
 	Truncated   bool           `json:"truncated"`
 	Diagnostics []Diagnostic   `json:"diagnostics,omitempty"`
 }
+type KnownRecollection struct {
+	ID     string        `json:"id"`
+	Status string        `json:"status"`
+	Item   *Recollection `json:"item,omitempty"`
+}
 type RecallResponse struct {
 	Results []SemanticRecallResult `json:"results"`
 	Policy  RecallPolicy           `json:"policy"`
+	Known   []KnownRecollection    `json:"known,omitempty"`
 }
 
 func (r RecallRequest) Validate() error {
@@ -125,6 +136,7 @@ func (s *Store) RetrieveWithConfiguration(ctx context.Context, request RecallReq
 		return response, err
 	}
 	allRecords := catalogMap(c)
+	response.Known = s.knownRecollections(ctx, request.KnownIDs, request.Owners, c)
 	c = c.ForUsers(request.Owners)
 	diagnostics := append([]Diagnostic{}, c.Diagnostics...)
 	if configIssue != nil {
@@ -327,4 +339,54 @@ func recallItem(r Record) Recollection {
 	}
 	clipped := clip(body, 8192)
 	return Recollection{ID: r.ID, Kind: r.Kind, User: r.User, Title: clip(r.Title, 512), Time: r.Time, Content: string(label) + "\n" + clipped, ContentTruncated: body != clipped || metadataTruncated || len(r.Title) > 512}
+}
+
+// Already-injected records are refreshed independently of ranking. An unreadable
+// source is unknown, never a deletion; scope exclusions are explicit retractions.
+func (s *Store) knownRecollections(ctx context.Context, ids, owners []string, catalog Catalog) []KnownRecollection {
+	if len(ids) == 0 {
+		return nil
+	}
+	all := catalogMap(catalog)
+	scoped := catalogMap(catalog.ForUsers(owners))
+	root, openErr := os.OpenRoot(s.path)
+	if root != nil {
+		defer root.Close()
+	}
+	seen := map[string]bool{}
+	out := []KnownRecollection{}
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		state := KnownRecollection{ID: id, Status: "unknown"}
+		if ctx.Err() != nil {
+			out = append(out, state)
+			continue
+		}
+		if r, ok := all[id]; ok {
+			if _, allowed := scoped[id]; !allowed {
+				state.Status = "retracted"
+			} else if !r.Pending && !r.Unconfirmed {
+				if len(r.Redirects) > 0 {
+					state.Status = "retracted"
+				} else {
+					item := recallItem(r)
+					state.Status = "current"
+					state.Item = &item
+				}
+			}
+		} else if openErr == nil {
+			name, err := recordName(id)
+			if parent, parentErr := root.Stat(path.Dir(path.Dir(name))); err == nil && parentErr == nil && parent.IsDir() {
+				doc, readErr := readCopy(root, id, name)
+				if errors.Is(readErr, fs.ErrNotExist) && doc == nil {
+					state.Status = "missing"
+				}
+			}
+		}
+		out = append(out, state)
+	}
+	return out
 }

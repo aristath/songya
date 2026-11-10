@@ -155,7 +155,7 @@ func findNamed(ctx context.Context, root *os.Root, kind Destination, input Named
 		if kindOf(input.ID) != kind {
 			return nil, fmt.Errorf("%s is not in %s", input.ID, kind)
 		}
-		doc, err := readCopy(root, input.ID, name)
+		doc, err := readLockedCopy(root, input.ID, name)
 		if err == nil && (doc.Pending || doc.Unconfirmed) {
 			return nil, fmt.Errorf("%s needs recovery before reuse", input.ID)
 		}
@@ -175,7 +175,7 @@ func findNamed(ctx context.Context, root *os.Root, kind Destination, input Named
 		if !entry.IsDir() || kindOf(id) != kind || !ValidID(id) {
 			continue
 		}
-		doc, err := readCopy(root, id, string(kind)+"/"+entry.Name()+"/record.md")
+		doc, err := readLockedCopy(root, id, string(kind)+"/"+entry.Name()+"/record.md")
 		if err != nil {
 			unavailable = fmt.Errorf("cannot check %s: %w", id, err)
 			continue

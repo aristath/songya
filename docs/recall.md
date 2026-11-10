@@ -22,6 +22,16 @@ Shared entities/topics remain available; memories/stories stay within the reques
 owners at every traversal hop. Ownership is a retrieval scope, not authentication.
 Request fields cannot override the retrieval policy.
 
+Clients retaining previously emitted evidence can also supply `known_ids`.
+The response then includes `known` entries with `id`, `status`, and an `item`
+for `current` records. These refreshes use the same catalogue and ownership scope,
+independently of ranking and embedding availability. `missing` confirms an absent
+record in an accessible record directory; `retracted` means the record is retired
+or outside the requested scope. `unknown` means its current state cannot be
+confirmed, including unavailable or unfinished sources. An omitted search result
+alone never confirms deletion. Clients can preserve earlier blocks and append
+corrections or withdrawal notices at the current interaction.
+
 The response is `{ "policy": {...}, "results": [...] }`. Each result contains:
 
 - `mode: "semantic"` and `status: "ready" | "partial" | "unavailable"`.
