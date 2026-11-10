@@ -373,6 +373,16 @@
                           x-text="call.function.name||'Preparing a memory operation…'"
                         ></summary>
                         <pre x-text="chatToolResult(call.id)"></pre>
+                        <template
+                          x-for="(image,index) in chatToolImages(call.id)"
+                          :key="index"
+                        >
+                          <img
+                            class="chat-tool-image"
+                            :src="'data:'+image.mime_type+';base64,'+image.data"
+                            :alt="'Image returned by '+call.function.name"
+                          />
+                        </template>
                       </details>
                     </template>
                   </article>

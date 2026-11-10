@@ -205,8 +205,9 @@ memory record.
 
 ## Files
 
-- `list_files(id)` returns actual filenames, preview kinds, and the current record revision.
-- `read_file(id, filename, offset)` reads at most 16384 bytes of plain text. Continue a positive `next` as `offset`. Unsupported media is not interpreted.
+- `read_memory(id)` includes up to eight current attachments on the first page, with a total count. Use `list_files` to continue. For an entity it also reports its selected `profile_picture`, with the actual owning `record` ID and `filename`, including pictures saved on linked memories.
+- `list_files(id)` returns filenames, formats, original MCP resource URIs, and the current record revision. Its content also includes native MCP resource links.
+- `read_file(id, filename, offset)` returns actual MCP image content for photos, or at most 16384 bytes of plain text. Continue a positive `next` as `offset` for text. Other formats return original resource references without pretending to interpret them.
 - `attach_file(id, revision, upload, filename?)` attaches a completed upload supplied by the app, returning the actual filename and durability status.
 - `replace_file(id, revision, filename, upload)` explicitly replaces one file's bytes.
 - `remove_file(id, revision, filename)` explicitly removes one file.
@@ -215,8 +216,25 @@ memory record.
 Use record IDs and returned filenames, never model-invented disk paths. Uploads
 travel over the application's streaming HTTP endpoint, not binary/base64 text
 arguments. The embedded chat supplies completed upload receipts alongside each
-message. Text-only clients can manage files and inspect supported text; these tools
-do not provide OCR, image understanding, audio transcription, or video analysis.
+message. Vision-capable clients receive photos as native MCP image blocks, not base64 prose.
+JPEG/PNG images within 1600 pixels can be read directly; other images, including
+HEIC/HEIF, use the same bounded decoder as the web gallery. Animated previews show
+one frame. Songya uses its decoder in `~/.local/lib/songya/bin/ffmpeg` when installed,
+otherwise FFmpeg on PATH. Original bytes remain unchanged.
+
+`memory://files/{id}/{filename}` exposes the original file bytes independently of
+the web server. Use the exact escaped URI returned by a tool. Originals over
+32 MiB use `pages_uri`: `memory://files/{id}/{filename}/pages/{offset}` returns up
+to 1 MiB with `next_uri`, byte offsets, total size and original MIME type in
+resource metadata. Clients can assemble these pages without sending base64 through
+model text arguments. This exposes originals of any format; it does not provide
+audio transcription, video analysis or document extraction. An unavailable image
+preview returns an error and retains its original resource link.
+
+The embedded chat retains returned pixels separately from tool prose and supplies
+them as image inputs after the complete adjacent tool-result block. This preserves
+provider tool-call pairing and the original conversation. Selecting a vision-capable
+model remains necessary to interpret photos.
 
 Only `status:"committed"` confirms an attachment change. An upload alone is not an
 attachment. Clients supply stable `songya/request-key` metadata on mutations; a

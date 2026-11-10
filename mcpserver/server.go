@@ -28,7 +28,9 @@ FILES
 A record can have files, such as photos, songs, or notes. Files belong to that record. They are not separate memories. The record ID and actual filename identify a saved file.
 The app uploads bytes before you attach them. Use only completed upload values the app gives you. Never invent a disk path, upload value, or file contents. Never send binary data or base64 in text tool arguments.
 After saving a new record, use its returned ID. Call list_files to get the current revision, then attach_file for each requested upload. Read each result. Say a file is attached only when status is committed. If a save fails, the completed upload is retained; do not claim it was lost or attached. If a file result is pending or its reply was lost, use file_status with that operation key. memory_maintenance with action=recover retries retained work. Do not start a second attachment to check the first.
-list_files shows filenames and preview formats, not image or sound contents. read_file can read plain text in small pages. If a file is unsupported, say you can store/manage it but cannot inspect its contents with these tools. Do not guess what it shows or says.
+read_memory shows the first saved attachments and an entity's selected profile_picture. For that picture, use its record and filename with read_file. Call list_files with the record ID for its files and original resource URIs. Follow next as offset to list more. Files on a linked memory belong to that memory: use its ID.
+Call read_file with the record ID and exact filename to inspect an attachment. It returns actual image content for photos, including HEIC/HEIF, or a page of plain text. Images require a vision-capable client/model. For text, follow next as offset to read more. An image preview shows one frame; it does not describe a whole animation.
+Other file formats are exposed as original MCP resources, not interpreted by read_file. A resource URI is an address for the client, not a disk path or proof you inspected the file. Say what content was actually available. Do not invent image details, audio transcripts or document contents.
 replace_file and remove_file permanently change bytes; use them only for the person's explicit request. They do not change the record's prose. Never remove a file just because the prose no longer mentions it.
 Use normal Markdown for a caption or deliberate inline link. Use the actual filename from the successful tool result. Do not add a duplicate file list in metadata.
 
@@ -138,18 +140,22 @@ type pageInput struct {
 	Limit   int    `json:"limit,omitempty"`
 }
 type recordPage struct {
-	User          string   `json:"user,omitempty"`
-	UserTruncated bool     `json:"user_truncated,omitempty"`
-	ID            string   `json:"id,omitempty"`
-	Source        string   `json:"source,omitempty"`
-	Pending       bool     `json:"pending,omitempty"`
-	Unconfirmed   bool     `json:"unconfirmed,omitempty"`
-	Text          string   `json:"text,omitempty"`
-	Base64        string   `json:"base64,omitempty"`
-	Offset        int      `json:"offset"`
-	Next          int      `json:"next,omitempty"`
-	Truncated     bool     `json:"truncated"`
-	Diagnostics   []string `json:"diagnostics,omitempty"`
+	User            string                 `json:"user,omitempty"`
+	UserTruncated   bool                   `json:"user_truncated,omitempty"`
+	ID              string                 `json:"id,omitempty"`
+	Source          string                 `json:"source,omitempty"`
+	Pending         bool                   `json:"pending,omitempty"`
+	Unconfirmed     bool                   `json:"unconfirmed,omitempty"`
+	Text            string                 `json:"text,omitempty"`
+	Base64          string                 `json:"base64,omitempty"`
+	Offset          int                    `json:"offset"`
+	Next            int                    `json:"next,omitempty"`
+	Truncated       bool                   `json:"truncated"`
+	Diagnostics     []string               `json:"diagnostics,omitempty"`
+	Attachments     []attachmentRef        `json:"attachments,omitempty"`
+	AttachmentCount int                    `json:"attachment_count,omitempty"`
+	AttachmentsNext int                    `json:"attachments_next,omitempty"`
+	ProfilePicture  *songya.ProfilePicture `json:"profile_picture,omitempty"`
 }
 
 func normalize(value any, key string, kind songya.Destination) any {
@@ -333,6 +339,9 @@ func tool[T any](server *mcp.Server, name, description string, input any, readOn
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
+		if native, ok := output.(*mcp.CallToolResult); ok && err == nil {
+			return native, nil
+		}
 		return result(output, err), nil
 	})
 }
@@ -399,6 +408,7 @@ func result(value any, err error) *mcp.CallToolResult {
 			data["text"] = part.Text
 		}
 		data["next"] = offset + float64(part.Next)
+		data["truncated"] = true
 		data["truncated"] = true
 		payload, _ = json.Marshal(bounded)
 	}
@@ -485,6 +495,7 @@ func bytePage(data []byte, offset, size int) recordPage {
 	return page
 }
 func (a *App) read(ctx context.Context, input pageInput) (any, error) {
+	var profile *songya.ProfilePicture
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -528,6 +539,15 @@ func (a *App) read(ctx context.Context, input pageInput) (any, error) {
 		if readErr != nil {
 			return nil, readErr
 		}
+		if kindFor(input.ID) == songya.Entities && input.Offset == 0 {
+			picture := doc.ProfilePicture()
+			if picture != nil {
+				if picture.Record == "" {
+					picture.Record = input.ID
+				}
+				profile = picture
+			}
+		}
 		pending = doc.Pending
 		unconfirmed = doc.Unconfirmed
 		diagnostics = doc.Diagnostics()
@@ -555,6 +575,7 @@ func (a *App) read(ctx context.Context, input pageInput) (any, error) {
 	if page.UserTruncated {
 		user = user[:160]
 	}
+	page.ProfilePicture = profile
 	page.User = user
 	page.ID, page.Source, page.Pending, page.Unconfirmed = input.ID, input.Source, pending, unconfirmed
 	for _, warning := range diagnostics {
@@ -562,6 +583,20 @@ func (a *App) read(ctx context.Context, input pageInput) (any, error) {
 			break
 		}
 		page.Diagnostics = append(page.Diagnostics, clipError(warning))
+	}
+	if input.ID != "" && input.Offset == 0 {
+		if files, err := a.Store.Attachments(ctx, input.ID); err == nil {
+			page.AttachmentCount = len(files.Files)
+			end := min(8, len(files.Files))
+			for _, file := range files.Files[:end] {
+				page.Attachments = append(page.Attachments, newAttachmentRef(input.ID, file))
+			}
+			if end < len(files.Files) {
+				page.AttachmentsNext = end
+			}
+		} else {
+			page.Diagnostics = append(page.Diagnostics, "Attachments could not be listed: "+clipError(err.Error()))
+		}
 	}
 	return page, nil
 }
@@ -686,32 +721,7 @@ func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]
 	tool(server, "compose_story", "Read a story and its linked memories in reading order. Follow next as offset to read more. Missing records and loops are reported.", schema(map[string]any{"id": str("Story ID"), "offset": count(), "limit": count()}, "id"), true, func(ctx context.Context, input pageInput) (any, error) {
 		return store.Compose(ctx, input.ID, input.Offset, limit(input.Limit, 12288, 8192))
 	})
-	tool(server, "list_files", "List files attached to this record. Use each returned filename exactly. revision is required to attach, replace, or remove a file. If next is positive, send it as offset with the same id to read more.", schema(map[string]any{"id": str("Record ID"), "offset": count(), "limit": count()}, "id"), true, func(ctx context.Context, input struct {
-		ID     string `json:"id"`
-		Offset int    `json:"offset"`
-		Limit  int    `json:"limit"`
-	}) (any, error) {
-		listing, err := store.Attachments(ctx, input.ID)
-		if err != nil {
-			return listing, err
-		}
-		start := min(max(0, input.Offset), len(listing.Files))
-		end := min(start+limit(input.Limit, 16, 16), len(listing.Files))
-		next := 0
-		if end < len(listing.Files) {
-			next = end
-		}
-		return map[string]any{"files": listing.Files[start:end], "revision": listing.Revision, "pending": listing.Pending, "diagnostics": listing.Diagnostics, "offset": start, "next": next, "truncated": next > 0}, nil
-	})
-	tool(server, "read_file", "Read a plain text attachment, at most 16384 bytes per call. If next is positive, use it as offset with the same id and filename. Other formats are stored and downloadable but this tool cannot see/hear them. Do not claim to have read them.", schema(map[string]any{"id": str("Record ID"), "filename": str("Actual filename from list_files"), "offset": count()}, "id", "filename"), true, func(ctx context.Context, input struct {
-		ID       string `json:"id"`
-		Filename string `json:"filename"`
-		Offset   int64  `json:"offset"`
-	}) (any, error) {
-		input.Offset = max(0, input.Offset)
-		text, next, err := store.ReadAttachmentText(ctx, input.ID, input.Filename, input.Offset, 16384)
-		return map[string]any{"text": text, "offset": input.Offset, "next": next, "truncated": next > 0}, err
-	})
+	app.registerFiles(server)
 	tool(server, "attach_file", "Attach a completed upload to an existing record. Read list_files first and send its revision. Use only an upload value supplied by the app. Filename is optional; existing filenames are never silently overwritten. The result gives the actual saved filename. A saved memory alone does not attach its files.", schema(map[string]any{"id": str("Record ID"), "revision": str("Latest revision from list_files"), "upload": str("Completed upload value supplied by the app"), "filename": str("Optional desired filename; no folders")}, "id", "revision", "upload"), false, func(ctx context.Context, input songya.FileChange) (any, error) {
 		input.Key = requestKey(ctx)
 		input.Action = "add"

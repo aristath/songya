@@ -1576,3 +1576,10 @@ blockquote {
   color: var(--muted);
   flex-basis: 100%;
 }
+
+.chat-tool-image {
+  display: block;
+  max-inline-size: 100%;
+  max-block-size: 24rem;
+  object-fit: contain;
+}

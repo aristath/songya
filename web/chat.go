@@ -27,7 +27,12 @@ type chatToolCall struct {
 		Arguments string `json:"arguments"`
 	} `json:"function"`
 }
+type chatImage struct {
+	Data     []byte `json:"data"`
+	MIMEType string `json:"mime_type"`
+}
 type chatMessage struct {
+	Images     []chatImage     `json:"images,omitempty"`
 	Reasoning  string          `json:"reasoning,omitempty"`
 	Uploads    []songya.Upload `json:"uploads,omitempty"`
 	Role       string          `json:"role"`

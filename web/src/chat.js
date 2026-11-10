@@ -538,6 +538,13 @@ export function chatUI(request) {
           : []),
       ];
     },
+    chatToolImages(id) {
+      return (
+        (this.chatState?.messages || []).find(
+          (m) => m.role === "tool" && m.tool_call_id === id,
+        )?.images || []
+      );
+    },
     chatToolResult(id) {
       return (
         [...(this.chatState?.messages || [])]
