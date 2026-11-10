@@ -7,14 +7,22 @@ import (
 	"image/color"
 	"image/png"
 	"net/http/httptest"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/aristath/songya"
 )
 
 func TestImagePreviewsPreserveOriginalsAndRemainLocalOnFailure(t *testing.T) {
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
+	_, decoderErr := exec.LookPath("ffmpeg")
+	if home, err := os.UserHomeDir(); err == nil {
+		if _, err := exec.LookPath(filepath.Join(home, ".local", "lib", "songya", "bin", "ffmpeg")); err == nil {
+			decoderErr = nil
+		}
+	}
+	if decoderErr != nil {
 		t.Skip("FFmpeg is required for image previews")
 	}
 	img := image.NewRGBA(image.Rect(0, 0, 1200, 600))
@@ -57,7 +65,9 @@ func TestImagePreviewsPreserveOriginalsAndRemainLocalOnFailure(t *testing.T) {
 	if !bytes.Equal(download.Body.Bytes(), original) {
 		t.Fatal("Original image bytes changed")
 	}
+	// Hide both the PATH decoder and Songya's packaged decoder for this request.
 	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
 	broken := httptest.NewRecorder()
 	app.ServeHTTP(broken, httptest.NewRequest("GET", path+"?preview=1&thumbnail=1", nil))
 	if broken.Code != 422 {
