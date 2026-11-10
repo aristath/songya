@@ -30,6 +30,7 @@ The app uploads bytes before you attach them. Use only completed upload values t
 After saving a new record, use its returned ID. Call list_files to get the current revision, then attach_file for each requested upload. Read each result. Say a file is attached only when status is committed. If a save fails, the completed upload is retained; do not claim it was lost or attached. If a file result is pending or its reply was lost, use file_status with that operation key. memory_maintenance with action=recover retries retained work. Do not start a second attachment to check the first.
 read_memory shows the first saved attachments and an entity's selected profile_picture. For that picture, use its record and filename with read_file. Call list_files with the record ID for its files and original resource URIs. Follow next as offset to list more. Files on a linked memory belong to that memory: use its ID.
 Call read_file with the record ID and exact filename to inspect an attachment. It returns actual image content for photos, including HEIC/HEIF, or a page of plain text. Images require a vision-capable client/model. For text, follow next as offset to read more. An image preview shows one frame; it does not describe a whole animation.
+If reading a saved file fails, report the tool error. Do not ask the person to upload it again just because you could not read it. memory_maintenance with action=status reports the running server version and its capabilities. image_content=true means read_file can return photos as image content; the client must also pass that content to a vision-capable model.
 Other file formats are exposed as original MCP resources, not interpreted by read_file. A resource URI is an address for the client, not a disk path or proof you inspected the file. Say what content was actually available. Do not invent image details, audio transcripts or document contents.
 replace_file and remove_file permanently change bytes; use them only for the person's explicit request. They do not change the record's prose. Never remove a file just because the prose no longer mentions it.
 Use normal Markdown for a caption or deliberate inline link. Use the actual filename from the successful tool result. Do not add a duplicate file list in metadata.
@@ -630,7 +631,7 @@ func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]
 	}
 	writeSchemas := WriteSchemas(cfg)
 	app := &App{Store: store, ImportRoots: roots}
-	server := mcp.NewServer(&mcp.Implementation{Name: "songya", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: instructions})
+	server := mcp.NewServer(&mcp.Implementation{Name: "songya", Version: processVersion}, &mcp.ServerOptions{Instructions: instructions})
 	// The SDK keeps request contexts independent of Run's context. Propagate our
 	// process lifetime explicitly so shutdown cancels unaccepted lock waiters.
 	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
@@ -843,7 +844,7 @@ func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]
 	}) (any, error) {
 		switch input.Action {
 		case "status":
-			return map[string]any{"diagnostics": store.Diagnostics(), "import_roots": rootNames(roots)}, nil
+			return map[string]any{"diagnostics": store.Diagnostics(), "import_roots": rootNames(roots), "runtime": runtimeStatus()}, nil
 		case "receipt":
 			receipt, err := store.BatchStatus(ctx, input.Key)
 			if err != nil {

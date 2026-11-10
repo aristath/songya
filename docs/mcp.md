@@ -4,6 +4,13 @@
 
 `songya-mcp` serves MCP over stdio. Initialization and `memory://guide` provide compact agent instructions. Tool discovery describes the arguments.
 
+`memory_maintenance` with `action=status` reports the running Songya version,
+process ID, start time, and attachment capabilities. Check this through the
+client being diagnosed: replacing an executable does not update existing stdio
+processes. Restart or reconnect their owner after deployment. Clara retains its
+MCP processes in `clara-execution.service`, independently of `clara.service`.
+An older status reply without `runtime` cannot confirm image support.
+
 ## Records and capture
 
 - **Memory:** an event, experience, fact or preference, understandable on its own.
