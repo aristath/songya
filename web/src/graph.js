@@ -14,16 +14,18 @@ function label(text) {
   return element;
 }
 
-const nodeValue = (node) =>
-  node.junction ? 0.05 : 1 + Math.max(0, Number(node.weight) || 0);
-const nodeRadius = (node) => 4 * Math.sqrt(nodeValue(node));
-
 export function memoryGraph(
   container,
   inspect,
   mode = "2d",
   nodeColor = (node) => node.color || defaultKindColors[node.kind],
 ) {
+  let weightUnit = 1;
+  const nodeValue = (node) =>
+    node.junction
+      ? 0.05
+      : 1 + Math.max(0, Number(node.weight) || 0) / weightUnit;
+  const nodeRadius = (node) => 4 * Math.sqrt(nodeValue(node));
   let colors = currentPalette();
   const flat = mode === "2d";
   const fitPadding = () =>
@@ -267,6 +269,13 @@ export function memoryGraph(
         }
         return copy;
       });
+      const previousUnit = weightUnit;
+      const visible = nodes.filter((node) => !node.junction);
+      weightUnit =
+        visible.reduce(
+          (sum, node) => sum + Math.max(0, Number(node.weight) || 0),
+          0,
+        ) / visible.length || 1;
       const byID = new Map(nodes.map((node) => [node.id, node]));
       const links = data.links
         .filter((link) => byID.has(link.source) && byID.has(link.target))
@@ -279,7 +288,7 @@ export function memoryGraph(
       ]);
       if (stamp === layoutStamp) {
         // Color and label changes do not need a new force layout or camera fit.
-        let sizeChanged = false;
+        let sizeChanged = previousUnit !== weightUnit;
         for (const node of graph.graphData().nodes) {
           sizeChanged ||=
             node.weight !== byID.get(node.id)?.weight ||

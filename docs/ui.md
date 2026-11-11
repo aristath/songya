@@ -481,8 +481,11 @@ extra relationship multipliers or hub penalties. Ordering, possible identity
 matches and redirects do not contribute. Hidden entries still contribute their
 text through the neutral junctions. Dates do not affect weights.
 
-The 2D radius is `4 * sqrt(1 + weight)`; 3D uses the corresponding volume scaling.
-Photos, collision spacing and ordinary points use the same weights.
+Drawing sizes use the score divided by the mean score of visible entries, keeping
+the layout independent of the score's units. Neutral junctions do not affect this
+mean. An empty or zero-score view uses a unit of 1. The 2D radius is
+`4 * sqrt(1 + weight / mean)`; 3D uses the corresponding volume scaling. Photos,
+collision spacing and ordinary points use the same sizes.
 
 `graph-weights.json` is the single rebuildable repository-wide weight cache. It
 also retains source revisions, neighbours and pending work so restarts can detect

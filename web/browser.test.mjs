@@ -1529,6 +1529,7 @@ test("dense 2D graphs render separate disks for every node", async () => {
     id: "e_dense_" + i,
     title: "Dense node " + i,
     kind: "entities",
+    weight: 5000 + i * 100,
   }));
   const links = [];
   for (let i = 5; i < nodes.length; i++) {
@@ -1539,13 +1540,40 @@ test("dense 2D graphs render separate disks for every node", async () => {
         type: "related_to",
       });
   }
-  const { page, context } = await pageFor();
+  const { page, context } = await pageFor(undefined, () => {
+    window.graphRadii = [];
+    const arc = CanvasRenderingContext2D.prototype.arc;
+    CanvasRenderingContext2D.prototype.arc = function (x, y, r, ...args) {
+      if (this.canvas.closest(".graph-canvas")) window.graphRadii.push(r);
+      return arc.call(this, x, y, r, ...args);
+    };
+  });
   await page.route("**/api/graph**", (route) =>
     route.fulfill({ json: { nodes, links } }),
   );
   await page.reload();
   await page.locator(".graph-canvas canvas").waitFor();
   await page.waitForTimeout(3500);
+  const unit = nodes.reduce((sum, node) => sum + node.weight, 0) / nodes.length;
+  const expected = nodes.map((node) => 4 * Math.sqrt(1 + node.weight / unit));
+  const radii = await page.evaluate(() => window.graphRadii);
+  assert.ok(
+    expected.every((radius) => radii.some((r) => Math.abs(r - radius) < 1e-6)),
+    "Raw word totals inflated the drawn circles",
+  );
+  // Multiplying all scores changes units, not any node's relative prominence.
+  for (const node of nodes) node.weight *= 1000;
+  await page.evaluate(() => {
+    window.graphRadii = [];
+    return window.Alpine.$data(document.body).refreshGraph();
+  });
+  await page.waitForFunction(
+    (expected) =>
+      expected.every((radius) =>
+        window.graphRadii.some((r) => Math.abs(r - radius) < 1e-6),
+      ),
+    expected,
+  );
   const png = (
     await page.locator(".graph-canvas canvas").screenshot()
   ).toString("base64");
@@ -5489,7 +5517,18 @@ test("graph legend rebuilds connections through hidden kinds in both views", asy
 });
 
 test("graph refreshes preserve settled positions and camera for reordered records and weight changes", async () => {
-  const { page, context } = await pageFor();
+  const { page, context } = await pageFor(undefined, () => {
+    window.graphCentres = [];
+    const arc = CanvasRenderingContext2D.prototype.arc;
+    CanvasRenderingContext2D.prototype.arc = function (x, y, r, ...args) {
+      if (this.canvas.closest(".graph-canvas")) {
+        const point = this.getTransform().transformPoint({ x, y });
+        window.graphCentres.push({ x: point.x, y: point.y });
+        if (window.graphCentres.length > 3) window.graphCentres.shift();
+      }
+      return arc.call(this, x, y, r, ...args);
+    };
+  });
   const fixture = {
     nodes: [
       { id: "e_john", title: "John", kind: "entities", weight: 0 },
@@ -5507,18 +5546,18 @@ test("graph refreshes preserve settled positions and camera for reordered record
   await page.reload();
   await page.locator(".graph-canvas canvas").waitFor();
   await page.waitForTimeout(3000);
-  const before = await graphPoint(page, "green");
-  assert.ok(before);
+  const before = await page.evaluate(() => window.graphCentres);
+  assert.equal(before.length, 3);
   fixture.nodes.reverse();
   fixture.links.reverse();
   fixture.nodes.find((node) => node.id === "e_john").weight = 2;
   await page.evaluate(() => window.Alpine.$data(document.body).refreshGraph());
   await page.waitForTimeout(1000);
-  const after = await graphPoint(page, "green");
-  assert.ok(after);
-  assert.ok(
-    Math.hypot(after.x - before.x, after.y - before.y) < 2,
-    "A metadata refresh moved the settled graph",
+  const after = await page.evaluate(() => window.graphCentres);
+  assert.deepEqual(
+    after,
+    before,
+    "A metadata refresh moved the drawn node centres or camera",
   );
   await context.close();
   assert.deepEqual(errors, []);
@@ -5881,17 +5920,20 @@ test("weighted graph sizes count entry text, ignore dates and update after body 
     return window.Alpine.$data(document.body).refreshGraph();
   });
   const graph = await (await fetch(url + "/api/graph")).json();
+  const unit =
+    graph.nodes.reduce((sum, node) => sum + node.weight, 0) /
+      graph.nodes.length || 1;
   const weights = [john, mary].map(
     (r) => graph.nodes.find((n) => n.id === r.id).weight,
   );
   await page.waitForFunction(
-    (values) =>
+    ({ values, unit }) =>
       values.every((v) =>
         window.weightRadii.some(
-          (r) => Math.abs(r - 4 * Math.sqrt(1 + v)) < 1e-6,
+          (r) => Math.abs(r - 4 * Math.sqrt(1 + v / unit)) < 1e-6,
         ),
       ),
-    weights,
+    { values: weights, unit },
   );
   const saved = await (await fetch(url + "/api/records/" + first.id)).json();
   await save(
@@ -5931,10 +5973,15 @@ test("weighted graph sizes count entry text, ignore dates and update after body 
   );
   await page.waitForFunction(async (id) => {
     const graph = await (await fetch("/api/graph")).json();
-    return graph.nodes.find((n) => n.id === id)?.weight === 0.5;
+    return graph.nodes.find((n) => n.id === id)?.weight === 7;
   }, john.id);
-  await page.waitForFunction(() =>
-    window.weightRadii.some((r) => Math.abs(r - 4 * Math.sqrt(8)) < 1e-6),
+  const resizedGraph = await (await fetch(url + "/api/graph")).json();
+  const resizedUnit =
+    resizedGraph.nodes.reduce((sum, node) => sum + node.weight, 0) /
+      resizedGraph.nodes.length || 1;
+  await page.waitForFunction(
+    (radius) => window.weightRadii.some((r) => Math.abs(r - radius) < 1e-6),
+    4 * Math.sqrt(1 + 7 / resizedUnit),
   );
   await page.getByRole("button", { name: "3D", exact: true }).click();
   await page.getByRole("button", { name: "2D", exact: true }).click();
