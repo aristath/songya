@@ -5414,11 +5414,54 @@ test("entity profile pictures preserve originals, crop consistently, and survive
 test("graph legend rebuilds connections through hidden kinds in both views", async () => {
   const { page, context } = await pageFor(undefined, () => {
     window.projectedLineDraws = 0;
-    const setLineDash = CanvasRenderingContext2D.prototype.setLineDash;
-    CanvasRenderingContext2D.prototype.setLineDash = function (segments) {
-      if (segments[0] === 3 && segments[1] === 3) window.projectedLineDraws++;
-      return setLineDash.call(this, segments);
+    window.graphPointDraws = 0;
+    window.webglOpacities = [];
+    window.graphDrawnPoints = [];
+    const stroke = CanvasRenderingContext2D.prototype.stroke;
+    CanvasRenderingContext2D.prototype.stroke = function (...args) {
+      if (
+        this.canvas.closest(".graph-canvas") &&
+        this.strokeStyle.endsWith(", 0.125)")
+      )
+        window.projectedLineDraws++;
+      return stroke.apply(this, args);
     };
+    const clear = CanvasRenderingContext2D.prototype.clearRect;
+    CanvasRenderingContext2D.prototype.clearRect = function (...args) {
+      if (this.canvas.closest(".graph-canvas")) {
+        window.graphPointDraws = 0;
+        window.graphDrawnPoints = [];
+      }
+      return clear.apply(this, args);
+    };
+    const arc = CanvasRenderingContext2D.prototype.arc;
+    CanvasRenderingContext2D.prototype.arc = function (...args) {
+      if (this.canvas.closest(".graph-canvas")) {
+        window.graphPointDraws++;
+        const point = this.getTransform().transformPoint({
+          x: args[0],
+          y: args[1],
+        });
+        window.graphDrawnPoints.push({
+          x: point.x,
+          y: point.y,
+          width: this.canvas.width,
+          height: this.canvas.height,
+        });
+      }
+      return arc.apply(this, args);
+    };
+    for (const Context of [
+      window.WebGLRenderingContext,
+      window.WebGL2RenderingContext,
+    ].filter(Boolean)) {
+      const uniform = Context.prototype.uniform1f;
+      Context.prototype.uniform1f = function (location, value) {
+        if (value === 0.175 || value === 0.0875)
+          window.webglOpacities.push(value);
+        return uniform.call(this, location, value);
+      };
+    }
   });
   const fixture = {
     nodes: [
@@ -5462,6 +5505,15 @@ test("graph legend rebuilds connections through hidden kinds in both views", asy
       const box = page.getByLabel("Show " + kind + " in graph", {
         exact: true,
       });
+      if (mode === "2D" && kind === "entities") {
+        const box = await page.locator(".graph-canvas canvas").boundingBox();
+        await page.mouse.move(box.x + 8, box.y + box.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(box.x + box.width - 10, box.y + box.height / 2, {
+          steps: 5,
+        });
+        await page.mouse.up();
+      }
       await box.uncheck();
       await page.waitForFunction((kind) => {
         const matches = window.Alpine.$data(document.body).graphMatches;
@@ -5474,6 +5526,26 @@ test("graph legend rebuilds connections through hidden kinds in both views", asy
         await page.waitForFunction(
           (before) => window.projectedLineDraws > before,
           before,
+        );
+      if (mode === "2D")
+        await page.waitForFunction(
+          (count) => window.graphPointDraws === count,
+          kind === "entities" ? 3 : 4,
+        );
+      else
+        await page.waitForFunction(
+          () =>
+            window.webglOpacities.includes(0.175) &&
+            window.webglOpacities.includes(0.0875),
+        );
+      if (mode === "2D" && kind === "entities")
+        await page.waitForFunction(
+          () =>
+            window.graphDrawnPoints.length === 3 &&
+            window.graphDrawnPoints.every(
+              ({ x, y, width, height }) =>
+                x > 0 && y > 0 && x < width && y < height,
+            ),
         );
       await box.check();
       await page.waitForFunction(
@@ -5516,9 +5588,134 @@ test("graph legend rebuilds connections through hidden kinds in both views", asy
   assert.deepEqual(errors, []);
 });
 
+test("graph hover and selection reveal saved and indirect connections at the requested opacities", async (t) => {
+  const john = await save(source("Hover John", "An identity."), "entities");
+  const mary = await save(source("Hover Mary", "A topic."), "topics");
+  const tom = await save(source("Hover Tom", "A story."), "stories");
+  const meal = await save(source("Hidden shared event", "An experience."));
+  const fixture = {
+    nodes: [
+      { id: john.id, title: "Hover John", kind: "entities", weight: 1 },
+      { id: mary.id, title: "Hover Mary", kind: "topics", weight: 1 },
+      {
+        id: tom.id,
+        title: "Hover Tom",
+        kind: "stories",
+        weight: 1,
+        user: "ari",
+      },
+      {
+        id: meal.id,
+        title: "Hidden shared event",
+        kind: "memories",
+        weight: 1,
+        user: "ari",
+      },
+    ],
+    links: [
+      { source: john.id, target: mary.id, type: "related_to" },
+      { source: john.id, target: meal.id, type: "related_to" },
+      { source: meal.id, target: tom.id, type: "related_to" },
+    ],
+  };
+  const { page, context } = await pageFor(undefined, () => {
+    window.lineOpacities = [];
+    window.webglOpacities = [];
+    const clear = CanvasRenderingContext2D.prototype.clearRect;
+    CanvasRenderingContext2D.prototype.clearRect = function (...args) {
+      if (this.canvas.closest(".graph-canvas")) window.lineOpacities = [];
+      return clear.apply(this, args);
+    };
+    const stroke = CanvasRenderingContext2D.prototype.stroke;
+    CanvasRenderingContext2D.prototype.stroke = function (...args) {
+      if (this.canvas.closest(".graph-canvas")) {
+        const alpha = this.strokeStyle.match(/,\s*([\d.]+)\)$/);
+        if (alpha) window.lineOpacities.push(Number(alpha[1]));
+      }
+      return stroke.apply(this, args);
+    };
+    for (const Context of [
+      window.WebGLRenderingContext,
+      window.WebGL2RenderingContext,
+    ].filter(Boolean)) {
+      const uniform = Context.prototype.uniform1f;
+      Context.prototype.uniform1f = function (location, value) {
+        window.webglOpacities.push(value);
+        return uniform.call(this, location, value);
+      };
+    }
+  });
+  t.after(() => context.close());
+  await page.route("**/api/graph**", (route) =>
+    route.fulfill({ json: fixture }),
+  );
+  await page.reload();
+  await page.getByLabel("Show memories in graph", { exact: true }).uncheck();
+  for (const mode of ["2D", "3D"]) {
+    await page.getByRole("button", { name: mode, exact: true }).click();
+    await page.waitForTimeout(2500);
+    const point = await graphPoint(page, "green");
+    assert.ok(point);
+    const canvas = await page.locator(".graph-canvas canvas").boundingBox();
+    await page.mouse.move(canvas.x + point.x, canvas.y + point.y);
+    await page.waitForFunction((mode) => {
+      const samples =
+        mode === "2D" ? window.lineOpacities : window.webglOpacities;
+      return samples.includes(0.7) && samples.includes(0.35);
+    }, mode);
+    if (mode === "2D") {
+      await page.mouse.click(canvas.x + point.x, canvas.y + point.y);
+      await page
+        .getByRole("button", { name: "Close record", exact: true })
+        .click();
+      await page.mouse.move(5, 5);
+      await page.waitForFunction(
+        () =>
+          window.lineOpacities.includes(0.7) &&
+          window.lineOpacities.includes(0.35),
+      );
+      await page.mouse.click(canvas.x + 8, canvas.y + canvas.height / 2);
+      await page.waitForFunction(
+        () =>
+          window.lineOpacities.some(
+            (alpha) => Math.round(alpha * 255) === Math.round(0.375 * 255),
+          ) &&
+          window.lineOpacities.some(
+            (alpha) => Math.round(alpha * 255) === Math.round(0.1875 * 255),
+          ),
+      );
+    }
+  }
+  // Dense background connections must not round down to fully transparent.
+  await page.mouse.move(5, 5);
+  await page.getByRole("button", { name: "2D", exact: true }).click();
+  for (let i = 0; i < 160; i++) {
+    const id = "e_background_" + i;
+    fixture.nodes.push({
+      id,
+      title: "Background " + i,
+      kind: "entities",
+      weight: 1,
+    });
+    fixture.links.push({ source: meal.id, target: id, type: "related_to" });
+  }
+  await page.evaluate(() => window.Alpine.$data(document.body).refreshGraph());
+  await page.waitForFunction(
+    () =>
+      window.lineOpacities.some((alpha) => Math.round(alpha * 255) === 1) &&
+      window.lineOpacities.some((alpha) => Math.round(alpha * 255) === 2),
+  );
+  assert.deepEqual(errors, []);
+});
+
 test("graph refreshes preserve settled positions and camera for reordered records and weight changes", async () => {
   const { page, context } = await pageFor(undefined, () => {
     window.graphCentres = [];
+    const clear = CanvasRenderingContext2D.prototype.clearRect;
+    CanvasRenderingContext2D.prototype.clearRect = function (...args) {
+      if (this.canvas.closest(".graph-canvas")) window.graphCentres = [];
+      return clear.apply(this, args);
+    };
     const arc = CanvasRenderingContext2D.prototype.arc;
     CanvasRenderingContext2D.prototype.arc = function (x, y, r, ...args) {
       if (this.canvas.closest(".graph-canvas")) {
@@ -5558,6 +5755,19 @@ test("graph refreshes preserve settled positions and camera for reordered record
     after,
     before,
     "A metadata refresh moved the drawn node centres or camera",
+  );
+  await page.getByLabel("Show memories in graph", { exact: true }).uncheck();
+  await page.waitForTimeout(3000);
+  const connected = await page.evaluate(() => window.graphCentres);
+  assert.equal(connected.length, 2);
+  fixture.nodes.find((node) => node.kind === "memories").title =
+    "Updated hidden record";
+  await page.evaluate(() => window.Alpine.$data(document.body).refreshGraph());
+  await page.waitForTimeout(1000);
+  assert.deepEqual(
+    await page.evaluate(() => window.graphCentres),
+    connected,
+    "Updating hidden-record labels reheated or moved the physical graph",
   );
   await context.close();
   assert.deepEqual(errors, []);

@@ -26,15 +26,26 @@ uses that same selection, which survives view switching and expansion. The graph
 filter is independent of the library filters and refreshes after saves and
 deletions. No CDN is required.
 The legend checkboxes select which record kinds appear as points. Hidden records
-still carry connections between visible points, including chains of hidden kinds.
-These projected connections have no direction arrows (and are dashed in 2D);
-hover identifies them as connections through hidden records. Longer paths and
-broadly shared records contribute less layout strength; independent paths add
-support. The view keeps the strongest few indirect neighbours plus a connecting
-backbone, avoiding a dense clique without disconnecting the remaining points.
-Owner selection is applied before this projection, so excluded accounts
-cannot introduce connections. Showing all kinds restores the saved direct graph.
-Projection changes only the display, not stored relationships or point weights.
+never become replacement points. Every visible pair connected through hidden
+records receives one indirect line; paths stop at visible records. Chains may
+cross any number of hidden records and relationship types. Duplicate paths merge;
+a saved connection between the same points takes precedence.
+
+Background line opacity decreases with the mean number of connections per visible
+point. Indirect lines use half the saved-line opacity in both views, without dashes.
+Background alpha retains at least one 8-bit step for indirect lines so dense
+connections do not round down to fully transparent in canvas.
+Connections touching a hovered, clicked or search-selected point use opacity 0.7
+for saved lines and 0.35 for indirect lines. Clicking the background clears the
+selection. Changing record-kind or owner filters refits the camera after the
+layout settles.
+
+Indirect lines have no direction arrows, and their hover label names the hidden records in
+a connecting path. They are excluded from the layout force entirely, including
+its degree counts. Hidden records and their original saved connections remain in
+the physical layout, but neither their points nor their lines are drawn. No
+neighbour limits, representative hubs or path-strength thresholds are used. Owner selection precedes projection, so excluded accounts
+cannot introduce connections. Stored relationships and content scores stay intact.
 Its search matches names/titles, aliases and IDs, highlighting matches while
 dimming other points. Select a result or press Enter to move the camera to it;
 click the point to inspect. Clear the search or press Escape to restore the overview.
@@ -481,10 +492,10 @@ Words are separated by whitespace, including Unicode spaces and line breaks.
 Titles, aliases and other metadata do not add words. `related_to`, `caused_by`
 and `part_of` provide paths in either direction. Ordering, possible identity
 matches and redirects do not contribute. Hidden entries still contribute their
-text through the neutral junctions. Dates do not affect weights.
+text through hidden records. Dates do not affect weights.
 
 Drawing sizes use the score divided by the mean score of visible entries, keeping
-the layout independent of the score's units. Neutral junctions do not affect this
+the layout independent of the score's units. Only visible entries affect this
 mean. An empty or zero-score view uses a unit of 1. The 2D radius is
 `4 * sqrt(1 + weight / mean)`; 3D uses the corresponding volume scaling. Photos,
 collision spacing and ordinary points use the same sizes.

@@ -1,44 +1,49 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { projectGraph, graphLinks } from "./src/graph-view.js";
+import {
+  forceSimulation,
+  forceLink,
+  forceManyBody,
+  forceCenter,
+} from "d3-force-3d";
+import { projectGraph, graphLinks, savedLinkForce } from "./src/graph-view.js";
 
-const node = (id, kind = "entities") => ({ id, kind });
+const node = (id, kind = "entities") => ({ id, title: id, kind });
 const link = (source, target, type = "related_to") => ({
   source,
   target,
   type,
 });
-const connections = (data) =>
-  graphLinks(data)
-    .map((edge) => JSON.stringify(edge))
-    .sort();
+const pairs = (data) =>
+  data.links.map((edge) => [edge.source, edge.target].sort().join(":")).sort();
 
-test("hidden records remain named junctions with their actual relationships", () => {
+test("hidden records connect visible participants without replacement points", () => {
   const data = {
     nodes: [node("John"), node("Mary"), node("meal", "memories")],
     links: [link("meal", "John"), link("meal", "Mary")],
   };
-  const before = structuredClone(data);
-  const view = projectGraph(data, { memories: false });
-  assert.deepEqual(
-    view.nodes.filter((n) => !n.junction).map((n) => n.id),
-    ["John", "Mary"],
-  );
-  assert.equal(view.nodes.find((n) => n.id === "meal").junction, true);
-  assert.deepEqual(connections(view), connections(data));
-  assert.equal(
-    view.links.some((e) => e.strength || e.projected),
-    false,
-  );
+  const before = structuredClone(data),
+    view = projectGraph(data, { memories: false });
+  assert.deepEqual(view.nodes, [data.nodes[0], data.nodes[1]]);
+  assert.deepEqual(pairs(view), ["John:Mary"]);
+  assert.equal(view.links[0].indirect, true);
+  assert.deepEqual(view.layout.nodes, data.nodes);
+  assert.deepEqual(view.layout.links, graphLinks(data));
+  assert.deepEqual(view.links[0].via, [{ id: "meal", title: "meal" }]);
   assert.deepEqual(data, before);
-  assert.ok(projectGraph(data, {}).nodes.every((n) => !n.junction));
+  assert.deepEqual(projectGraph(data, {}), {
+    nodes: data.nodes,
+    links: graphLinks(data),
+    layout: { nodes: data.nodes, links: graphLinks(data) },
+  });
   assert.deepEqual(projectGraph(data, { entities: false, memories: false }), {
     nodes: [],
     links: [],
+    layout: { nodes: [], links: [] },
   });
 });
 
-test("filtering every combination preserves paths without adding relationships", () => {
+test("all kind combinations bridge hidden chains and stop at visible records", () => {
   const kinds = ["entities", "memories", "topics", "stories"];
   const data = {
     nodes: kinds.map((kind, i) => node(String(i), kind)),
@@ -48,56 +53,46 @@ test("filtering every combination preserves paths without adding relationships",
     const filters = Object.fromEntries(
       kinds.map((k, i) => [k, !!(mask & (1 << i))]),
     );
-    const view = projectGraph(data, filters);
-    const selected = data.nodes.filter((n) => filters[n.kind]);
+    const view = projectGraph(data, filters),
+      selected = data.nodes.filter((n) => filters[n.kind]);
+    assert.deepEqual(view.nodes, selected);
     assert.deepEqual(
-      view.nodes.filter((n) => !n.junction).map((n) => n.id),
-      selected.map((n) => n.id),
-    );
-    if (!selected.length) {
-      assert.equal(view.links.length, 0);
-      continue;
-    }
-    const first = Number(selected[0].id),
-      last = Number(selected.at(-1).id);
-    assert.deepEqual(
-      view.nodes.map((n) => n.id),
-      data.nodes.slice(first, last + 1).map((n) => n.id),
-    );
-    assert.deepEqual(
-      connections(view),
-      connections({ nodes: view.nodes, links: data.links }),
+      pairs(view),
+      selected.slice(1).map((n, i) => `${selected[i].id}:${n.id}`),
     );
   }
 });
 
-test("a hidden inventory cannot manufacture plant connections or member hubs", () => {
-  const plants = Array.from({ length: 40 }, (_, i) => node(`plant${i}`));
+test("every shared pair appears, with no arbitrary hub or neighbour limit", () => {
+  const people = Array.from({ length: 40 }, (_, i) => node(`person${i}`));
   const data = {
-    nodes: [node("garden"), ...plants, node("inventory", "memories")],
-    links: [
-      ...plants.map((p) => link(p.id, "garden")),
-      ...plants.map((p) => link("inventory", p.id)),
-      link("inventory", "garden"),
-    ],
+    nodes: [...people, node("shared", "topics")],
+    links: people.map((n) => link(n.id, "shared")),
   };
-  const view = projectGraph(data, { memories: false });
-  assert.deepEqual(connections(view), connections(data));
-  for (const plant of plants)
+  const view = projectGraph(data, { topics: false });
+  assert.equal(view.nodes.length, 40);
+  assert.equal(view.links.length, (40 * 39) / 2);
+  for (const person of people)
     assert.equal(
-      view.links.filter((e) => e.source === plant.id || e.target === plant.id)
+      view.links.filter((e) => e.source === person.id || e.target === person.id)
         .length,
-      2,
+      39,
     );
   const reordered = projectGraph(
     { nodes: [...data.nodes].reverse(), links: [...data.links].reverse() },
-    { memories: false },
+    { topics: false },
   );
-  assert.deepEqual(connections(reordered), connections(view));
+  assert.deepEqual(pairs(reordered), pairs(view));
 });
 
-test("chronology, causality and uncertain identity retain their meaning through hidden records", () => {
-  for (const type of ["after", "caused_by", "part_of", "possibly_same_as"]) {
+test("relationship types remain available as paths without inventing a new directed fact", () => {
+  for (const type of [
+    "related_to",
+    "after",
+    "caused_by",
+    "part_of",
+    "possibly_same_as",
+  ]) {
     const data = {
       nodes: [
         node("John"),
@@ -108,46 +103,67 @@ test("chronology, causality and uncertain identity retain their meaning through 
       links: [link("a", "John"), link("b", "Mary"), link("b", "a", type)],
     };
     const view = projectGraph(data, { memories: false });
-    assert.deepEqual(connections(view), connections(data));
-    assert.equal(
-      view.links.some(
-        (e) =>
-          [e.source, e.target].includes("John") &&
-          [e.source, e.target].includes("Mary"),
-      ),
-      false,
+    assert.deepEqual(pairs(view), ["John:Mary"]);
+    assert.equal(view.links[0].type, "Indirect connection");
+    assert.equal(view.links[0].indirect, true);
+    assert.deepEqual(
+      view.links[0].via.map((n) => n.id),
+      ["a", "b"],
     );
   }
 });
 
-test("hidden dead ends, disconnected cycles and missing owner records do not clutter or bridge the view", () => {
+test("duplicate paths collapse to one line, while saved links retain precedence and types", () => {
   const data = {
     nodes: [
       node("John"),
       node("Mary"),
-      node("leaf", "memories"),
-      node("a", "stories"),
-      node("b", "stories"),
+      node("a", "memories"),
+      node("b", "memories"),
+    ],
+    links: [
+      link("a", "John"),
+      link("a", "Mary"),
+      link("b", "John"),
+      link("b", "Mary"),
+    ],
+  };
+  assert.equal(projectGraph(data, { memories: false }).links.length, 1);
+  data.links.push(link("John", "Mary", "after"));
+  assert.deepEqual(projectGraph(data, { memories: false }).links, [
+    data.links.at(-1),
+  ]);
+});
+
+test("hidden cycles terminate and excluded owner records cannot act as bridges", () => {
+  const data = {
+    nodes: [
+      node("John"),
+      node("Mary"),
+      node("Tom"),
+      node("a", "memories"),
+      node("b", "memories"),
       node("c", "stories"),
     ],
     links: [
-      link("John", "leaf"),
+      link("John", "a"),
       link("a", "b"),
       link("b", "c"),
       link("c", "a"),
-      link("John", "other-owner"),
-      link("other-owner", "Mary"),
+      link("c", "Mary"),
+      link("Mary", "other-owner"),
+      link("other-owner", "Tom"),
     ],
   };
   const view = projectGraph(data, { memories: false, stories: false });
   assert.deepEqual(
     view.nodes.map((n) => n.id),
-    ["John", "Mary"],
+    ["John", "Mary", "Tom"],
   );
-  assert.deepEqual(view.links, []);
+  assert.deepEqual(pairs(view), ["John:Mary"]);
 });
 
-test("reciprocal symmetric links display once while directional relationships stay distinct", () => {
+test("reciprocal symmetric links display once while saved directional relationships remain", () => {
   const data = {
     nodes: [node("John"), node("Mary")],
     links: [
@@ -161,4 +177,45 @@ test("reciprocal symmetric links display once while directional relationships st
   };
   assert.equal(graphLinks(data).length, 4);
   assert.equal(graphLinks(data).filter((e) => e.type === "after").length, 2);
+});
+
+test("indirect lines exert zero layout influence, including saved-link degree bias, in 2D and 3D", () => {
+  for (const dimensions of [2, 3]) {
+    const simulate = (indirect) => {
+      const nodes = [
+        { id: "John", x: 0, y: 0, z: 0 },
+        { id: "Mary", x: 50, y: 0, z: 20 },
+        { id: "meal", x: 25, y: 45, z: 10, hidden: true },
+      ];
+      const byID = new Map(nodes.map((n) => [n.id, n]));
+      const links = [
+        { ...link("John", "meal"), hidden: true },
+        { ...link("meal", "Mary"), hidden: true },
+        ...(indirect ? [{ ...link("John", "Mary"), indirect: true }] : []),
+      ].map((e) => ({
+        ...e,
+        source: byID.get(e.source),
+        target: byID.get(e.target),
+      }));
+      const force = indirect ? savedLinkForce(forceLink()) : forceLink();
+      const sim = forceSimulation(nodes, dimensions)
+        .force("link", force)
+        .force("charge", forceManyBody())
+        .force("center", forceCenter())
+        .stop();
+      force.links(links);
+      assert.equal(force.links().length, 2);
+      sim.tick(50);
+      return nodes.map(({ id, x, y, z, vx, vy, vz }) => ({
+        id,
+        x,
+        y,
+        z,
+        vx,
+        vy,
+        vz,
+      }));
+    };
+    assert.deepEqual(simulate(true), simulate(false));
+  }
 });

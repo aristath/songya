@@ -1,7 +1,7 @@
 import ForceGraph3D from "3d-force-graph";
 import ForceGraph from "force-graph";
 import { forceCollide } from "d3-force-3d";
-import { symmetricRelation } from "./graph-view.js";
+import { symmetricRelation, savedLinkForce } from "./graph-view.js";
 import { CanvasTexture, Sprite, SpriteMaterial, SRGBColorSpace } from "three";
 import { portraitURL, paintPortrait } from "./portraits.js";
 
@@ -20,11 +20,12 @@ export function memoryGraph(
   mode = "2d",
   nodeColor = (node) => node.color || defaultKindColors[node.kind],
 ) {
-  let weightUnit = 1;
+  let weightUnit = 1,
+    lineDensity = 1,
+    hovered = null,
+    selected = null;
   const nodeValue = (node) =>
-    node.junction
-      ? 0.05
-      : 1 + Math.max(0, Number(node.weight) || 0) / weightUnit;
+    node.hidden ? 0.05 : 1 + Math.max(0, Number(node.weight) || 0) / weightUnit;
   const nodeRadius = (node) => 4 * Math.sqrt(nodeValue(node));
   let colors = currentPalette();
   const flat = mode === "2d";
@@ -43,7 +44,7 @@ export function memoryGraph(
   const pictures = new Map(),
     sprites = new Set();
   const imageFor = (node) => {
-    if (node.junction || !node.profile_picture) return null;
+    if (node.hidden || !node.profile_picture) return null;
     const url = portraitURL(node.id, node.profile_picture, node.revision);
     if (!pictures.has(url)) {
       const image = new Image();
@@ -73,49 +74,73 @@ export function memoryGraph(
   const graph = new (flat ? ForceGraph : ForceGraph3D)(container)
     .backgroundColor(colors.crust)
     .nodeColor((node) =>
-      node.junction
-        ? colors.overlay1
-        : matches && !matches.has(node.id)
-          ? colors.surface1
-          : resolveColor(nodeColor(node), colors),
+      matches && !matches.has(node.id)
+        ? colors.surface1
+        : resolveColor(nodeColor(node), colors),
     )
     .nodeVal(nodeValue)
-    .nodeLabel((node) =>
+    .nodeVisibility((node) => !node.hidden)
+    .linkVisibility((link) => !link.hidden)
+    .nodeLabel((node) => label(node.title || node.id))
+    .linkColor((link) => {
+      const ids = [
+        link.source.id || link.source,
+        link.target.id || link.target,
+      ];
+      const highlighted = ids.some((id) => id === hovered || id === selected);
+      const active =
+        highlighted ||
+        !matches ||
+        matches.has(link.source.id || link.source) ||
+        matches.has(link.target.id || link.target);
+      const color = active ? colors.overlay1 : colors.surface0;
+      const opacity =
+        // Two alpha steps keep half-opacity indirect lines visible in 8-bit canvas.
+        (highlighted
+          ? 0.7
+          : Math.max(2 / 255, (flat ? 0.5 : 0.35) / lineDensity)) *
+        (link.indirect ? 0.5 : 1);
+      const rgb = [1, 3, 5].map((offset) =>
+        parseInt(color.slice(offset, offset + 2), 16),
+      );
+      return `rgba(${rgb.join(",")},${opacity})`;
+    })
+    .linkLabel((link) =>
       label(
-        `${node.junction ? "Hidden record: " : ""}${node.title || node.id}`,
+        [
+          link.type,
+          ...(link.via || []).map((record) => `${record.title} (${record.id})`),
+        ].join(" · "),
       ),
     )
-    .linkColor((link) =>
-      !matches ||
-      matches.has(link.source.id || link.source) ||
-      matches.has(link.target.id || link.target)
-        ? flat
-          ? colors.overlay1 + "80"
-          : colors.overlay1
-        : colors.surface0,
-    )
-    .linkLabel((link) => {
-      const records = [link.source, link.target]
-        .filter((node) => node.junction)
-        .map((node) => node.title || node.id);
-      return label([link.type, ...records].join(" · "));
-    })
     .linkDirectionalArrowLength((link) =>
-      symmetricRelation(link.type) ? 0 : 2,
+      link.indirect || symmetricRelation(link.type) ? 0 : 2,
     )
-    .onNodeClick((node) => inspect(node.id))
+    .onNodeHover((node) => {
+      const next = node?.id || null;
+      if (hovered === next) return;
+      hovered = next;
+      graph.linkColor(graph.linkColor());
+    })
+    .onNodeClick((node) => {
+      selected = node.id;
+      graph.linkColor(graph.linkColor());
+      inspect(node.id);
+    })
+    .onBackgroundClick(() => {
+      selected = null;
+      graph.linkColor(graph.linkColor());
+    })
     .cooldownTicks(120)
     .onEngineStop(() => {
-      if (fit && graph.graphData().nodes.length) {
-        graph.zoomToFit(400, fitPadding());
+      if (fit && graph.graphData().nodes.some((node) => !node.hidden)) {
+        graph.zoomToFit(400, fitPadding(), (node) => !node.hidden);
         fit = false;
       }
     });
+  graph.d3Force("link", savedLinkForce(graph.d3Force("link")));
   if (flat) {
     graph
-      .linkLineDash((link) =>
-        link.source.junction || link.target.junction ? [3, 3] : null,
-      )
       .nodeCanvasObjectMode(() => "after")
       .nodeCanvasObject((node, ctx) => {
         const image = imageFor(node);
@@ -153,7 +178,7 @@ export function memoryGraph(
     graph
       .showNavInfo(false)
       .nodeOpacity(1)
-      .linkOpacity(0.35)
+      .linkOpacity(1)
       .nodeThreeObject((node) => {
         const image = imageFor(node);
         if (!image) return undefined;
@@ -202,7 +227,7 @@ export function memoryGraph(
   const paletteTimer = setInterval(restyle, 500);
   const resize = new ResizeObserver(() => {
     graph.width(container.clientWidth).height(container.clientHeight);
-    if (!fit) graph.zoomToFit(0, fitPadding());
+    if (!fit) graph.zoomToFit(0, fitPadding(), (node) => !node.hidden);
   });
   resize.observe(container);
   const visibility = new IntersectionObserver(([entry]) => {
@@ -218,9 +243,11 @@ export function memoryGraph(
       refreshPictures();
     },
     focus(id) {
+      selected = id || null;
+      graph.linkColor(graph.linkColor());
       if (!id) {
         // Finish after an earlier focus transition when search is cleared quickly.
-        graph.zoomToFit(650, fitPadding());
+        graph.zoomToFit(650, fitPadding(), (node) => !node.hidden);
         return;
       }
       const node = graph.graphData().nodes.find((node) => node.id === id);
@@ -255,13 +282,15 @@ export function memoryGraph(
       graph._destructor();
       renderer?.forceContextLoss();
     },
-    update(data) {
+    update(data, refit = false) {
       // Both renderers mutate data. Give each its own nodes and links.
       const previous = new Map(
         graph.graphData().nodes.map((node) => [node.id, node]),
       );
-      const nodes = data.nodes.map((node) => {
-        const copy = { ...node };
+      const visibleIDs = new Set(data.nodes.map((node) => node.id));
+      const layout = data.layout;
+      const nodes = layout.nodes.map((node) => {
+        const copy = { ...node, hidden: !visibleIDs.has(node.id) };
         const old = previous.get(node.id);
         if (old) {
           for (const key of ["x", "y", "z", "vx", "vy", "vz", "fx", "fy", "fz"])
@@ -270,19 +299,32 @@ export function memoryGraph(
         return copy;
       });
       const previousUnit = weightUnit;
-      const visible = nodes.filter((node) => !node.junction);
+      const visible = nodes.filter((node) => !node.hidden);
       weightUnit =
         visible.reduce(
           (sum, node) => sum + Math.max(0, Number(node.weight) || 0),
           0,
         ) / visible.length || 1;
       const byID = new Map(nodes.map((node) => [node.id, node]));
-      const links = data.links
+      if (!visibleIDs.has(hovered)) hovered = null;
+      if (!visibleIDs.has(selected)) selected = null;
+      const links = [
+        ...layout.links.filter((link) => !link.indirect),
+        ...data.links.filter((link) => link.indirect),
+      ]
         .filter((link) => byID.has(link.source) && byID.has(link.target))
-        .map((link) => ({ ...link }));
+        .map((link) => ({
+          ...link,
+          hidden: !visibleIDs.has(link.source) || !visibleIDs.has(link.target),
+        }));
+      lineDensity = Math.max(
+        1,
+        (2 * data.links.length) / (data.nodes.length || 1),
+      );
       const stamp = JSON.stringify([
         nodes.map((node) => node.id).sort(),
         links
+          .filter((link) => !link.indirect)
           .map((link) => JSON.stringify([link.source, link.target, link.type]))
           .sort(),
       ]);
@@ -292,13 +334,26 @@ export function memoryGraph(
         for (const node of graph.graphData().nodes) {
           sizeChanged ||=
             node.weight !== byID.get(node.id)?.weight ||
-            node.junction !== byID.get(node.id)?.junction;
+            node.hidden !== byID.get(node.id)?.hidden;
           Object.assign(node, byID.get(node.id));
         }
+        const current = graph.graphData();
+        const currentNodes = new Map(
+          current.nodes.map((node) => [node.id, node]),
+        );
+        // Redraw visual connections without reheating the physical graph.
+        current.links = links.map((link) => ({
+          ...link,
+          source: currentNodes.get(link.source),
+          target: currentNodes.get(link.target),
+        }));
         graph
           .nodeVal(nodeValue)
           .nodeColor(graph.nodeColor())
-          .nodeLabel(graph.nodeLabel());
+          .nodeVisibility(graph.nodeVisibility())
+          .linkVisibility(graph.linkVisibility())
+          .nodeLabel(graph.nodeLabel())
+          .linkColor(graph.linkColor());
         if (sizeChanged && flat) {
           graph.d3Force("collide").radius((node) => nodeRadius(node) + 4);
           graph
@@ -307,12 +362,26 @@ export function memoryGraph(
               (link) => nodeRadius(link.source) + nodeRadius(link.target) + 28,
             );
         }
+        if (refit) {
+          if (sizeChanged) {
+            fit = true;
+            graph.d3ReheatSimulation();
+          } else {
+            graph.zoomToFit(400, fitPadding(), (node) => !node.hidden);
+            fit = false;
+          }
+        }
         refreshPictures();
         return;
       }
-      fit ||= !previous.size;
+      fit ||= refit || !previous.size;
       layoutStamp = stamp;
       disposeSprites();
+      // Indirect endpoints need resolving too, even though they skip the force.
+      for (const link of links) {
+        link.source = byID.get(link.source);
+        link.target = byID.get(link.target);
+      }
       graph.graphData({ nodes, links });
       const active = new Set(
         nodes

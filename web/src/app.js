@@ -152,7 +152,7 @@ Alpine.data("songya", () => {
         return false;
       }
     },
-    renderGraph() {
+    renderGraph(refit = false) {
       if (!graphData) return;
       let nodes = graphData.nodes;
       if (this.graphOwner) {
@@ -184,8 +184,7 @@ Alpine.data("songya", () => {
         this.graphKinds,
       );
       nodes = projected.nodes;
-      const links = projected.links;
-      graphRecords = nodes.filter((node) => !node.junction);
+      graphRecords = nodes;
       try {
         graph ||= memoryGraph(
           this.$refs.graph,
@@ -193,7 +192,7 @@ Alpine.data("songya", () => {
           this.graphMode,
           (node) => node.color || this.graphKindColors[node.kind],
         );
-        graph.update({ nodes, links });
+        graph.update(projected, refit);
         if (this.graphQuery) this.searchGraph();
         this.graphStatus = nodes.length
           ? ""

@@ -19,43 +19,77 @@ export function graphLinks(data) {
   return [...links.values()];
 }
 
-// Hidden records remain neutral junctions in their original relationships.
-// Remove hidden dead ends: they do not connect anything left on screen.
+// Visible points stop a path. Hidden points carry it but never appear as nodes.
 export function projectGraph(data, kinds) {
-  const visible = new Set(
-    data.nodes
-      .filter((node) => kinds[node.kind] !== false)
-      .map((node) => node.id),
-  );
-  if (!visible.size) return { nodes: [], links: [] };
+  const nodes = data.nodes.filter((node) => kinds[node.kind] !== false);
+  if (!nodes.length)
+    return { nodes, links: [], layout: { nodes: [], links: [] } };
+  const visible = new Set(nodes.map((node) => node.id));
   const links = graphLinks(data);
+  const result = links.filter(
+    (link) => visible.has(link.source) && visible.has(link.target),
+  );
+  const pair = (a, b) => JSON.stringify([a, b].sort());
+  const connected = new Set(
+    result.map((link) => pair(link.source, link.target)),
+  );
   const adjacency = new Map(data.nodes.map((node) => [node.id, new Set()]));
   for (const { source, target } of links) {
     if (source === target) continue;
     adjacency.get(source).add(target);
     adjacency.get(target).add(source);
   }
-  const leaves = [...adjacency.keys()].filter(
-    (id) => !visible.has(id) && adjacency.get(id).size < 2,
+  const neighbours = new Map(
+    [...adjacency].map(([id, peers]) => [id, [...peers].sort()]),
   );
-  for (const id of leaves) {
-    for (const neighbour of adjacency.get(id)) {
-      adjacency.get(neighbour).delete(id);
-      if (!visible.has(neighbour) && adjacency.get(neighbour).size === 1)
-        leaves.push(neighbour);
+  const records = new Map(data.nodes.map((node) => [node.id, node]));
+  for (const source of visible) {
+    const parents = new Map([[source, null]]);
+    const queue = [source];
+    for (const from of queue) {
+      for (const target of neighbours.get(from)) {
+        if (visible.has(target)) {
+          if (
+            from === source ||
+            target === source ||
+            connected.has(pair(source, target))
+          )
+            continue;
+          const via = [];
+          for (let id = from; id !== source; id = parents.get(id))
+            via.push({ id, title: records.get(id).title || id });
+          via.reverse();
+          const [a, b] = [source, target].sort();
+          if (a !== source) via.reverse();
+          result.push({
+            source: a,
+            target: b,
+            type: "Indirect connection",
+            indirect: true,
+            via,
+          });
+          connected.add(pair(source, target));
+        } else if (!parents.has(target)) {
+          parents.set(target, from);
+          queue.push(target);
+        }
+      }
     }
-    adjacency.delete(id);
   }
-  // Entirely hidden components have no place in the selected view.
-  const connected = new Set(visible);
-  for (const id of connected)
-    for (const neighbour of adjacency.get(id) || []) connected.add(neighbour);
-  return {
-    nodes: data.nodes
-      .filter((node) => adjacency.has(node.id) && connected.has(node.id))
-      .map((node) => ({ ...node, junction: !visible.has(node.id) })),
-    links: links.filter(
-      (link) => connected.has(link.source) && connected.has(link.target),
-    ),
+  return { nodes, links: result, layout: { nodes: data.nodes, links } };
+}
+
+// Exclude indirect links entirely: zero strength would still change D3's degree
+// counts and therefore change the forces exerted by saved links.
+export function savedLinkForce(force) {
+  const links = force.links;
+  force.links = function (value) {
+    if (!arguments.length) return links.call(force);
+    links.call(
+      force,
+      value.filter((link) => !link.indirect),
+    );
+    return force;
   };
+  return force;
 }

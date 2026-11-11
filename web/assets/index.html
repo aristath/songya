@@ -550,7 +550,7 @@
                   aria-label="Graph memory owner"
                   title="Whose memories to show"
                   x-model="graphOwner"
-                  @change="renderGraph()"
+                  @change="renderGraph(true)"
                 >
                   <option value="">Any</option>
                   <template x-for="user in graphOwners" :key="user">
@@ -671,7 +671,7 @@
                   type="checkbox"
                   aria-label="Show entities in graph"
                   x-model="graphKinds.entities"
-                  @change="renderGraph()"
+                  @change="renderGraph(true)"
                 /><i
                   class="entity-dot"
                   data-kind="entities"
@@ -684,7 +684,7 @@
                   type="checkbox"
                   aria-label="Show memories in graph"
                   x-model="graphKinds.memories"
-                  @change="renderGraph()"
+                  @change="renderGraph(true)"
                 /><i
                   class="memory-dot"
                   data-kind="memories"
@@ -697,7 +697,7 @@
                   type="checkbox"
                   aria-label="Show topics in graph"
                   x-model="graphKinds.topics"
-                  @change="renderGraph()"
+                  @change="renderGraph(true)"
                 /><i
                   class="topic-dot"
                   data-kind="topics"
@@ -710,7 +710,7 @@
                   type="checkbox"
                   aria-label="Show stories in graph"
                   x-model="graphKinds.stories"
-                  @change="renderGraph()"
+                  @change="renderGraph(true)"
                 /><i
                   class="story-dot"
                   data-kind="stories"
