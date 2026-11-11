@@ -1549,51 +1549,57 @@ test("dense 2D graphs render separate disks for every node", async () => {
   const png = (
     await page.locator(".graph-canvas canvas").screenshot()
   ).toString("base64");
-  const disks = await page.evaluate(async (png) => {
-    const image = new Image();
-    image.src = "data:image/png;base64," + png;
-    await image.decode();
-    const canvas = document.createElement("canvas");
-    canvas.width = image.width;
-    canvas.height = image.height;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(image, 0, 0);
-    const { data } = ctx.getImageData(0, 0, image.width, image.height);
-    const green = new Uint8Array(image.width * image.height);
-    // The DOM legend overlays the canvas; exclude its bottom strip.
-    for (let i = 0; i < image.width * (image.height - 32); i++)
-      green[i] = data[i * 4 + 1] - Math.max(data[i * 4], data[i * 4 + 2]) > 50;
-    let disks = 0;
-    for (let start = 0; start < green.length; start++) {
-      if (!green[start]) continue;
-      let pixels = 0;
-      const pending = [start];
-      green[start] = 0;
-      while (pending.length) {
-        const index = pending.pop();
-        pixels++;
-        const x = index % image.width,
-          y = Math.floor(index / image.width);
-        for (let dy = -1; dy <= 1; dy++)
-          for (let dx = -1; dx <= 1; dx++) {
-            if (
-              x + dx < 0 ||
-              x + dx >= image.width ||
-              y + dy < 0 ||
-              y + dy >= image.height
-            )
-              continue;
-            const next = index + dy * image.width + dx;
-            if (green[next]) {
-              green[next] = 0;
-              pending.push(next);
+  const canvasBounds = await page.locator(".graph-canvas canvas").boundingBox();
+  const legendBounds = await page.locator(".graph-legend").boundingBox();
+  const disks = await page.evaluate(
+    async ({ png, bottom }) => {
+      const image = new Image();
+      image.src = "data:image/png;base64," + png;
+      await image.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(image, 0, 0);
+      const { data } = ctx.getImageData(0, 0, image.width, image.height);
+      const green = new Uint8Array(image.width * image.height);
+      // Exclude the actual legend area, including its weight-status row.
+      for (let i = 0; i < image.width * Math.floor(image.height * bottom); i++)
+        green[i] =
+          data[i * 4 + 1] - Math.max(data[i * 4], data[i * 4 + 2]) > 50;
+      let disks = 0;
+      for (let start = 0; start < green.length; start++) {
+        if (!green[start]) continue;
+        let pixels = 0;
+        const pending = [start];
+        green[start] = 0;
+        while (pending.length) {
+          const index = pending.pop();
+          pixels++;
+          const x = index % image.width,
+            y = Math.floor(index / image.width);
+          for (let dy = -1; dy <= 1; dy++)
+            for (let dx = -1; dx <= 1; dx++) {
+              if (
+                x + dx < 0 ||
+                x + dx >= image.width ||
+                y + dy < 0 ||
+                y + dy >= image.height
+              )
+                continue;
+              const next = index + dy * image.width + dx;
+              if (green[next]) {
+                green[next] = 0;
+                pending.push(next);
+              }
             }
-          }
+        }
+        if (pixels > 3) disks++;
       }
-      if (pixels > 3) disks++;
-    }
-    return disks;
-  }, png);
+      return disks;
+    },
+    { png, bottom: (legendBounds.y - canvasBounds.y) / canvasBounds.height },
+  );
   await page.screenshot({
     path: "/tmp/songya-ui-review/graph-dense-2d.png",
     fullPage: true,
@@ -5374,6 +5380,42 @@ test("graph legend rebuilds connections through hidden kinds in both views", asy
     await page
       .getByLabel("Show " + kind + " in graph", { exact: true })
       .check();
+  await context.close();
+  assert.deepEqual(errors, []);
+});
+
+test("graph refreshes preserve settled positions and camera for reordered records and weight changes", async () => {
+  const { page, context } = await pageFor();
+  const fixture = {
+    nodes: [
+      { id: "e_john", title: "John", kind: "entities", weight: 0 },
+      { id: "m_meal", title: "Meal", kind: "memories", user: "ari", weight: 0 },
+      { id: "t_food", title: "Food", kind: "topics", weight: 0 },
+    ],
+    links: [
+      { source: "e_john", target: "m_meal", type: "related_to" },
+      { source: "m_meal", target: "t_food", type: "related_to" },
+    ],
+  };
+  await page.route("**/api/graph**", (route) =>
+    route.fulfill({ json: fixture }),
+  );
+  await page.reload();
+  await page.locator(".graph-canvas canvas").waitFor();
+  await page.waitForTimeout(3000);
+  const before = await graphPoint(page, "green");
+  assert.ok(before);
+  fixture.nodes.reverse();
+  fixture.links.reverse();
+  fixture.nodes.find((node) => node.id === "e_john").weight = 2;
+  await page.evaluate(() => window.Alpine.$data(document.body).refreshGraph());
+  await page.waitForTimeout(1000);
+  const after = await graphPoint(page, "green");
+  assert.ok(after);
+  assert.ok(
+    Math.hypot(after.x - before.x, after.y - before.y) < 2,
+    "A metadata refresh moved the settled graph",
+  );
   await context.close();
   assert.deepEqual(errors, []);
 });

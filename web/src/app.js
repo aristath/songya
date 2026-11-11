@@ -185,7 +185,7 @@ Alpine.data("songya", () => {
       );
       nodes = projected.nodes;
       const links = projected.links;
-      graphRecords = nodes;
+      graphRecords = nodes.filter((node) => !node.junction);
       try {
         graph ||= memoryGraph(
           this.$refs.graph,

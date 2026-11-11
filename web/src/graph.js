@@ -1,6 +1,7 @@
 import ForceGraph3D from "3d-force-graph";
 import ForceGraph from "force-graph";
 import { forceCollide } from "d3-force-3d";
+import { symmetricRelation } from "./graph-view.js";
 import { CanvasTexture, Sprite, SpriteMaterial, SRGBColorSpace } from "three";
 import { portraitURL, paintPortrait } from "./portraits.js";
 
@@ -13,7 +14,8 @@ function label(text) {
   return element;
 }
 
-const nodeValue = (node) => 1 + Math.max(0, Number(node.weight) || 0);
+const nodeValue = (node) =>
+  node.junction ? 0.05 : 1 + Math.max(0, Number(node.weight) || 0);
 const nodeRadius = (node) => 4 * Math.sqrt(nodeValue(node));
 
 export function memoryGraph(
@@ -39,7 +41,7 @@ export function memoryGraph(
   const pictures = new Map(),
     sprites = new Set();
   const imageFor = (node) => {
-    if (!node.profile_picture) return null;
+    if (node.junction || !node.profile_picture) return null;
     const url = portraitURL(node.id, node.profile_picture, node.revision);
     if (!pictures.has(url)) {
       const image = new Image();
@@ -69,12 +71,18 @@ export function memoryGraph(
   const graph = new (flat ? ForceGraph : ForceGraph3D)(container)
     .backgroundColor(colors.crust)
     .nodeColor((node) =>
-      matches && !matches.has(node.id)
-        ? colors.surface1
-        : resolveColor(nodeColor(node), colors),
+      node.junction
+        ? colors.overlay1
+        : matches && !matches.has(node.id)
+          ? colors.surface1
+          : resolveColor(nodeColor(node), colors),
     )
     .nodeVal(nodeValue)
-    .nodeLabel((node) => label(node.title || node.id))
+    .nodeLabel((node) =>
+      label(
+        `${node.junction ? "Hidden record: " : ""}${node.title || node.id}`,
+      ),
+    )
     .linkColor((link) =>
       !matches ||
       matches.has(link.source.id || link.source) ||
@@ -84,8 +92,15 @@ export function memoryGraph(
           : colors.overlay1
         : colors.surface0,
     )
-    .linkLabel((link) => label(link.type))
-    .linkDirectionalArrowLength((link) => (link.projected ? 0 : 2))
+    .linkLabel((link) => {
+      const records = [link.source, link.target]
+        .filter((node) => node.junction)
+        .map((node) => node.title || node.id);
+      return label([link.type, ...records].join(" · "));
+    })
+    .linkDirectionalArrowLength((link) =>
+      symmetricRelation(link.type) ? 0 : 2,
+    )
     .onNodeClick((node) => inspect(node.id))
     .cooldownTicks(120)
     .onEngineStop(() => {
@@ -94,19 +109,10 @@ export function memoryGraph(
         fit = false;
       }
     });
-  const linkForce = graph.d3Force("link");
-  const defaultStrength = linkForce.strength();
-  linkForce.strength(
-    (link) =>
-      defaultStrength(link) * (link.projected ? Math.min(1, link.strength) : 1),
-  );
   if (flat) {
     graph
-      .linkLineDash((link) => (link.projected ? [3, 3] : null))
-      .linkWidth((link) =>
-        link.projected
-          ? Math.min(2, Math.max(0.5, Math.sqrt(link.strength)))
-          : 1,
+      .linkLineDash((link) =>
+        link.source.junction || link.target.junction ? [3, 3] : null,
       )
       .nodeCanvasObjectMode(() => "after")
       .nodeCanvasObject((node, ctx) => {
@@ -249,48 +255,54 @@ export function memoryGraph(
     },
     update(data) {
       // Both renderers mutate data. Give each its own nodes and links.
-      const nodes = data.nodes.map((node) => ({ ...node }));
+      const previous = new Map(
+        graph.graphData().nodes.map((node) => [node.id, node]),
+      );
+      const nodes = data.nodes.map((node) => {
+        const copy = { ...node };
+        const old = previous.get(node.id);
+        if (old) {
+          for (const key of ["x", "y", "z", "vx", "vy", "vz", "fx", "fy", "fz"])
+            if (key in old) copy[key] = old[key];
+        }
+        return copy;
+      });
       const byID = new Map(nodes.map((node) => [node.id, node]));
       const links = data.links
         .filter((link) => byID.has(link.source) && byID.has(link.target))
         .map((link) => ({ ...link }));
       const stamp = JSON.stringify([
-        nodes.map((node) => node.id),
-        links.map((link) => [
-          link.source,
-          link.target,
-          link.type,
-          link.strength,
-        ]),
+        nodes.map((node) => node.id).sort(),
+        links
+          .map((link) => JSON.stringify([link.source, link.target, link.type]))
+          .sort(),
       ]);
       if (stamp === layoutStamp) {
         // Color and label changes do not need a new force layout or camera fit.
         let sizeChanged = false;
         for (const node of graph.graphData().nodes) {
-          sizeChanged ||= node.weight !== byID.get(node.id)?.weight;
+          sizeChanged ||=
+            node.weight !== byID.get(node.id)?.weight ||
+            node.junction !== byID.get(node.id)?.junction;
           Object.assign(node, byID.get(node.id));
         }
         graph
           .nodeVal(nodeValue)
           .nodeColor(graph.nodeColor())
           .nodeLabel(graph.nodeLabel());
-        if (sizeChanged) {
-          if (flat) {
-            graph.d3Force("collide").radius((node) => nodeRadius(node) + 4);
-            graph
-              .d3Force("link")
-              .distance(
-                (link) =>
-                  nodeRadius(link.source) + nodeRadius(link.target) + 28,
-              );
-          }
-          if (!fit) graph.d3ReheatSimulation();
+        if (sizeChanged && flat) {
+          graph.d3Force("collide").radius((node) => nodeRadius(node) + 4);
+          graph
+            .d3Force("link")
+            .distance(
+              (link) => nodeRadius(link.source) + nodeRadius(link.target) + 28,
+            );
         }
         refreshPictures();
         return;
       }
+      fit ||= !previous.size;
       layoutStamp = stamp;
-      fit = true;
       disposeSprites();
       graph.graphData({ nodes, links });
       const active = new Set(
