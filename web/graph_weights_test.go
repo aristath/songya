@@ -10,7 +10,11 @@ import (
 
 func weightRecord(kind songya.Destination, n int, links ...songya.Relation) songya.Record {
 	prefix := map[songya.Destination]string{songya.Entities: "e", songya.Memories: "m", songya.Topics: "t", songya.Stories: "s"}[kind]
-	return songya.Record{ID: fmt.Sprintf("%s_%012d", prefix, n), Kind: kind, Revision: fmt.Sprint(n), Relations: links}
+	body := ""
+	if kind == songya.Memories {
+		body = "memory"
+	}
+	return songya.Record{Body: body, ID: fmt.Sprintf("%s_%012d", prefix, n), Kind: kind, Revision: fmt.Sprint(n), Relations: links}
 }
 func near(t *testing.T, actual, expected float64) {
 	t.Helper()
@@ -19,15 +23,15 @@ func near(t *testing.T, actual, expected float64) {
 	}
 }
 
-func TestGraphWeightRelationsHaveMeaningfulDirections(t *testing.T) {
+func TestGraphWeightContentAssociationsExcludeOrderingAndIdentityGuesses(t *testing.T) {
 	for _, test := range []struct {
 		kind    string
 		reverse bool
 		want    float64
 	}{
 		{"related_to", false, .5}, {"related_to", true, .5},
-		{"caused_by", false, .5}, {"caused_by", true, .375},
-		{"part_of", false, .4}, {"part_of", true, .25},
+		{"caused_by", false, .5}, {"caused_by", true, .5},
+		{"part_of", false, .5}, {"part_of", true, .5},
 		{"after", false, 0}, {"after", true, 0}, {"possibly_same_as", false, 0},
 	} {
 		t.Run(fmt.Sprint(test.kind, test.reverse), func(t *testing.T) {
@@ -44,7 +48,7 @@ func TestGraphWeightRelationsHaveMeaningfulDirections(t *testing.T) {
 	}
 }
 
-func TestGraphWeightHopLimitsDeduplicationAndHubDilution(t *testing.T) {
+func TestGraphWeightHopLimitsDeduplicationAndNoHubPenalty(t *testing.T) {
 	for hops := 1; hops <= 6; hops++ {
 		records := []songya.Record{weightRecord(songya.Memories, 1)}
 		target := records[0].ID
@@ -56,7 +60,7 @@ func TestGraphWeightHopLimitsDeduplicationAndHubDilution(t *testing.T) {
 		g := newWeightGraph(&songya.Catalog{Records: records})
 		expected := 0.0
 		if hops <= 5 {
-			expected = graphHopWeights[hops] / math.Pow(math.Sqrt(2), float64(hops-1))
+			expected = graphHopWeights[hops]
 		}
 		near(t, g.score(target), expected)
 	}
@@ -71,8 +75,8 @@ func TestGraphWeightHopLimitsDeduplicationAndHubDilution(t *testing.T) {
 		records = append(records, weightRecord(songya.Entities, i, songya.Relation{Type: "related_to", Target: bridge.ID}))
 	}
 	large := newWeightGraph(&songya.Catalog{Records: records}).score(root.ID)
-	near(t, small, .4/math.Sqrt(2))
-	near(t, large, .4/math.Sqrt(102))
+	near(t, small, .4)
+	near(t, large, small)
 	// Reciprocal/duplicate edges and loops must not count the same memory again.
 	records[0].Relations = append(records[0].Relations, songya.Relation{Type: "related_to", Target: memory.ID}, songya.Relation{Type: "related_to", Target: memory.ID})
 	records[2].Relations = []songya.Relation{{Type: "related_to", Target: root.ID}}
@@ -103,4 +107,33 @@ func TestGraphWeightIgnoresDates(t *testing.T) {
 			near(t, g.score(entity.ID), .5)
 		})
 	}
+}
+
+func TestGraphWeightCountsOwnBodyAndEveryConnectedKind(t *testing.T) {
+	root := weightRecord(songya.Entities, 1)
+	root.Body = "One two"
+	records := []songya.Record{root}
+	for i, kind := range []songya.Destination{songya.Entities, songya.Topics, songya.Stories, songya.Memories} {
+		record := weightRecord(kind, i+2, songya.Relation{Type: "related_to", Target: root.ID})
+		record.Body = "Three recorded words"
+		records = append(records, record)
+	}
+	near(t, newWeightGraph(&songya.Catalog{Records: records}).score(root.ID), 2+.5*12)
+	// Metadata and absent content add no words, even when the entry has links.
+	records[0].Title = "A long title that is not the saved account"
+	records[0].Body = " \n\t "
+	near(t, newWeightGraph(&songya.Catalog{Records: records}).score(root.ID), .5*12)
+	records[0].Body = "Μια\tσταθερή\nανάμνηση"
+	near(t, newWeightGraph(&songya.Catalog{Records: records}).score(root.ID), 3+.5*12)
+}
+
+func TestGraphWeightUsesShortestPathAndRecordOrderingDoesNotChangeIt(t *testing.T) {
+	root := weightRecord(songya.Entities, 1)
+	bridge := weightRecord(songya.Topics, 1, songya.Relation{Type: "related_to", Target: root.ID})
+	memory := weightRecord(songya.Memories, 1, songya.Relation{Type: "related_to", Target: root.ID}, songya.Relation{Type: "related_to", Target: bridge.ID})
+	memory.Body = "Four words counted once"
+	records := []songya.Record{root, bridge, memory}
+	near(t, newWeightGraph(&songya.Catalog{Records: records}).score(root.ID), 2)
+	records[0], records[2] = records[2], records[0]
+	near(t, newWeightGraph(&songya.Catalog{Records: records}).score(root.ID), 2)
 }

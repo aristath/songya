@@ -470,19 +470,19 @@ editor; it remains a draft until the record is saved. Linked files are replaced
 or removed only from their source memory. Story photos use the same viewer.
 
 
-Graph point sizes use deterministic weights, independently of visibility filters.
-Each distinct reachable memory contributes once through its strongest path, up to
-five hops. Hop multipliers are 0.5, 0.4, 0.3, 0.2 and 0.1. Relation multipliers are
-1 in both directions for `related_to`; 1 toward a `caused_by` cause and 0.75 toward
-its effects; 0.8 toward a `part_of` whole and 0.5 toward its parts. Ordering,
-possible identity matches and redirects do not contribute. Every intermediate
-record divides the path strength by the square root of its unique neighbour
-count; the starting record does not. This reduces shortcuts through broad hubs.
+Graph point sizes measure recorded content. Each entry contributes its own Markdown
+body's word count at full weight. Each distinct connected entry, of any kind,
+contributes once at its shortest distance: 0.5, 0.4, 0.3, 0.2 or 0.1 for hops one
+through five. Words are separated by whitespace, including Unicode spaces and
+line breaks. Titles, aliases and other metadata do not add words.
 
-Dates do not affect weights. Dated, undated and ongoing memories use the same
-contribution calculation. The 2D radius is `4 * sqrt(1 + weight)`; 3D uses the
-corresponding volume scaling. Photos, collision spacing and ordinary points use
-the same weights.
+`related_to`, `caused_by` and `part_of` provide paths in either direction, without
+extra relationship multipliers or hub penalties. Ordering, possible identity
+matches and redirects do not contribute. Hidden entries still contribute their
+text through the neutral junctions. Dates do not affect weights.
+
+The 2D radius is `4 * sqrt(1 + weight)`; 3D uses the corresponding volume scaling.
+Photos, collision spacing and ordinary points use the same weights.
 
 `graph-weights.json` is the single rebuildable repository-wide weight cache. It
 also retains source revisions, neighbours and pending work so restarts can detect

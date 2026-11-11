@@ -14,7 +14,7 @@ import (
 )
 
 const graphWeightFile = "graph-weights.json"
-const graphWeightVersion = 2
+const graphWeightVersion = 3
 const graphWeightTTL = 24 * time.Hour
 
 type graphWeightEntry struct {

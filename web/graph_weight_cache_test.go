@@ -171,7 +171,7 @@ func TestGraphWeightCacheWriteFailureRecoversWithoutBlockingRecords(t *testing.T
 	}
 	// One damaged entry must not discard the other entries.
 	b, _ := json.Marshal(loaded.cache.Entries[record.ID])
-	bad := []byte(`{"version":2,"records":{"` + record.ID + `":` + string(b) + `,"e_000000000001":{"weight":"broken"}}}`)
+	bad := []byte(`{"version":3,"records":{"` + record.ID + `":` + string(b) + `,"e_000000000001":{"weight":"broken"}}}`)
 	if err := os.WriteFile(path, bad, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -204,16 +204,16 @@ func TestGraphWeightsObserveExternalClientEdits(t *testing.T) {
 		}
 		t.Fatal("External change did not reach graph weights")
 	}
-	wait(func() bool { entries, _ := app.chat.weights.snapshot(); return entries[entity.ID].Weight == .5 })
+	wait(func() bool { entries, _ := app.chat.weights.snapshot(); return entries[entity.ID].Weight == 1.5 })
 	before, _ := app.chat.weights.snapshot()
 	// Separate Store instance, without an HTTP notification, as with an MCP client.
 	client, _ := songya.Open(store.Directory())
-	_, err = client.Update(memory.ID, memory.Revision, map[string]any{"time": map[string]any{"date": "1990-01-01"}}, "Keep the account.")
+	_, err = client.Update(memory.ID, memory.Revision, map[string]any{"time": map[string]any{"date": "1990-01-01"}}, "Keep the account. Add more words.")
 	if err != nil {
 		t.Fatal(err)
 	}
 	wait(func() bool {
 		entries, _ := app.chat.weights.snapshot()
-		return entries[entity.ID].Weight == .5 && entries[memory.ID].CalculatedAt.After(before[memory.ID].CalculatedAt)
+		return entries[entity.ID].Weight == 3 && entries[memory.ID].CalculatedAt.After(before[memory.ID].CalculatedAt)
 	})
 }

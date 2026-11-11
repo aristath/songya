@@ -5833,7 +5833,7 @@ test("photo masonry opens accessible details and keeps file actions in the viewe
   assert.deepEqual(errors, []);
 });
 
-test("weighted graph sizes ignore dates and update after connection edits", async () => {
+test("weighted graph sizes count entry text, ignore dates and update after body and connection edits", async () => {
   const john = await save(
     source("John weighted graph", "An identity."),
     "entities",
@@ -5863,7 +5863,7 @@ test("weighted graph sizes ignore dates and update after connection edits", asyn
     async (ids) => {
       const data = await (await fetch("/api/graph")).json();
       const [a, b] = ids.map((id) => data.nodes.find((n) => n.id === id));
-      return a?.weight === 1 && b?.weight === 0.5;
+      return a?.weight === 4 && b?.weight === 3;
     },
     [john.id, mary.id],
   );
@@ -5907,10 +5907,21 @@ test("weighted graph sizes ignore dates and update after connection edits", asyn
     async ({ id, calculated }) => {
       const graph = await (await fetch("/api/graph")).json();
       const node = graph.nodes.find((n) => n.id === id);
-      return node?.weight === 1 && node.weight_calculated_at > calculated;
+      return node?.weight === 4 && node.weight_calculated_at > calculated;
     },
     { id: john.id, calculated },
   );
+  const identity = await (await fetch(url + "/api/records/" + john.id)).json();
+  await save(
+    source("John weighted graph", "An identity with more recorded words."),
+    "entities",
+    john.id,
+    identity.version,
+  );
+  await page.waitForFunction(async (id) => {
+    const graph = await (await fetch("/api/graph")).json();
+    return graph.nodes.find((n) => n.id === id)?.weight === 8;
+  }, john.id);
   const edited = await (await fetch(url + "/api/records/" + first.id)).json();
   await save(
     source("John's event", "An experience.", "time: {date: 2000-01-01}\n"),
@@ -5923,7 +5934,7 @@ test("weighted graph sizes ignore dates and update after connection edits", asyn
     return graph.nodes.find((n) => n.id === id)?.weight === 0.5;
   }, john.id);
   await page.waitForFunction(() =>
-    window.weightRadii.some((r) => Math.abs(r - 4 * Math.sqrt(1.5)) < 1e-6),
+    window.weightRadii.some((r) => Math.abs(r - 4 * Math.sqrt(8)) < 1e-6),
   );
   await page.getByRole("button", { name: "3D", exact: true }).click();
   await page.getByRole("button", { name: "2D", exact: true }).click();
