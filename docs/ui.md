@@ -25,6 +25,16 @@ Unrelated shared records and other owners' accounts are omitted. Graph search
 uses that same selection, which survives view switching and expansion. The graph
 filter is independent of the library filters and refreshes after saves and
 deletions. No CDN is required.
+The legend checkboxes select which record kinds appear as points. Hidden records
+still carry connections between visible points, including chains of hidden kinds.
+These projected connections have no direction arrows (and are dashed in 2D);
+hover identifies them as connections through hidden records. Longer paths and
+broadly shared records contribute less layout strength; independent paths add
+support. The view keeps the strongest few indirect neighbours plus a connecting
+backbone, avoiding a dense clique without disconnecting the remaining points.
+Owner selection is applied before this projection, so excluded accounts
+cannot introduce connections. Showing all kinds restores the saved direct graph.
+Projection changes only the display, not stored relationships or point weights.
 Its search matches names/titles, aliases and IDs, highlighting matches while
 dimming other points. Select a result or press Enter to move the camera to it;
 click the point to inspect. Clear the search or press Escape to restore the overview.

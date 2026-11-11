@@ -3,6 +3,7 @@ import { portraitsUI } from "./portraits.js";
 import { filesUI, recordFiles } from "./files.js";
 import { codeEditor, richEditor } from "./editors.js";
 import { memoryGraph } from "./graph.js";
+import { projectGraph } from "./graph-view.js";
 import { chatUI } from "./chat.js";
 import { recallUI } from "./recall.js";
 import { defaultKindColors } from "./palette.js";
@@ -178,11 +179,12 @@ Alpine.data("songya", () => {
         }
         nodes = nodes.filter((node) => visible.has(node.id));
       }
-      nodes = nodes.filter((node) => this.graphKinds[node.kind] !== false);
-      const ids = new Set(nodes.map((node) => node.id));
-      const links = graphData.links.filter(
-        (link) => ids.has(link.source) && ids.has(link.target),
+      const projected = projectGraph(
+        { nodes, links: graphData.links },
+        this.graphKinds,
       );
+      nodes = projected.nodes;
+      const links = projected.links;
       graphRecords = nodes;
       try {
         graph ||= memoryGraph(

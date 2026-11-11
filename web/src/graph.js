@@ -29,6 +29,8 @@ export function memoryGraph(
       36,
       (container.parentElement.querySelector(".graph-toolbar")?.offsetHeight ||
         0) + 24,
+      (container.parentElement.querySelector(".graph-legend")?.offsetHeight ||
+        0) + 24,
     );
   let fit = true,
     matches = null,
@@ -83,7 +85,7 @@ export function memoryGraph(
         : colors.surface0,
     )
     .linkLabel((link) => label(link.type))
-    .linkDirectionalArrowLength(2)
+    .linkDirectionalArrowLength((link) => (link.projected ? 0 : 2))
     .onNodeClick((node) => inspect(node.id))
     .cooldownTicks(120)
     .onEngineStop(() => {
@@ -92,8 +94,20 @@ export function memoryGraph(
         fit = false;
       }
     });
+  const linkForce = graph.d3Force("link");
+  const defaultStrength = linkForce.strength();
+  linkForce.strength(
+    (link) =>
+      defaultStrength(link) * (link.projected ? Math.min(1, link.strength) : 1),
+  );
   if (flat) {
     graph
+      .linkLineDash((link) => (link.projected ? [3, 3] : null))
+      .linkWidth((link) =>
+        link.projected
+          ? Math.min(2, Math.max(0.5, Math.sqrt(link.strength)))
+          : 1,
+      )
       .nodeCanvasObjectMode(() => "after")
       .nodeCanvasObject((node, ctx) => {
         const image = imageFor(node);
@@ -197,7 +211,8 @@ export function memoryGraph(
     },
     focus(id) {
       if (!id) {
-        graph.zoomToFit(500, fitPadding());
+        // Finish after an earlier focus transition when search is cleared quickly.
+        graph.zoomToFit(650, fitPadding());
         return;
       }
       const node = graph.graphData().nodes.find((node) => node.id === id);
@@ -241,7 +256,12 @@ export function memoryGraph(
         .map((link) => ({ ...link }));
       const stamp = JSON.stringify([
         nodes.map((node) => node.id),
-        links.map((link) => [link.source, link.target, link.type]),
+        links.map((link) => [
+          link.source,
+          link.target,
+          link.type,
+          link.strength,
+        ]),
       ]);
       if (stamp === layoutStamp) {
         // Color and label changes do not need a new force layout or camera fit.

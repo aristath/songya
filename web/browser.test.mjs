@@ -236,9 +236,11 @@ async function editRecord(page, title) {
 // Locate a rendered sphere in a screenshot, rather than exposing renderer internals.
 async function graphPoint(page, color) {
   const canvas = page.locator(".graph-canvas canvas");
+  const bounds = await canvas.boundingBox();
+  const legend = await page.locator(".graph-legend").boundingBox();
   const png = (await canvas.screenshot()).toString("base64");
   return page.evaluate(
-    async ({ png, color }) => {
+    async ({ png, color, bottom }) => {
       const kind = {
         green: "entities",
         amber: "memories",
@@ -263,7 +265,8 @@ async function graphPoint(page, color) {
       let sumX = 0,
         sumY = 0,
         count = 0;
-      for (let y = 15; y < image.height - 45; y++) {
+      // A wrapped legend overlays the canvas; its color keys are not nodes.
+      for (let y = 15; y < image.height * bottom; y++) {
         for (let x = 15; x < image.width - 15; x++) {
           const i = (y * image.width + x) * 4;
           const [r, g, b] = pixels.slice(i, i + 3);
@@ -282,7 +285,13 @@ async function graphPoint(page, color) {
       }
       return count ? { x: sumX / count, y: sumY / count } : null;
     },
-    { png, color },
+    {
+      png,
+      color,
+      bottom:
+        Math.max(0, Math.min(bounds.height - 15, legend.y - bounds.y - 8)) /
+        bounds.height,
+    },
   );
 }
 
@@ -1251,7 +1260,7 @@ test("graph views render, preserve search when switching, and open safe hover la
   await search.focus();
   await search.press("Escape");
   assert.equal(await search.inputValue(), "");
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(750); // The overview finishes after the earlier focus.
   for (const color of ["green", "amber", "white", "red"]) {
     assert.ok(await graphPoint(page, color), "Clear did not restore " + color);
   }
@@ -5264,9 +5273,89 @@ test("entity profile pictures preserve originals, crop consistently, and survive
   assert.deepEqual(errors, []);
 });
 
-test("graph legend checkboxes filter kinds in both views", async () => {
-  const { page, context } = await pageFor();
+test("graph legend rebuilds connections through hidden kinds in both views", async () => {
+  const { page, context } = await pageFor(undefined, () => {
+    window.projectedLineDraws = 0;
+    const setLineDash = CanvasRenderingContext2D.prototype.setLineDash;
+    CanvasRenderingContext2D.prototype.setLineDash = function (segments) {
+      if (segments[0] === 3 && segments[1] === 3) window.projectedLineDraws++;
+      return setLineDash.call(this, segments);
+    };
+  });
+  const fixture = {
+    nodes: [
+      { id: "e_john", title: "Projection John", kind: "entities" },
+      { id: "e_mary", title: "Projection Mary", kind: "entities" },
+      { id: "m_meal", title: "Projection meal", kind: "memories", user: "ari" },
+      { id: "t_music", title: "Projection music", kind: "topics" },
+      {
+        id: "s_visit",
+        title: "Projection visit",
+        kind: "stories",
+        user: "ari",
+      },
+    ],
+    links: [
+      { source: "e_john", target: "m_meal", type: "related_to" },
+      { source: "m_meal", target: "t_music", type: "related_to" },
+      { source: "t_music", target: "s_visit", type: "related_to" },
+      { source: "s_visit", target: "e_mary", type: "related_to" },
+      { source: "e_mary", target: "e_john", type: "related_to" },
+    ],
+  };
+  await page.route("**/api/graph**", (route) =>
+    route.fulfill({ json: fixture }),
+  );
+  await page.reload();
   await page.locator(".graph-legend").scrollIntoViewIfNeeded();
+  const search = page.getByRole("searchbox", {
+    name: "Search graph",
+    exact: true,
+  });
+  await search.fill("Projection");
+  await page.waitForFunction(
+    () => window.Alpine.$data(document.body).graphMatches.length === 5,
+  );
+  assert.equal(await page.evaluate(() => window.projectedLineDraws), 0);
+  for (const mode of ["2D", "3D"]) {
+    await page.getByRole("button", { name: mode, exact: true }).click();
+    for (const kind of ["entities", "memories", "topics", "stories"]) {
+      const before = await page.evaluate(() => window.projectedLineDraws);
+      const box = page.getByLabel("Show " + kind + " in graph", {
+        exact: true,
+      });
+      await box.uncheck();
+      await page.waitForFunction((kind) => {
+        const matches = window.Alpine.$data(document.body).graphMatches;
+        return (
+          matches.length === (kind === "entities" ? 3 : 4) &&
+          matches.every((node) => node.kind !== kind)
+        );
+      }, kind);
+      if (mode === "2D")
+        await page.waitForFunction(
+          (before) => window.projectedLineDraws > before,
+          before,
+        );
+      await box.check();
+      await page.waitForFunction(
+        () => window.Alpine.$data(document.body).graphMatches.length === 5,
+      );
+    }
+  }
+  await page.getByRole("button", { name: "2D", exact: true }).click();
+  // A chain through three different hidden kinds still leaves John and Mary.
+  for (const kind of ["memories", "topics", "stories"])
+    await page
+      .getByLabel("Show " + kind + " in graph", { exact: true })
+      .uncheck();
+  await page.waitForFunction(
+    () => window.Alpine.$data(document.body).graphMatches.length === 2,
+  );
+  for (const kind of ["memories", "topics", "stories"])
+    await page
+      .getByLabel("Show " + kind + " in graph", { exact: true })
+      .check();
   for (const kind of ["entities", "memories", "topics", "stories"]) {
     const box = page.getByLabel("Show " + kind + " in graph", { exact: true });
     assert.equal(await box.isChecked(), true);
