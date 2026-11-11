@@ -1,10 +1,12 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
 	"slices"
+	"sort"
 	"sync"
 	"time"
 
@@ -23,9 +25,8 @@ type graphWeightEntry struct {
 }
 
 type graphWeightCache struct {
-	Version        int                         `json:"version"`
-	Entries        map[string]graphWeightEntry `json:"records"`
-	LastBackground time.Time                   `json:"last_background"`
+	Version int                         `json:"version"`
+	Entries map[string]graphWeightEntry `json:"records"`
 }
 
 type graphWeights struct {
@@ -41,12 +42,10 @@ func newGraphWeights(a *chatApp) *graphWeights {
 	// This file is a rebuildable projection. An unreadable entry does not discard healthy entries.
 	if data, err := a.readFile(graphWeightFile); err == nil {
 		var saved struct {
-			Version        int
-			Records        map[string]json.RawMessage
-			LastBackground time.Time `json:"last_background"`
+			Version int
+			Records map[string]json.RawMessage
 		}
 		if json.Unmarshal(data, &saved) == nil && saved.Version == 1 {
-			w.cache.LastBackground = saved.LastBackground
 			for id, raw := range saved.Records {
 				var entry graphWeightEntry
 				if songya.ValidID(id) && json.Unmarshal(raw, &entry) == nil && entry.Weight >= 0 && !math.IsNaN(entry.Weight) && !math.IsInf(entry.Weight, 0) {
@@ -71,12 +70,12 @@ func (a *chatApp) recordsChanged() {
 func (a *chatApp) runGraphWeights() {
 	defer a.wg.Done()
 	for {
-		delay := time.Second
 		catalog, err := a.store.Scan(a.ctx)
 		if err == nil {
+			now := time.Now()
+			changed := a.weights.update(a.ctx, newWeightGraph(&catalog, now), now, len(catalog.Diagnostics) == 0)
 			a.weights.mu.Lock()
 			previousIssue := a.weights.issue
-			changed := a.weights.update(newWeightGraph(&catalog, time.Now()), time.Now(), len(catalog.Diagnostics) == 0)
 			if a.weights.dirty {
 				data, marshalErr := json.MarshalIndent(a.weights.cache, "", "  ")
 				err = marshalErr
@@ -91,15 +90,12 @@ func (a *chatApp) runGraphWeights() {
 				}
 			}
 			changed = changed || previousIssue != a.weights.issue
-			if until := time.Until(a.weights.cache.LastBackground.Add(time.Second)); until > 0 && until < delay {
-				delay = until
-			}
 			a.weights.mu.Unlock()
 			if changed {
 				a.recordsRevision.Add(1)
 			}
 		}
-		timer := time.NewTimer(delay)
+		timer := time.NewTimer(time.Second)
 		select {
 		case <-a.ctx.Done():
 			timer.Stop()
@@ -111,9 +107,11 @@ func (a *chatApp) runGraphWeights() {
 	}
 }
 
-// update is called by one worker. Edits bypass the background limit; their affected
-// records retain their existing values and are queued before routine refreshes.
-func (w *graphWeights) update(g *weightGraph, now time.Time, complete bool) bool {
+// One worker drains due work, prioritising edits. Scoring runs outside the cache
+// lock so readers can keep using the previous values during recalculation.
+func (w *graphWeights) update(ctx context.Context, g *weightGraph, now time.Time, complete bool) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	roots, immediate := map[string]bool{}, map[string]bool{}
 	oldEdges := map[string][]string{}
 	for id, entry := range w.cache.Entries {
@@ -178,47 +176,45 @@ func (w *graphWeights) update(g *weightGraph, now time.Time, complete bool) bool
 		frontier = next
 	}
 	changed := false
-	calculate := func(id string) {
+	ids := []string{}
+	for id := range g.records {
 		entry := w.cache.Entries[id]
-		entry.Weight = g.score(id)
+		if entry.Pending || entry.CalculatedAt.IsZero() || now.Sub(entry.CalculatedAt) >= graphWeightTTL {
+			ids = append(ids, id)
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		id, other := ids[i], ids[j]
+		if immediate[id] != immediate[other] {
+			return immediate[id]
+		}
+		a, b := w.cache.Entries[id], w.cache.Entries[other]
+		if a.Pending != b.Pending {
+			return a.Pending
+		}
+		if !a.CalculatedAt.Equal(b.CalculatedAt) {
+			return a.CalculatedAt.Before(b.CalculatedAt)
+		}
+		// Never-calculated ties favour well-connected records so the graph becomes useful quickly.
+		if a.CalculatedAt.IsZero() && len(g.edges[id]) != len(g.edges[other]) {
+			return len(g.edges[id]) > len(g.edges[other])
+		}
+		return id < other
+	})
+	for _, id := range ids {
+		if ctx.Err() != nil {
+			break
+		}
+		w.mu.Unlock()
+		score := g.score(id)
+		w.mu.Lock()
+		entry := w.cache.Entries[id]
+		entry.Weight = score
 		entry.CalculatedAt = now
 		entry.Pending = false
 		w.cache.Entries[id] = entry
 		w.dirty = true
 		changed = true
-	}
-	for _, id := range sortedWeightIDs(immediate) {
-		calculate(id)
-	}
-	if now.Sub(w.cache.LastBackground) >= time.Second {
-		candidate := ""
-		before := func(id, other string) bool {
-			a, b := w.cache.Entries[id], w.cache.Entries[other]
-			if a.Pending != b.Pending {
-				return a.Pending
-			}
-			if !a.CalculatedAt.Equal(b.CalculatedAt) {
-				return a.CalculatedAt.Before(b.CalculatedAt)
-			}
-			// Never-calculated ties favour well-connected records so the graph becomes useful quickly.
-			if a.CalculatedAt.IsZero() && len(g.edges[id]) != len(g.edges[other]) {
-				return len(g.edges[id]) > len(g.edges[other])
-			}
-			return id < other
-		}
-		for id := range g.records {
-			entry := w.cache.Entries[id]
-			if !entry.Pending && !entry.CalculatedAt.IsZero() && now.Sub(entry.CalculatedAt) < graphWeightTTL {
-				continue
-			}
-			if candidate == "" || before(id, candidate) {
-				candidate = id
-			}
-		}
-		if candidate != "" {
-			calculate(candidate)
-			w.cache.LastBackground = now
-		}
 	}
 	w.initialized = true
 	return changed

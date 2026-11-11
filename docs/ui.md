@@ -477,12 +477,13 @@ collision spacing and ordinary points use the same weights.
 
 `graph-weights.json` is the single rebuildable repository-wide weight cache. It
 also retains source revisions, neighbours and pending work so restarts can detect
-edits and removed connections. A web worker calculates at most one queued record
-per second. Results expire after 24 hours. Never-calculated records come first,
-then the oldest expired calculation; affected records have priority. Ties between
-never-calculated records favour the most connected records, then ID. Existing
-records edited through the UI, chat or external clients recalculate immediately
-when detected; affected neighbours queue for the regular worker. Edits outside
+edits and removed connections. A background worker drains all due calculations
+without a per-record rate limit, saves the results and notifies the chart after
+the pass. Results expire after 24 hours. Edited and affected records have priority,
+followed by never-calculated records and the oldest expired calculation. Ties
+between never-calculated records favour the most connected records, then ID.
+Records edited through the UI, chat or external clients and their affected
+neighbours recalculate in the next pass. Edits outside
 the web process are detected on its roughly one-second scan. Cached sizes remain
 visible during refreshes. The chart shows progress during its initial pass.
 Cache writes use synced atomic replacement and retry after failures; failures do

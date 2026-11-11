@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -10,81 +11,99 @@ import (
 	"github.com/aristath/songya"
 )
 
-func TestGraphWeightQueueRateTTLAndImmediateEdits(t *testing.T) {
+func TestGraphWeightBatchTTLAndEdits(t *testing.T) {
 	store, _ := songya.Open(t.TempDir())
-	a := &chatApp{store: store}
-	w := newGraphWeights(a)
+	app := &chatApp{store: store}
+	w := newGraphWeights(app)
+	ctx := context.Background()
 	now := time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC)
-	e := weightRecord(songya.Entities, 1)
-	m := datedWeightMemory(1, "2026-11-09")
+	entity := weightRecord(songya.Entities, 1)
+	memory := datedWeightMemory(1, "2026-11-09")
 	other := weightRecord(songya.Topics, 1)
-	e.Relations = []songya.Relation{{Type: "related_to", Target: m.ID}}
-	catalog := songya.Catalog{Records: []songya.Record{e, m, other}}
+	entity.Relations = []songya.Relation{{Type: "related_to", Target: memory.ID}}
+	catalog := songya.Catalog{Records: []songya.Record{entity, memory, other}}
 	g := newWeightGraph(&catalog, now)
-	w.update(g, now, true)
-	ready := func() int {
-		n := 0
-		for _, v := range w.cache.Entries {
-			if !v.CalculatedAt.IsZero() {
-				n++
-			}
+	w.update(ctx, g, now, true)
+	for id, entry := range w.cache.Entries {
+		if !entry.CalculatedAt.Equal(now) || entry.Pending {
+			t.Fatalf("Cold start did not drain %s: %+v", id, entry)
 		}
-		return n
 	}
-	if ready() != 1 {
-		t.Fatal("Cold start must calculate only one record", ready())
+	if w.update(ctx, g, now.Add(500*time.Millisecond), true) {
+		t.Fatal("Fresh weights were recalculated")
 	}
-	w.update(g, now.Add(500*time.Millisecond), true)
-	if ready() != 1 {
-		t.Fatal("Exceeded one background calculation per second")
-	}
-	// New records join the queue rather than bypassing the rate limit.
 	fresh := weightRecord(songya.Topics, 2)
-	extended := songya.Catalog{Records: append(append([]songya.Record{}, catalog.Records...), fresh)}
-	w.update(newWeightGraph(&extended, now), now.Add(600*time.Millisecond), true)
-	if !w.cache.Entries[fresh.ID].CalculatedAt.IsZero() {
-		t.Fatal("New record bypassed background rate limit")
+	catalog.Records = append(catalog.Records, fresh)
+	addedAt := now.Add(600 * time.Millisecond)
+	w.update(ctx, newWeightGraph(&catalog, now), addedAt, true)
+	if !w.cache.Entries[fresh.ID].CalculatedAt.Equal(addedAt) {
+		t.Fatal("New record waited for a rate-limit slot")
 	}
-	// Keep the rest of this fixture at three records.
-	delete(w.cache.Entries, fresh.ID)
-	w.update(g, now.Add(time.Second), true)
-	w.update(g, now.Add(2*time.Second), true)
-	if ready() != 3 {
-		t.Fatal("Never-calculated work was skipped")
-	}
-	before := w.cache.Entries[e.ID]
-	w.update(g, now.Add(23*time.Hour), true)
-	if !w.cache.Entries[e.ID].CalculatedAt.Equal(before.CalculatedAt) {
+	before := w.cache.Entries[entity.ID]
+	w.update(ctx, newWeightGraph(&catalog, now), now.Add(23*time.Hour), true)
+	if !w.cache.Entries[entity.ID].CalculatedAt.Equal(before.CalculatedAt) {
 		t.Fatal("Fresh cache was recalculated")
 	}
-	// An external memory edit bypasses a just-used background slot; its neighbor is queued.
-	w.cache.LastBackground = now.Add(23 * time.Hour)
 	catalog.Records[1].Revision = "edited"
 	oldDate := "1990-01-01"
 	catalog.Records[1].Time.Date = &oldDate
 	g = newWeightGraph(&catalog, now)
 	editAt := now.Add(23*time.Hour + 100*time.Millisecond)
-	w.update(g, editAt, true)
-	if !w.cache.Entries[m.ID].CalculatedAt.Equal(editAt) || !w.cache.Entries[e.ID].Pending {
-		t.Fatal("Edit did not recalculate immediately and queue dependants", w.cache)
+	w.update(ctx, g, editAt, true)
+	for _, id := range []string{entity.ID, memory.ID} {
+		entry := w.cache.Entries[id]
+		if !entry.CalculatedAt.Equal(editAt) || entry.Pending {
+			t.Fatalf("Edit did not recalculate %s in the same pass", id)
+		}
 	}
-	// Restart must retain pending work and the background rate limit.
+	if w.cache.Entries[entity.ID].Weight >= before.Weight {
+		t.Fatal("Dependent weight ignored the changed event date")
+	}
+	if !w.cache.Entries[other.ID].CalculatedAt.Equal(now) {
+		t.Fatal("Unrelated fresh weight was recalculated")
+	}
+	// A saved unfinished pass resumes without a per-second delay after restart.
+	entry := w.cache.Entries[entity.ID]
+	entry.Pending = true
+	w.cache.Entries[entity.ID] = entry
 	data, _ := json.Marshal(w.cache)
 	if err := os.WriteFile(filepath.Join(store.Directory(), graphWeightFile), data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	w = newGraphWeights(a)
-	w.update(g, editAt.Add(100*time.Millisecond), true)
-	if !w.cache.Entries[e.ID].Pending {
-		t.Fatal("Restart bypassed the background rate limit")
+	w = newGraphWeights(app)
+	resumedAt := editAt.Add(100 * time.Millisecond)
+	w.update(ctx, g, resumedAt, true)
+	if w.cache.Entries[entity.ID].Pending || !w.cache.Entries[entity.ID].CalculatedAt.Equal(resumedAt) {
+		t.Fatal("Restart did not finish pending work")
 	}
-	w.update(g, editAt.Add(time.Second), true)
-	if w.cache.Entries[e.ID].Pending || w.cache.Entries[e.ID].Weight >= before.Weight {
-		t.Fatal("Affected record did not reflect the older event date", w.cache.Entries[e.ID])
+	expiredAt := now.Add(49 * time.Hour)
+	w.update(ctx, g, expiredAt, true)
+	for id, entry := range w.cache.Entries {
+		if !entry.CalculatedAt.Equal(expiredAt) || entry.Pending {
+			t.Fatalf("Expired weight %s did not refresh", id)
+		}
 	}
-	w.update(g, now.Add(49*time.Hour), true)
-	if !w.cache.Entries[other.ID].CalculatedAt.After(now.Add(48 * time.Hour)) {
-		t.Fatal("Oldest expired record was not refreshed", w.cache)
+}
+
+func TestGraphWeightCancelledPassCanResume(t *testing.T) {
+	store, _ := songya.Open(t.TempDir())
+	w := newGraphWeights(&chatApp{store: store})
+	now := time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC)
+	records := []songya.Record{weightRecord(songya.Entities, 1), datedWeightMemory(1, "2026-11-09")}
+	g := newWeightGraph(&songya.Catalog{Records: records}, now)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if w.update(ctx, g, now, true) {
+		t.Fatal("Cancelled work was reported as calculated")
+	}
+	if len(w.cache.Entries) != len(records) {
+		t.Fatal("Cancellation discarded queued records")
+	}
+	w.update(context.Background(), g, now, true)
+	for id, entry := range w.cache.Entries {
+		if entry.CalculatedAt.IsZero() || entry.Pending {
+			t.Fatal("Resumed pass skipped", id)
+		}
 	}
 }
 
@@ -95,18 +114,16 @@ func TestGraphWeightRemovedLinksInvalidateOldNeighbors(t *testing.T) {
 	m := datedWeightMemory(1, "2026-11-09")
 	e := weightRecord(songya.Entities, 1, songya.Relation{Type: "related_to", Target: m.ID})
 	c := songya.Catalog{Records: []songya.Record{e, m}}
-	w.update(newWeightGraph(&c, now), now, true)
-	w.update(newWeightGraph(&c, now), now.Add(time.Second), true)
+	w.update(context.Background(), newWeightGraph(&c, now), now, true)
 	// Delete the memory. Its former neighbor must not keep an unmarked cached weight.
 	c.Records = c.Records[:1]
-	w.update(newWeightGraph(&c, now), now.Add(1100*time.Millisecond), true)
+	w.update(context.Background(), newWeightGraph(&c, now), now.Add(1100*time.Millisecond), true)
 	if _, ok := w.cache.Entries[m.ID]; ok {
 		t.Fatal("Deleted record retained")
 	}
-	if !w.cache.Entries[e.ID].Pending {
-		t.Fatal("Former neighbor was not invalidated")
+	if w.cache.Entries[e.ID].Pending || !w.cache.Entries[e.ID].CalculatedAt.Equal(now.Add(1100*time.Millisecond)) {
+		t.Fatal("Former neighbor was not recalculated in the same pass")
 	}
-	w.update(newWeightGraph(&c, now), now.Add(2*time.Second), true)
 	near(t, w.cache.Entries[e.ID].Weight, 0)
 }
 
