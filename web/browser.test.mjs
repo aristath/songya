@@ -6254,3 +6254,85 @@ test("My entity selection survives a draft reload and removes only owner links",
     await context.close();
   }
 });
+
+test("ownership attraction draws no lines and keeps the owner identity in filtered views", async () => {
+  const { page, context } = await pageFor(undefined, () => {
+    window.ownerLineDraws = 0;
+    window.ownerPointDraws = 0;
+    const stroke = CanvasRenderingContext2D.prototype.stroke;
+    CanvasRenderingContext2D.prototype.stroke = function (...args) {
+      if (this.canvas.closest(".graph-canvas")) window.ownerLineDraws++;
+      return stroke.apply(this, args);
+    };
+    const clear = CanvasRenderingContext2D.prototype.clearRect;
+    CanvasRenderingContext2D.prototype.clearRect = function (...args) {
+      if (this.canvas.closest(".graph-canvas")) window.ownerPointDraws = 0;
+      return clear.apply(this, args);
+    };
+    const arc = CanvasRenderingContext2D.prototype.arc;
+    CanvasRenderingContext2D.prototype.arc = function (...args) {
+      if (this.canvas.closest(".graph-canvas")) window.ownerPointDraws++;
+      return arc.apply(this, args);
+    };
+    for (const Context of [
+      window.WebGLRenderingContext,
+      window.WebGL2RenderingContext,
+    ].filter(Boolean)) {
+      for (const method of ["drawArrays", "drawElements"]) {
+        const draw = Context.prototype[method];
+        Context.prototype[method] = function (mode, ...args) {
+          if ([this.LINES, this.LINE_LOOP, this.LINE_STRIP].includes(mode))
+            window.ownerLineDraws++;
+          return draw.call(this, mode, ...args);
+        };
+      }
+    }
+  });
+  try {
+    const fixture = {
+      nodes: [
+        { id: "john", title: "John", kind: "entities", weight: 1 },
+        { id: "mary", title: "Mary", kind: "entities", weight: 1 },
+        {
+          id: "meal",
+          title: "Meal",
+          kind: "memories",
+          user: "john",
+          owner_entity: "john",
+          weight: 1,
+        },
+        {
+          id: "walk",
+          title: "Walk",
+          kind: "memories",
+          user: "mary",
+          owner_entity: "mary",
+          weight: 1,
+        },
+      ],
+      links: [],
+    };
+    await page.route("**/api/graph**", (route) =>
+      route.fulfill({ json: fixture }),
+    );
+    await page.reload();
+    await page
+      .getByLabel("Graph memory owner", { exact: true })
+      .selectOption("john");
+    await page.waitForFunction(() => window.ownerPointDraws === 2);
+    await page.getByLabel("Show entities in graph", { exact: true }).uncheck();
+    await page.waitForFunction(() => window.ownerPointDraws === 1);
+    await page.getByLabel("Show entities in graph", { exact: true }).check();
+    for (const mode of ["2D", "3D"]) {
+      await page.getByRole("button", { name: mode, exact: true }).click();
+      await page.waitForTimeout(1500);
+      assert.equal(
+        await page.evaluate(() => window.ownerLineDraws),
+        0,
+        `${mode} drew an ownership line`,
+      );
+    }
+  } finally {
+    await context.close();
+  }
+});

@@ -76,6 +76,7 @@ func Handler(store *songya.Store) *Application {
 		links := []map[string]string{}
 		seen := map[[3]string]bool{}
 		byID := map[string]songya.Record{}
+		ownerEntities := map[string]string{}
 		for _, record := range catalog.Records {
 			byID[record.ID] = record
 		}
@@ -87,7 +88,16 @@ func Handler(store *songya.Store) *Application {
 			if record.ProfilePicture != nil && record.ProfilePicture.Record != "" {
 				revision += byID[record.ProfilePicture.Record].Revision
 			}
-			nodes = append(nodes, map[string]any{"id": record.ID, "title": record.Title, "aliases": record.Aliases, "kind": record.Kind, "user": record.User, "color": colors.RecordColor(record), "profile_picture": record.ProfilePicture, "revision": revision, "weight": weights[record.ID].Weight, "weight_calculated_at": weights[record.ID].CalculatedAt})
+			node := map[string]any{"id": record.ID, "title": record.Title, "aliases": record.Aliases, "kind": record.Kind, "user": record.User, "color": colors.RecordColor(record), "profile_picture": record.ProfilePicture, "revision": revision, "weight": weights[record.ID].Weight, "weight_calculated_at": weights[record.ID].CalculatedAt}
+			if record.Kind == songya.Memories {
+				if _, loaded := ownerEntities[record.User]; !loaded {
+					ownerEntities[record.User], _ = store.UserEntity(r.Context(), record.User)
+				}
+				if entity := ownerEntities[record.User]; byID[entity].Kind == songya.Entities {
+					node["owner_entity"] = entity
+				}
+			}
+			nodes = append(nodes, node)
 			relations := append([]songya.Relation{}, record.Relations...)
 			for _, target := range record.Redirects {
 				relations = append(relations, songya.Relation{Type: "redirects", Target: target})

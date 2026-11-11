@@ -315,7 +315,10 @@ export function memoryGraph(
         .filter((link) => byID.has(link.source) && byID.has(link.target))
         .map((link) => ({
           ...link,
-          hidden: !visibleIDs.has(link.source) || !visibleIDs.has(link.target),
+          hidden:
+            link.layoutOnly ||
+            !visibleIDs.has(link.source) ||
+            !visibleIDs.has(link.target),
         }));
       lineDensity = Math.max(
         1,
@@ -325,7 +328,14 @@ export function memoryGraph(
         nodes.map((node) => node.id).sort(),
         links
           .filter((link) => !link.indirect)
-          .map((link) => JSON.stringify([link.source, link.target, link.type]))
+          .map((link) =>
+            JSON.stringify([
+              link.source,
+              link.target,
+              link.type,
+              !!link.layoutOnly,
+            ]),
+          )
           .sort(),
       ]);
       if (stamp === layoutStamp) {

@@ -17,6 +17,61 @@ const link = (source, target, type = "related_to") => ({
 const pairs = (data) =>
   data.links.map((edge) => [edge.source, edge.target].sort().join(":")).sort();
 
+test("ownership keeps memories near their identity without creating visible or indirect relationships", () => {
+  const data = {
+    nodes: [
+      node("John"),
+      node("Mary"),
+      { ...node("meal", "memories"), owner_entity: "John", weight: 10 },
+      { ...node("walk", "memories"), owner_entity: "Mary", weight: 20 },
+    ],
+    links: [],
+  };
+  const before = structuredClone(data);
+  for (const kinds of [{}, { entities: false }, { memories: false }]) {
+    const view = projectGraph(data, kinds);
+    assert.deepEqual(view.links, []);
+    assert.equal(view.layout.links.length, 2);
+    assert.ok(view.layout.links.every((link) => link.layoutOnly));
+  }
+  for (const dimensions of [2, 3]) {
+    const distances = (ownership) => {
+      const view = projectGraph(data, {});
+      const nodes = structuredClone(view.layout.nodes);
+      const links = structuredClone(ownership ? view.layout.links : []);
+      const sim = forceSimulation(nodes, dimensions)
+        .force("link", savedLinkForce(forceLink(links).id((n) => n.id)))
+        .force("charge", forceManyBody())
+        .force("center", forceCenter())
+        .stop();
+      sim.tick(120);
+      return [0, 1].map((i) =>
+        Math.hypot(
+          ...["x", "y", ...(dimensions === 3 ? ["z"] : [])].map(
+            (k) => nodes[i][k] - nodes[i + 2][k],
+          ),
+        ),
+      );
+    };
+    const attracted = distances(true),
+      drifting = distances(false);
+    assert.ok(
+      attracted.every((d, i) => d < drifting[i]),
+      `${dimensions}D memories did not move closer to their owner`,
+    );
+  }
+  assert.deepEqual(data, before);
+  data.nodes[2].owner_entity = "missing";
+  assert.equal(projectGraph(data, {}).layout.links.length, 1);
+  data.nodes[2].owner_entity = "John";
+  data.links.push(link("meal", "John"));
+  assert.equal(
+    projectGraph(data, {}).layout.links.length,
+    2,
+    "ownership doubled a saved attraction",
+  );
+});
+
 test("hidden records connect visible participants without replacement points", () => {
   const data = {
     nodes: [node("John"), node("Mary"), node("meal", "memories")],

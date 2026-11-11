@@ -45,6 +45,8 @@ that user. Saving the selection removes explicit links between that entity and
 memories owned by the user, in both directions. Ownership already connects them.
 Other users' memories can still link to the entity. Future saves omit redundant
 owner links while keeping the rest of the requested changes.
+The graph uses ownership to attract memories toward that entity for positioning
+only; this adds no visible lines, relationship paths, or weight contributions.
 
 Click a title to inspect the record in a read-only modal, or **Edit** to open the
 editor modal. **Visual** edits formatted Markdown; **Source** edits the complete

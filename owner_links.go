@@ -1,6 +1,7 @@
 package songya
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -9,6 +10,16 @@ import (
 
 	"go.yaml.in/yaml/v3"
 )
+
+// UserEntity reads the existing identity selection without computing type usage.
+func (s *Store) UserEntity(ctx context.Context, user string) (string, error) {
+	var entity string
+	err := s.lockedContext(ctx, func(root *os.Root) error {
+		entity = configuredOwnerEntity(root, user)
+		return nil
+	})
+	return entity, err
+}
 
 // Ownership already connects a user's memories to their identity. Normalize
 // both link directions in the same durable batch as the requested changes.

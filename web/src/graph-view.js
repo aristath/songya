@@ -76,7 +76,29 @@ export function projectGraph(data, kinds) {
       }
     }
   }
-  return { nodes, links: result, layout: { nodes: data.nodes, links } };
+  // Ownership attracts memories to their user's identity for positioning only.
+  // These connections never enter visible paths, scores, or saved relationships.
+  const ownership = data.nodes
+    .filter(
+      (node) => node.kind === "memories" && records.has(node.owner_entity),
+    )
+    .filter(
+      (node) =>
+        !links.some(
+          (link) =>
+            pair(link.source, link.target) === pair(node.id, node.owner_entity),
+        ),
+    )
+    .map((node) => ({
+      source: node.id,
+      target: node.owner_entity,
+      layoutOnly: true,
+    }));
+  return {
+    nodes,
+    links: result,
+    layout: { nodes: data.nodes, links: [...links, ...ownership] },
+  };
 }
 
 // Exclude indirect links entirely: zero strength would still change D3's degree

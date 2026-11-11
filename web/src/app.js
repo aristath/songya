@@ -171,6 +171,9 @@ Alpine.data("songya", () => {
             .map((node) => node.id),
         );
         const visible = new Set(owned);
+        for (const node of nodes)
+          if (owned.has(node.id) && shared.has(node.owner_entity))
+            visible.add(node.owner_entity);
         for (const link of graphData.links) {
           if (owned.has(link.source) && shared.has(link.target))
             visible.add(link.target);
