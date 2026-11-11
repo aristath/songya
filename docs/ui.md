@@ -468,12 +468,10 @@ possible identity matches and redirects do not contribute. Every intermediate
 record divides the path strength by the square root of its unique neighbour
 count; the starting record does not. This reduces shortcuts through broad hubs.
 
-A memory's recency multiplier is `0.25 + 0.75 * 2^(-age_in_years / 5)` using UTC
-event dates and 365.2425 days per year. A bounded interval uses the average across
-the interval. Unknown or one-sided dates use 0.5. Future dates receive no bonus.
-Entity lifetime dates and file timestamps are not used as event dates. The 2D
-radius is `4 * sqrt(1 + weight)`; 3D uses the corresponding volume scaling. Photos,
-collision spacing and ordinary points use the same weights.
+Dates do not affect weights. Dated, undated and ongoing memories use the same
+contribution calculation. The 2D radius is `4 * sqrt(1 + weight)`; 3D uses the
+corresponding volume scaling. Photos, collision spacing and ordinary points use
+the same weights.
 
 `graph-weights.json` is the single rebuildable repository-wide weight cache. It
 also retains source revisions, neighbours and pending work so restarts can detect

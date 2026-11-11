@@ -14,6 +14,7 @@ import (
 )
 
 const graphWeightFile = "graph-weights.json"
+const graphWeightVersion = 2
 const graphWeightTTL = 24 * time.Hour
 
 type graphWeightEntry struct {
@@ -38,14 +39,14 @@ type graphWeights struct {
 }
 
 func newGraphWeights(a *chatApp) *graphWeights {
-	w := &graphWeights{cache: graphWeightCache{Version: 1, Entries: map[string]graphWeightEntry{}}, wake: make(chan struct{}, 1)}
+	w := &graphWeights{cache: graphWeightCache{Version: graphWeightVersion, Entries: map[string]graphWeightEntry{}}, wake: make(chan struct{}, 1)}
 	// This file is a rebuildable projection. An unreadable entry does not discard healthy entries.
 	if data, err := a.readFile(graphWeightFile); err == nil {
 		var saved struct {
 			Version int
 			Records map[string]json.RawMessage
 		}
-		if json.Unmarshal(data, &saved) == nil && saved.Version == 1 {
+		if json.Unmarshal(data, &saved) == nil && saved.Version == graphWeightVersion {
 			for id, raw := range saved.Records {
 				var entry graphWeightEntry
 				if songya.ValidID(id) && json.Unmarshal(raw, &entry) == nil && entry.Weight >= 0 && !math.IsNaN(entry.Weight) && !math.IsInf(entry.Weight, 0) {
@@ -73,7 +74,7 @@ func (a *chatApp) runGraphWeights() {
 		catalog, err := a.store.Scan(a.ctx)
 		if err == nil {
 			now := time.Now()
-			changed := a.weights.update(a.ctx, newWeightGraph(&catalog, now), now, len(catalog.Diagnostics) == 0)
+			changed := a.weights.update(a.ctx, newWeightGraph(&catalog), now, len(catalog.Diagnostics) == 0)
 			a.weights.mu.Lock()
 			previousIssue := a.weights.issue
 			if a.weights.dirty {

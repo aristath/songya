@@ -5729,7 +5729,7 @@ test("photo masonry opens accessible details and keeps file actions in the viewe
   assert.deepEqual(errors, []);
 });
 
-test("weighted graph sizes render cached scores and update after event-date edits", async () => {
+test("weighted graph sizes ignore dates and update after connection edits", async () => {
   const john = await save(
     source("John weighted graph", "An identity."),
     "entities",
@@ -5738,23 +5738,28 @@ test("weighted graph sizes render cached scores and update after event-date edit
     source("Mary weighted graph", "Another identity."),
     "entities",
   );
-  const today = new Date().toISOString().slice(0, 10);
   const event = (title, id, date) =>
     source(
       title,
       "An experience.",
       `time:\n  date: ${date}\nrelations:\n  - type: related_to\n    target: ${id}\n`,
     );
-  const first = await save(event("John's recent event", john.id, today));
-  await save(event("John's other recent event", john.id, today));
-  await save(event("Mary's older event", mary.id, "1990-01-01"));
+  const first = await save(event("John's event", john.id, "1900-01-01"));
+  await save(
+    source(
+      "John's enduring memory",
+      "An experience.",
+      `relations:\n  - type: related_to\n    target: ${john.id}\n`,
+    ),
+  );
+  await save(event("Mary's event", mary.id, "2200-01-01"));
   const { page, context } = await pageFor();
   await page.locator(".graph-legend").scrollIntoViewIfNeeded();
   await page.waitForFunction(
     async (ids) => {
       const data = await (await fetch("/api/graph")).json();
       const [a, b] = ids.map((id) => data.nodes.find((n) => n.id === id));
-      return a?.weight > 0.99 && b?.weight > 0 && b.weight < 0.2;
+      return a?.weight === 1 && b?.weight === 0.5;
     },
     [john.id, mary.id],
   );
@@ -5786,18 +5791,35 @@ test("weighted graph sizes render cached scores and update after event-date edit
   );
   const saved = await (await fetch(url + "/api/records/" + first.id)).json();
   await save(
-    event("John's recent event", john.id, "1990-01-01"),
+    event("John's event", john.id, "2000-01-01"),
     "memories",
     first.id,
     saved.version,
   );
+  const calculated = graph.nodes.find(
+    (node) => node.id === john.id,
+  ).weight_calculated_at;
+  await page.waitForFunction(
+    async ({ id, calculated }) => {
+      const graph = await (await fetch("/api/graph")).json();
+      const node = graph.nodes.find((n) => n.id === id);
+      return node?.weight === 1 && node.weight_calculated_at > calculated;
+    },
+    { id: john.id, calculated },
+  );
+  const edited = await (await fetch(url + "/api/records/" + first.id)).json();
+  await save(
+    source("John's event", "An experience.", "time: {date: 2000-01-01}\n"),
+    "memories",
+    first.id,
+    edited.version,
+  );
   await page.waitForFunction(async (id) => {
     const graph = await (await fetch("/api/graph")).json();
-    const node = graph.nodes.find((n) => n.id === id);
-    return node?.weight > 0.5 && node.weight < 0.7;
+    return graph.nodes.find((n) => n.id === id)?.weight === 0.5;
   }, john.id);
   await page.waitForFunction(() =>
-    window.weightRadii.some((r) => r > 4.9 && r < 5.3),
+    window.weightRadii.some((r) => Math.abs(r - 4 * Math.sqrt(1.5)) < 1e-6),
   );
   await page.getByRole("button", { name: "3D", exact: true }).click();
   await page.getByRole("button", { name: "2D", exact: true }).click();

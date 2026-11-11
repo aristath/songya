@@ -18,11 +18,11 @@ func TestGraphWeightBatchTTLAndEdits(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC)
 	entity := weightRecord(songya.Entities, 1)
-	memory := datedWeightMemory(1, "2026-11-09")
+	memory := weightRecord(songya.Memories, 1)
 	other := weightRecord(songya.Topics, 1)
 	entity.Relations = []songya.Relation{{Type: "related_to", Target: memory.ID}}
 	catalog := songya.Catalog{Records: []songya.Record{entity, memory, other}}
-	g := newWeightGraph(&catalog, now)
+	g := newWeightGraph(&catalog)
 	w.update(ctx, g, now, true)
 	for id, entry := range w.cache.Entries {
 		if !entry.CalculatedAt.Equal(now) || entry.Pending {
@@ -35,19 +35,19 @@ func TestGraphWeightBatchTTLAndEdits(t *testing.T) {
 	fresh := weightRecord(songya.Topics, 2)
 	catalog.Records = append(catalog.Records, fresh)
 	addedAt := now.Add(600 * time.Millisecond)
-	w.update(ctx, newWeightGraph(&catalog, now), addedAt, true)
+	w.update(ctx, newWeightGraph(&catalog), addedAt, true)
 	if !w.cache.Entries[fresh.ID].CalculatedAt.Equal(addedAt) {
 		t.Fatal("New record waited for a rate-limit slot")
 	}
 	before := w.cache.Entries[entity.ID]
-	w.update(ctx, newWeightGraph(&catalog, now), now.Add(23*time.Hour), true)
+	w.update(ctx, newWeightGraph(&catalog), now.Add(23*time.Hour), true)
 	if !w.cache.Entries[entity.ID].CalculatedAt.Equal(before.CalculatedAt) {
 		t.Fatal("Fresh cache was recalculated")
 	}
 	catalog.Records[1].Revision = "edited"
 	oldDate := "1990-01-01"
 	catalog.Records[1].Time.Date = &oldDate
-	g = newWeightGraph(&catalog, now)
+	g = newWeightGraph(&catalog)
 	editAt := now.Add(23*time.Hour + 100*time.Millisecond)
 	w.update(ctx, g, editAt, true)
 	for _, id := range []string{entity.ID, memory.ID} {
@@ -56,9 +56,7 @@ func TestGraphWeightBatchTTLAndEdits(t *testing.T) {
 			t.Fatalf("Edit did not recalculate %s in the same pass", id)
 		}
 	}
-	if w.cache.Entries[entity.ID].Weight >= before.Weight {
-		t.Fatal("Dependent weight ignored the changed event date")
-	}
+	near(t, w.cache.Entries[entity.ID].Weight, before.Weight)
 	if !w.cache.Entries[other.ID].CalculatedAt.Equal(now) {
 		t.Fatal("Unrelated fresh weight was recalculated")
 	}
@@ -89,8 +87,8 @@ func TestGraphWeightCancelledPassCanResume(t *testing.T) {
 	store, _ := songya.Open(t.TempDir())
 	w := newGraphWeights(&chatApp{store: store})
 	now := time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC)
-	records := []songya.Record{weightRecord(songya.Entities, 1), datedWeightMemory(1, "2026-11-09")}
-	g := newWeightGraph(&songya.Catalog{Records: records}, now)
+	records := []songya.Record{weightRecord(songya.Entities, 1), weightRecord(songya.Memories, 1)}
+	g := newWeightGraph(&songya.Catalog{Records: records})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if w.update(ctx, g, now, true) {
@@ -111,13 +109,13 @@ func TestGraphWeightRemovedLinksInvalidateOldNeighbors(t *testing.T) {
 	store, _ := songya.Open(t.TempDir())
 	w := newGraphWeights(&chatApp{store: store})
 	now := time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC)
-	m := datedWeightMemory(1, "2026-11-09")
+	m := weightRecord(songya.Memories, 1)
 	e := weightRecord(songya.Entities, 1, songya.Relation{Type: "related_to", Target: m.ID})
 	c := songya.Catalog{Records: []songya.Record{e, m}}
-	w.update(context.Background(), newWeightGraph(&c, now), now, true)
+	w.update(context.Background(), newWeightGraph(&c), now, true)
 	// Delete the memory. Its former neighbor must not keep an unmarked cached weight.
 	c.Records = c.Records[:1]
-	w.update(context.Background(), newWeightGraph(&c, now), now.Add(1100*time.Millisecond), true)
+	w.update(context.Background(), newWeightGraph(&c), now.Add(1100*time.Millisecond), true)
 	if _, ok := w.cache.Entries[m.ID]; ok {
 		t.Fatal("Deleted record retained")
 	}
@@ -173,7 +171,7 @@ func TestGraphWeightCacheWriteFailureRecoversWithoutBlockingRecords(t *testing.T
 	}
 	// One damaged entry must not discard the other entries.
 	b, _ := json.Marshal(loaded.cache.Entries[record.ID])
-	bad := []byte(`{"version":1,"records":{"` + record.ID + `":` + string(b) + `,"e_000000000001":{"weight":"broken"}}}`)
+	bad := []byte(`{"version":2,"records":{"` + record.ID + `":` + string(b) + `,"e_000000000001":{"weight":"broken"}}}`)
 	if err := os.WriteFile(path, bad, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -216,6 +214,6 @@ func TestGraphWeightsObserveExternalClientEdits(t *testing.T) {
 	}
 	wait(func() bool {
 		entries, _ := app.chat.weights.snapshot()
-		return entries[entity.ID].Weight > 0 && entries[entity.ID].Weight < .2 && entries[memory.ID].CalculatedAt.After(before[memory.ID].CalculatedAt)
+		return entries[entity.ID].Weight == .5 && entries[memory.ID].CalculatedAt.After(before[memory.ID].CalculatedAt)
 	})
 }
