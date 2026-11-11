@@ -470,14 +470,16 @@ editor; it remains a draft until the record is saved. Linked files are replaced
 or removed only from their source memory. Story photos use the same viewer.
 
 
-Graph point sizes measure recorded content. Each entry contributes its own Markdown
-body's word count at full weight. Each distinct connected entry, of any kind,
-contributes once at its shortest distance: 0.5, 0.4, 0.3, 0.2 or 0.1 for hops one
-through five. Words are separated by whitespace, including Unicode spaces and
-line breaks. Titles, aliases and other metadata do not add words.
+Graph point sizes measure recorded content. Each entry keeps its own Markdown
+body's word count at full weight. Connected content is shared equally between
+its connections at every step, so a broadly shared record does not broadcast its
+entire body to every neighbour. Independent shortest paths add their shares;
+each connected entry contributes at its shortest distance. Hop multipliers are
+0.5, 0.4, 0.3, 0.2 and 0.1 for hops one through five.
 
-`related_to`, `caused_by` and `part_of` provide paths in either direction, without
-extra relationship multipliers or hub penalties. Ordering, possible identity
+Words are separated by whitespace, including Unicode spaces and line breaks.
+Titles, aliases and other metadata do not add words. `related_to`, `caused_by`
+and `part_of` provide paths in either direction. Ordering, possible identity
 matches and redirects do not contribute. Hidden entries still contribute their
 text through the neutral junctions. Dates do not affect weights.
 

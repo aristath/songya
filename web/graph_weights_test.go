@@ -3,6 +3,7 @@ package web
 import (
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/aristath/songya"
@@ -48,7 +49,7 @@ func TestGraphWeightContentAssociationsExcludeOrderingAndIdentityGuesses(t *test
 	}
 }
 
-func TestGraphWeightHopLimitsDeduplicationAndNoHubPenalty(t *testing.T) {
+func TestGraphWeightHopLimitsDeduplicationAndSharedContent(t *testing.T) {
 	for hops := 1; hops <= 6; hops++ {
 		records := []songya.Record{weightRecord(songya.Memories, 1)}
 		target := records[0].ID
@@ -60,7 +61,7 @@ func TestGraphWeightHopLimitsDeduplicationAndNoHubPenalty(t *testing.T) {
 		g := newWeightGraph(&songya.Catalog{Records: records})
 		expected := 0.0
 		if hops <= 5 {
-			expected = graphHopWeights[hops]
+			expected = graphHopWeights[hops] / math.Pow(2, float64(hops-1))
 		}
 		near(t, g.score(target), expected)
 	}
@@ -75,15 +76,15 @@ func TestGraphWeightHopLimitsDeduplicationAndNoHubPenalty(t *testing.T) {
 		records = append(records, weightRecord(songya.Entities, i, songya.Relation{Type: "related_to", Target: bridge.ID}))
 	}
 	large := newWeightGraph(&songya.Catalog{Records: records}).score(root.ID)
-	near(t, small, .4)
-	near(t, large, small)
+	near(t, small, .4/2)
+	near(t, large, .4/102)
 	// Reciprocal/duplicate edges and loops must not count the same memory again.
 	records[0].Relations = append(records[0].Relations, songya.Relation{Type: "related_to", Target: memory.ID}, songya.Relation{Type: "related_to", Target: memory.ID})
 	records[2].Relations = []songya.Relation{{Type: "related_to", Target: root.ID}}
 	g := newWeightGraph(&songya.Catalog{Records: records})
-	near(t, g.score(root.ID), .5)
+	near(t, g.score(root.ID), .5/2)
 	for i := 0; i < 20; i++ {
-		if g.score(root.ID) != .5 {
+		if g.score(root.ID) != .5/2 {
 			t.Fatal("Non-deterministic score")
 		}
 	}
@@ -133,7 +134,28 @@ func TestGraphWeightUsesShortestPathAndRecordOrderingDoesNotChangeIt(t *testing.
 	memory := weightRecord(songya.Memories, 1, songya.Relation{Type: "related_to", Target: root.ID}, songya.Relation{Type: "related_to", Target: bridge.ID})
 	memory.Body = "Four words counted once"
 	records := []songya.Record{root, bridge, memory}
-	near(t, newWeightGraph(&songya.Catalog{Records: records}).score(root.ID), 2)
+	near(t, newWeightGraph(&songya.Catalog{Records: records}).score(root.ID), 1)
 	records[0], records[2] = records[2], records[0]
-	near(t, newWeightGraph(&songya.Catalog{Records: records}).score(root.ID), 2)
+	near(t, newWeightGraph(&songya.Catalog{Records: records}).score(root.ID), 1)
+}
+
+func TestGraphWeightSharesConnectedContentInsteadOfCopyingIt(t *testing.T) {
+	source := weightRecord(songya.Memories, 1)
+	source.Body = strings.Repeat("word ", 100)
+	john := weightRecord(songya.Entities, 1, songya.Relation{Type: "related_to", Target: source.ID})
+	mary := weightRecord(songya.Entities, 2, songya.Relation{Type: "related_to", Target: source.ID})
+	g := newWeightGraph(&songya.Catalog{Records: []songya.Record{source, john, mary}})
+	near(t, g.score(source.ID), 100)
+	near(t, g.score(john.ID), 25)
+	near(t, g.score(mary.ID), 25)
+}
+
+func TestGraphWeightAddsIndependentShortestPathShares(t *testing.T) {
+	root := weightRecord(songya.Entities, 1)
+	first := weightRecord(songya.Topics, 1, songya.Relation{Type: "related_to", Target: root.ID})
+	second := weightRecord(songya.Topics, 2, songya.Relation{Type: "related_to", Target: root.ID})
+	source := weightRecord(songya.Memories, 1, songya.Relation{Type: "related_to", Target: first.ID}, songya.Relation{Type: "related_to", Target: second.ID})
+	source.Body = strings.Repeat("word ", 100)
+	g := newWeightGraph(&songya.Catalog{Records: []songya.Record{root, first, second, source}})
+	near(t, g.score(root.ID), 20)
 }

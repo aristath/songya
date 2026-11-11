@@ -171,7 +171,7 @@ func TestGraphWeightCacheWriteFailureRecoversWithoutBlockingRecords(t *testing.T
 	}
 	// One damaged entry must not discard the other entries.
 	b, _ := json.Marshal(loaded.cache.Entries[record.ID])
-	bad := []byte(`{"version":3,"records":{"` + record.ID + `":` + string(b) + `,"e_000000000001":{"weight":"broken"}}}`)
+	bad := []byte(`{"version":4,"records":{"` + record.ID + `":` + string(b) + `,"e_000000000001":{"weight":"broken"}}}`)
 	if err := os.WriteFile(path, bad, 0600); err != nil {
 		t.Fatal(err)
 	}

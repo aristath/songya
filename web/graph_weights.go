@@ -48,25 +48,31 @@ func (g *weightGraph) neighbors(id string) []string {
 	return result
 }
 
-// Breadth-first traversal counts each body once at its shortest distance.
+// Each record keeps its own words. Connected content is shared between the
+// records referencing it, rather than broadcasting its full body to each one.
 func (g *weightGraph) score(id string) float64 {
-	frontier := []string{id}
+	frontier := map[string]float64{id: 1}
 	seen := map[string]bool{id: true}
 	score := 0.0
 	for _, multiplier := range graphHopWeights {
-		words := 0
-		next := []string{}
-		for _, from := range frontier {
-			words += g.words[from]
-			for target := range g.edges[from] {
+		next := map[string]float64{}
+		ids := make([]string, 0, len(frontier))
+		for from := range frontier {
+			ids = append(ids, from)
+		}
+		sort.Strings(ids)
+		for _, from := range ids {
+			share := frontier[from]
+			score += float64(g.words[from]) * share * multiplier
+			for _, target := range g.neighbors(from) {
 				if !seen[target] {
-					seen[target] = true
-					next = append(next, target)
+					next[target] += share / float64(len(g.edges[target]))
 				}
 			}
 		}
-		// Sum integer word counts first: map iteration cannot change rounding.
-		score += float64(words) * multiplier
+		for target := range next {
+			seen[target] = true
+		}
 		frontier = next
 		if len(frontier) == 0 {
 			break
