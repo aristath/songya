@@ -6199,3 +6199,58 @@ test("weighted graph sizes count entry text, ignore dates and update after body 
   await context.close();
   assert.deepEqual(errors, []);
 });
+
+test("My entity selection survives a draft reload and removes only owner links", async () => {
+  const entity = await save(
+    "---\nname: John Identity\n---\nIdentity words",
+    "entities",
+  );
+  const memory = await save(
+    `---\nuser: identity-user\ntitle: An event\nrelations:\n  - {type: related_to, target: ${entity.id}}\n---\nEvent words`,
+  );
+  const { page, context } = await pageFor();
+  try {
+    const dialog = page.locator('dialog[x-ref="typeSettingsDialog"]');
+    const open = async () => {
+      await page
+        .getByRole("button", { name: "Type settings", exact: true })
+        .click();
+      await dialog.getByLabel("Type settings user").fill("identity-user");
+      await dialog
+        .getByRole("button", { name: "Load user", exact: true })
+        .click();
+      await dialog.getByLabel("My entity", { exact: true }).waitFor();
+    };
+    await open();
+    await dialog
+      .getByLabel("My entity", { exact: true })
+      .selectOption(entity.id);
+    await page.reload();
+    await open();
+    assert.equal(
+      await dialog.getByLabel("My entity", { exact: true }).inputValue(),
+      entity.id,
+    );
+    await dialog
+      .getByRole("button", { name: "Save types", exact: true })
+      .click();
+    await dialog
+      .getByText("Types saved for identity-user.", { exact: true })
+      .waitFor();
+    const settings = await (
+      await fetch(url + "/api/types/identity-user")
+    ).json();
+    assert.equal(settings.my_entity, entity.id);
+    const stored = await (
+      await fetch(url + "/api/records/" + memory.id)
+    ).json();
+    assert.ok(stored.source.includes("Event words"));
+    assert.ok(!stored.source.includes(entity.id));
+    const identity = await (
+      await fetch(url + "/api/records/" + entity.id)
+    ).json();
+    assert.ok(identity.source.includes("Identity words"));
+  } finally {
+    await context.close();
+  }
+});

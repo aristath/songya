@@ -260,6 +260,7 @@ func (s *Store) Create(destination Destination, fields map[string]any, body stri
 		if err := s.validateTypeChange(context.Background(), root, &Document{}, d, destination, nil); err != nil {
 			return err
 		}
+		normalizeOwnerDocument(root, d, "", destination)
 		var err error
 		data, err = d.Marshal()
 		if err != nil {

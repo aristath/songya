@@ -23,6 +23,7 @@ type TypeDefinition struct {
 	Color       string `json:"color,omitempty" yaml:"color,omitempty"`
 }
 type TypeConfiguration struct {
+	MyEntity    string                           `json:"my_entity" yaml:"my_entity"`
 	KindColors  map[Destination]string           `json:"kind_colors" yaml:"kind_colors"`
 	User        string                           `json:"user" yaml:"user"`
 	Kinds       map[Destination][]TypeDefinition `json:"kinds" yaml:"kinds"`
@@ -112,6 +113,7 @@ func (s *Store) typeConfigurationRoot(ctx context.Context, root *os.Root, user s
 	cfg = TypeConfiguration{User: user, Kinds: map[Destination][]TypeDefinition{Memories: {}, Entities: {}, Topics: {}, Stories: {}}, Version: dataRevision(raw)}
 	// Decode kind by kind so damage to one user's list does not hide healthy lists.
 	var stored struct {
+		MyEntity   json.RawMessage                 `json:"my_entity"`
 		User       string                          `json:"user"`
 		Kinds      map[Destination]json.RawMessage `json:"kinds"`
 		KindColors json.RawMessage                 `json:"kind_colors"`
@@ -121,6 +123,9 @@ func (s *Store) typeConfigurationRoot(ctx context.Context, root *os.Root, user s
 	}
 	if stored.User != user {
 		return cfg, raw, fmt.Errorf("type settings identify another user; saved bytes retained")
+	}
+	if len(stored.MyEntity) > 0 && json.Unmarshal(stored.MyEntity, &cfg.MyEntity) != nil {
+		cfg.Diagnostics = append(cfg.Diagnostics, "My entity needs repair; saved value retained")
 	}
 	cfg.KindColors = map[Destination]string{}
 	var storedColors map[Destination]json.RawMessage
@@ -260,7 +265,7 @@ func checkTypeConfiguration(cfg, previous TypeConfiguration) error {
 	return nil
 }
 func typeConfigurationRequest(cfg TypeConfiguration, version string, replacements map[Destination]map[string]string, key string) BatchRequest {
-	clean := TypeConfiguration{User: cfg.User, Kinds: map[Destination][]TypeDefinition{}, KindColors: maps.Clone(cfg.KindColors)}
+	clean := TypeConfiguration{User: cfg.User, MyEntity: strings.TrimSpace(cfg.MyEntity), Kinds: map[Destination][]TypeDefinition{}, KindColors: maps.Clone(cfg.KindColors)}
 	for kind, defs := range cfg.Kinds {
 		clean.Kinds[kind] = append([]TypeDefinition{}, defs...)
 	}
@@ -268,6 +273,7 @@ func typeConfigurationRequest(cfg TypeConfiguration, version string, replacement
 	raw = append(raw, '\n')
 	change := &typeConfigurationChange{User: cfg.User, After: raw, Configuration: clean}
 	intent := map[string]any{"user": cfg.User, "version": version, "configuration": cfg.Kinds, "replacements": replacements}
+	intent["my_entity"] = clean.MyEntity
 	if cfg.KindColors != nil {
 		intent["kind_colors"] = cfg.KindColors
 	}
@@ -287,6 +293,15 @@ func typeConfigurationRequest(cfg TypeConfiguration, version string, replacement
 		fillTypeColors(&clean, previous)
 		if err := checkTypeConfiguration(clean, previous); err != nil {
 			return nil, err
+		}
+		if clean.MyEntity != "" && clean.MyEntity != previous.MyEntity {
+			name, err := recordName(clean.MyEntity)
+			if err != nil || kindOf(clean.MyEntity) != Entities {
+				return nil, fmt.Errorf("My entity must be an existing entity ID")
+			}
+			if _, err := readLockedCopy(root, clean.MyEntity, name); err != nil {
+				return nil, fmt.Errorf("My entity: %w", err)
+			}
 		}
 		change.Configuration = clean
 		change.After, _ = json.MarshalIndent(clean, "", "  ")
@@ -481,6 +496,9 @@ func typeFields(doc *Document, user string, typ *string, fields map[string]any) 
 }
 func TypeInstructions(cfg TypeConfiguration) string {
 	var out strings.Builder
+	if cfg.MyEntity != "" {
+		fmt.Fprintf(&out, "User %q is represented by entity %s. Memories owned by this user already belong to them. Do not link those memories to this entity, in either direction. Memories owned by other users may link to it. Songya removes redundant owner links when saving.\n", cfg.User, cfg.MyEntity)
+	}
 	fmt.Fprintf(&out, "Type choices for user %q. Use only these IDs. Omit type if none fits. Do not invent types or edit settings. Types classify this user's view; they do not change ownership.\n", cfg.User)
 	for _, kind := range destinations {
 		fmt.Fprintf(&out, "%s:\n", kind)

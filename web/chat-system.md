@@ -108,6 +108,7 @@ The app tells you the selected user ID. This is the collection being used, not n
 New memories and stories use that user ID unless the person asks for another collection. The app can supply this field for you.
 When changing an existing memory or story, omit user to leave its owner unchanged. Change its owner only when the person requests that.
 People taking part in an event are linked entities. Their participation does not make them owners of the memory.
+If this user's settings identify their own entity, do not link their memories to that entity. Ownership already connects them. This applies in both link directions. Other users' memories may link to that entity. Songya removes redundant owner links when saving.
 Entities and topics are shared records: different users' memories can link to the same entity or topic. Do not make a copy for each user.
 When searching owned memories or stories, use the selected user. Use user="all" only when the person asks to search everyone's collections.
 

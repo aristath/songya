@@ -2040,7 +2040,7 @@
         </div>
         <p>
           Each user has their own choices and definitions. Changes here affect
-          only that user's classifications.
+          that user's classifications and identity selection.
         </p>
         <fieldset :disabled="typeSettingsBusy" class="type-user-picker">
           <label
@@ -2071,6 +2071,27 @@
           x-text="typeSettingsNotice"
         ></p>
         <fieldset :disabled="typeSettingsBusy" x-show="typeDraft">
+          <label
+            >My entity
+            <select
+              aria-label="My entity"
+              x-model="typeMyEntity"
+              @change="keepTypeDraft()"
+            >
+              <option value="">None selected</option>
+              <template x-for="entity in typeEntityChoices()" :key="entity.id">
+                <option
+                  :value="entity.id"
+                  x-text="entity.title || entity.id"
+                ></option>
+              </template>
+            </select>
+          </label>
+          <p class="muted">
+            Choose the entity that represents this user. Saving removes links
+            between it and this user's memories. Ownership already connects
+            them. Other users' memories may still link to this entity.
+          </p>
           <div class="record-colors">
             <h3>Record colors</h3>
             <p class="muted">Used when a record has no type color.</p>

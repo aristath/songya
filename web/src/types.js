@@ -34,6 +34,18 @@ export function typesUI(request) {
       return isPreset(value) ? value : "custom";
     },
     typeKindColors: null,
+    typeMyEntity: "",
+    typeEntityChoices() {
+      const entities = (this.timelineSubjects || []).filter(
+        (r) => r.kind === "entities",
+      );
+      if (
+        this.typeMyEntity &&
+        !entities.some((r) => r.id === this.typeMyEntity)
+      )
+        entities.push({ id: this.typeMyEntity, title: this.typeMyEntity });
+      return entities;
+    },
     setKindColor(kind, value) {
       this.typeKindColors[kind] =
         value === "custom" ? mochaColor(this.typeKindColors[kind]) : value;
@@ -136,6 +148,7 @@ export function typesUI(request) {
           version: this.typeSettings.version,
           kinds: this.typeDraft,
           kind_colors: this.typeKindColors,
+          my_entity: this.typeMyEntity,
           replacements: this.typeReplacements,
           pending: this.typePending,
         }),
@@ -180,6 +193,7 @@ export function typesUI(request) {
         };
         this.typeDraft = copy(saved?.kinds || value.kinds);
         this.typeKindColors = copy(saved?.kind_colors || value.kind_colors);
+        this.typeMyEntity = saved?.my_entity ?? value.my_entity ?? "";
         for (const kind of this.typeKinds)
           for (const type of this.typeDraft[kind] || [])
             type.color ||=
@@ -270,6 +284,7 @@ export function typesUI(request) {
           version: this.typeSettings.version,
           kinds: copy(this.typeDraft),
           kind_colors: copy(this.typeKindColors),
+          my_entity: this.typeMyEntity,
           replacements: copy(this.typeReplacements),
         };
         this.keepTypeDraft();
@@ -290,6 +305,7 @@ export function typesUI(request) {
             )
               delete type.color;
         if (
+          value.my_entity !== submitted.my_entity ||
           JSON.stringify(compared) !== JSON.stringify(submitted.kinds) ||
           (submitted.kind_colors &&
             JSON.stringify(value.kind_colors) !==
@@ -299,6 +315,7 @@ export function typesUI(request) {
             "Your previous save is confirmed, but settings changed afterwards. Reload saved types to compare; your draft is retained.",
           );
         const newer =
+          this.typeMyEntity !== submitted.my_entity ||
           JSON.stringify(this.typeKindColors) !==
             JSON.stringify(submitted.kind_colors) ||
           JSON.stringify(this.typeDraft) !== JSON.stringify(submitted.kinds) ||
@@ -312,6 +329,7 @@ export function typesUI(request) {
         } else {
           this.typeDraft = copy(value.kinds);
           this.typeKindColors = copy(value.kind_colors);
+          this.typeMyEntity = value.my_entity;
           this.typeReplacements = {};
           storage.set(this.typeDraftKey(), null);
           this.typeSettingsNotice = "Types saved for " + value.user + ".";

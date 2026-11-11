@@ -465,6 +465,9 @@ func prepareBatch(ctx context.Context, root *os.Root, request BatchRequest, revi
 		}
 		journal.Entries = append(journal.Entries, batchEntry{ID: change.ID, Source: name, Base: base, Revision: dataRevision(data), Before: before, After: data})
 	}
+	if err := normalizeOwnerLinks(root, &journal, request.typeConfiguration); err != nil {
+		return journal, err
+	}
 	if config := request.typeConfiguration; config != nil {
 		base := ""
 		if len(config.Before) > 0 {

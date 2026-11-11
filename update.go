@@ -57,6 +57,7 @@ func (s *Store) Update(id, revision string, fields map[string]any, body string) 
 		if err := s.validateTypeChange(context.Background(), root, Parse(doc.OriginalSource()), doc, kindOf(id), nil); err != nil {
 			return err
 		}
+		normalizeOwnerDocument(root, doc, id, kindOf(id))
 		data, err = doc.Marshal()
 		if err != nil {
 			return err

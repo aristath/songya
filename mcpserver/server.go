@@ -36,6 +36,7 @@ replace_file and remove_file permanently change bytes; use them only for the per
 Use normal Markdown for a caption or deliberate inline link. Use the actual filename from the successful tool result. Do not add a duplicate file list in metadata.
 
 TYPES
+The user's My entity setting identifies their own entity. Do not link memories owned by that user to their own entity, in either direction: ownership already connects them. Other users' memories may link to it. Songya removes redundant owner links when saving. Read type_configuration to see the selected entity.
 Types belong to the selected user. Read type_configuration for that user before assigning a type unless the app already supplied the choices. Use only configured IDs and their definitions. Omit type if none fits. type_user selects whose classification changes; it does not change the record owner. Empty type clears only that user's assignment. Never invent types, change type settings, write a global metadata.type, or change another user's classifications. Shared identities can have different types for different users.
 
 WHAT TO SAVE WHERE
@@ -657,7 +658,7 @@ func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]
 		if err != nil {
 			return cfg, err
 		}
-		value := map[string]any{"user": cfg.User, "kinds": cfg.Kinds, "version": cfg.Version, "diagnostics": cfg.Diagnostics, "instructions": songya.TypeInstructions(cfg)}
+		value := map[string]any{"user": cfg.User, "my_entity": cfg.MyEntity, "kinds": cfg.Kinds, "version": cfg.Version, "diagnostics": cfg.Diagnostics, "instructions": songya.TypeInstructions(cfg)}
 		if input.Schemas {
 			value["write_schemas"] = WriteSchemas(cfg)
 		}

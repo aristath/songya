@@ -40,6 +40,12 @@ receives the same definitions and allowed IDs. Shared identities can have
 different classifications for different users. Removing an in-use choice requires
 an explicit replacement or clearing its assignments.
 
+**My entity**, in the same per-user settings, selects the entity representing
+that user. Saving the selection removes explicit links between that entity and
+memories owned by the user, in both directions. Ownership already connects them.
+Other users' memories can still link to the entity. Future saves omit redundant
+owner links while keeping the rest of the requested changes.
+
 Click a title to inspect the record in a read-only modal, or **Edit** to open the
 editor modal. **Visual** edits formatted Markdown; **Source** edits the complete
 Markdown/YAML document with syntax highlighting. Both modes share the same draft.

@@ -28,6 +28,7 @@ func (a *chatApp) typeSettingsHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodPut {
 		var input struct {
+			MyEntity     string `json:"my_entity"`
 			Key, Version string
 			KindColors   map[songya.Destination]string `json:"kind_colors"`
 			Kinds        map[songya.Destination][]songya.TypeDefinition
@@ -36,7 +37,7 @@ func (a *chatApp) typeSettingsHTTP(w http.ResponseWriter, r *http.Request) {
 		if !decode(w, r, &input) {
 			return
 		}
-		receipt, err := a.store.SaveTypeConfiguration(songya.WithTypeUser(r.Context(), user), songya.TypeConfiguration{User: user, Kinds: input.Kinds, KindColors: input.KindColors}, input.Version, input.Replacements, input.Key)
+		receipt, err := a.store.SaveTypeConfiguration(songya.WithTypeUser(r.Context(), user), songya.TypeConfiguration{User: user, MyEntity: input.MyEntity, Kinds: input.Kinds, KindColors: input.KindColors}, input.Version, input.Replacements, input.Key)
 		if err != nil {
 			if receipt.Status == "not_accepted" || receipt.Status == "" {
 				status := 422
