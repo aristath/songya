@@ -104,6 +104,17 @@ after closing any open modal first.
 **Conversation actions** offers rename and archive/restore. Archiving retains
 all history and requires the saved turn and queue to finish first. Archived chats
 are under **Archived** and must be restored before accepting another message.
+User messages have an **Edit** button. **Save and resend** keeps the earlier
+conversation, replaces that message, removes its later replies and queued turns,
+and starts the corrected turn. Its attachments are retained. Editing a queued
+message keeps work before it and replaces that queue entry and everything after
+it. Saved memories and record attachments are not undone. Interrupted sends retry
+the same request without rewinding twice.
+
+**Conversation actions → Delete conversation** permanently removes the chat after
+confirmation, including its queued messages. Active work stops before removal.
+Saved records and their files remain. `DELETE /api/chat/sessions/{id}` is retryable.
+
 `PATCH /api/chat/sessions/{id}` accepts `title` and/or `archived`, using the same
 locked, synced conversation publication path as message changes. Renaming and
 archiving do not modify memory records, messages, original request identities or

@@ -222,6 +222,13 @@
                     >
                       Restore conversation
                     </button>
+                    <button
+                      class="danger"
+                      @click="deleteChat()"
+                      :disabled="chatNavigationBusy()"
+                    >
+                      Delete conversation
+                    </button>
                   </div>
                 </details>
               </div>
@@ -322,6 +329,15 @@
                         x-show="message.status"
                         x-text="' · '+message.status"
                       ></span>
+                      <button
+                        class="text-button"
+                        x-show="message.role==='user'&&message.turn_id&&!chatState?.archived"
+                        @click="editChatMessage(message)"
+                        :disabled="chatNavigationBusy()"
+                        aria-label="Edit message"
+                      >
+                        Edit
+                      </button>
                     </p>
                     <details
                       class="chat-reasoning"
@@ -2223,6 +2239,46 @@
           </div>
         </fieldset>
         <p x-show="typeSettingsBusy" role="status">Saving or loading types…</p>
+      </form>
+    </dialog>
+    <dialog
+      class="chat-rename-dialog"
+      x-ref="chatEditDialog"
+      aria-labelledby="chat-edit-title"
+      @close="chatEditing=null"
+    >
+      <form @submit.prevent="resendChatEdit()">
+        <h2 id="chat-edit-title">Edit message</h2>
+        <label
+          >Message<textarea
+            x-ref="chatEditInput"
+            x-model="chatEditText"
+            rows="7"
+            aria-label="Corrected message"
+          ></textarea>
+        </label>
+        <p>
+          Resending removes this message and everything after it, including
+          queued messages. Saved memories stay. Existing message attachments are
+          included again.
+        </p>
+        <p
+          class="error"
+          role="alert"
+          x-show="chatEditError"
+          x-text="chatEditError"
+        ></p>
+        <div class="actions">
+          <button type="button" @click="$refs.chatEditDialog.close()">
+            Cancel</button
+          ><button
+            type="submit"
+            class="primary"
+            :disabled="chatNavigationBusy()"
+          >
+            Save and resend
+          </button>
+        </div>
       </form>
     </dialog>
     <dialog

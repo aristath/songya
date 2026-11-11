@@ -56,6 +56,7 @@ type chatConversation struct {
 	RecallConfiguration *songya.Configuration  `json:"recall_configuration,omitempty"`
 	RecallConfigIssue   string                 `json:"recall_config_issue,omitempty"`
 	ID                  string                 `json:"id"`
+	BranchID            string                 `json:"branch_id,omitempty"`
 	User                string                 `json:"user"`
 	Title               string                 `json:"title"`
 	Archived            bool                   `json:"archived,omitempty"`
@@ -110,7 +111,7 @@ type chatApp struct {
 	ctx             context.Context
 	cancel          context.CancelFunc
 	mu              sync.Mutex
-	active          map[string]context.CancelFunc
+	active          map[string]*chatRun
 	progress        map[string]chatProgress
 	wg              sync.WaitGroup
 	closed          bool
@@ -120,7 +121,7 @@ type chatApp struct {
 
 func newChatApp(store *songya.Store) *chatApp {
 	ctx, cancel := context.WithCancel(context.Background())
-	a := &chatApp{store: store, ctx: ctx, cancel: cancel, active: map[string]context.CancelFunc{}, progress: map[string]chatProgress{}}
+	a := &chatApp{store: store, ctx: ctx, cancel: cancel, active: map[string]*chatRun{}, progress: map[string]chatProgress{}}
 	a.weights = newGraphWeights(a)
 	a.wg.Add(1)
 	go a.runGraphWeights()
@@ -289,12 +290,13 @@ func (a *chatApp) start(id string) {
 		return
 	}
 	ctx, cancel := context.WithCancel(a.ctx)
-	a.active[id] = cancel
+	run := &chatRun{cancel: cancel, done: make(chan struct{})}
+	a.active[id] = run
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
 		defer cancel()
-		defer func() { a.mu.Lock(); delete(a.active, id); delete(a.progress, id); a.mu.Unlock() }()
+		defer func() { a.mu.Lock(); delete(a.active, id); delete(a.progress, id); close(run.done); a.mu.Unlock() }()
 		lease, err := a.fileLock(ctx, ".chats/"+id+".run.lock", false)
 		if err != nil {
 			return
@@ -341,6 +343,7 @@ func (a *chatApp) start(id string) {
 }
 
 func publicChat(c chatConversation) chatConversation {
+	c.BranchID = ""
 	c.Prompt = ""
 	c.Requests = nil
 	c.RecallConfiguration = nil
@@ -375,7 +378,7 @@ func (a *chatApp) register(mux *http.ServeMux) {
 		}
 		write(w, publicChat(c))
 	})
-	mux.HandleFunc("PATCH /api/chat/sessions/{id}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("PATCH /api/chat/sessions/{id}", a.sessionAction(func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			Title    *string `json:"title"`
 			Archived *bool   `json:"archived"`
@@ -407,10 +410,11 @@ func (a *chatApp) register(mux *http.ServeMux) {
 			return
 		}
 		write(w, publicChat(c))
-	})
+	}))
+	mux.HandleFunc("DELETE /api/chat/sessions/{id}", a.sessionAction(a.deleteChatHTTP))
 	mux.HandleFunc("GET /api/chat/sessions/{id}/events", a.eventsHTTP)
 	mux.HandleFunc("POST /api/chat", a.sendHTTP)
-	mux.HandleFunc("POST /api/chat/sessions/{id}/retry", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/chat/sessions/{id}/retry", a.sessionAction(func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		c, err := a.edit(r.Context(), id, func(c *chatConversation) error {
 			if c.User == "" {
@@ -428,8 +432,8 @@ func (a *chatApp) register(mux *http.ServeMux) {
 		}
 		a.start(id)
 		writeStatus(w, 202, publicChat(c))
-	})
-	mux.HandleFunc("POST /api/chat/sessions/{id}/pause", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("POST /api/chat/sessions/{id}/pause", a.sessionAction(func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		c, err := a.edit(r.Context(), id, func(c *chatConversation) error {
 			if c.User == "" {
@@ -445,27 +449,28 @@ func (a *chatApp) register(mux *http.ServeMux) {
 			return
 		}
 		a.mu.Lock()
-		if cancel := a.active[id]; cancel != nil {
-			cancel()
+		if run := a.active[id]; run != nil {
+			run.cancel()
 		}
 		a.mu.Unlock()
 		write(w, publicChat(c))
-	})
+	}))
 }
 
 func (a *chatApp) sendHTTP(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		ID        string   `json:"id"`
-		RequestID string   `json:"request_id"`
-		User      string   `json:"user"`
-		Text      string   `json:"text"`
-		Uploads   []string `json:"uploads,omitempty"`
+		ID         string   `json:"id"`
+		RequestID  string   `json:"request_id"`
+		EditTurnID string   `json:"edit_turn_id,omitempty"`
+		User       string   `json:"user"`
+		Text       string   `json:"text"`
+		Uploads    []string `json:"uploads,omitempty"`
 	}
 	if !decode(w, r, &input) {
 		return
 	}
 	input.User = strings.TrimSpace(input.User)
-	if !validChatID(input.ID) || input.RequestID == "" || len(input.RequestID) > 120 || input.User == "" || input.User == "all" || (strings.TrimSpace(input.Text) == "" && len(input.Uploads) == 0) {
+	if !validChatID(input.ID) || input.RequestID == "" || len(input.RequestID) > 120 || input.User == "" || input.User == "all" || (strings.TrimSpace(input.Text) == "" && len(input.Uploads) == 0 && input.EditTurnID == "") {
 		writeStatus(w, 400, map[string]any{"error": "Choose a user and enter a message with valid conversation/request IDs."})
 		return
 	}
@@ -473,6 +478,44 @@ func (a *chatApp) sendHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	action, err := a.fileLock(r.Context(), ".chats/"+input.ID+".action.lock", true)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	defer action.Close()
+	var original *chatMessage
+	if input.EditTurnID != "" {
+		existing, err := a.conversation(input.ID)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		fingerprint := chatFingerprint("edit:"+input.EditTurnID, input.Text)
+		if existing.User != input.User || existing.Archived {
+			fail(w, fmt.Errorf("%w: restore this conversation and use its owner before editing", songya.ErrConflict))
+			return
+		}
+		if previous, ok := existing.Requests[input.RequestID]; ok {
+			if previous != fingerprint {
+				fail(w, fmt.Errorf("%w: request ID already belongs to another message", songya.ErrConflict))
+				return
+			}
+			a.start(input.ID)
+			writeStatus(w, 202, publicChat(existing))
+			return
+		}
+		original = existing.messageForTurn(input.EditTurnID)
+		if original != nil && strings.TrimSpace(input.Text) == "" && len(original.Uploads) == 0 {
+			writeStatus(w, 400, map[string]any{"error": "Enter a message."})
+			return
+		}
+		if original == nil {
+			fail(w, fmt.Errorf("%w: this message has changed; reload the conversation", songya.ErrConflict))
+			return
+		}
+	}
+
 	prompt, err := a.readFile("chat-system.md")
 	if err != nil {
 		fail(w, err)
@@ -485,6 +528,10 @@ func (a *chatApp) sendHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uploads := []songya.Upload{}
+	if original != nil {
+		uploads = original.Uploads
+		input.Uploads = nil
+	}
 	for _, id := range input.Uploads {
 		state, err := a.store.UploadState(r.Context(), id, "chat:"+input.User)
 		if err != nil {
@@ -494,6 +541,16 @@ func (a *chatApp) sendHTTP(w http.ResponseWriter, r *http.Request) {
 		uploads = append(uploads, state.Upload)
 	}
 	fingerprint := chatTurnFingerprint(input.User, input.Text, uploads)
+	var lease interface{ Close() error }
+	if original != nil {
+		fingerprint = chatFingerprint("edit:"+input.EditTurnID, input.Text)
+		lease, err = a.stopChat(r.Context(), input.ID)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		defer lease.Close()
+	}
 	c, err := a.edit(r.Context(), input.ID, func(c *chatConversation) error {
 		if c.User != "" && c.User != input.User {
 			return fmt.Errorf("%w: this conversation belongs to another user", songya.ErrConflict)
@@ -506,6 +563,12 @@ func (a *chatApp) sendHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if c.Archived {
 			return fmt.Errorf("%w: restore this conversation before sending another message", songya.ErrConflict)
+		}
+		if original != nil {
+			if err := c.rewind(input.EditTurnID); err != nil {
+				return err
+			}
+			c.Error = ""
 		}
 		c.User = input.User
 		turn := chatQueuedTurn{ID: input.RequestID, Text: input.Text, Uploads: uploads,
@@ -531,6 +594,9 @@ func (a *chatApp) sendHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fail(w, err)
 		return
+	}
+	if lease != nil {
+		_ = lease.Close()
 	}
 	a.start(input.ID)
 	writeStatus(w, 202, publicChat(c))

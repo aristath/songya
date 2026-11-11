@@ -194,6 +194,9 @@ export function chatUI(request) {
     chatExpanded: false,
     chatManaging: false,
     chatRename: "",
+    chatEditing: null,
+    chatEditText: "",
+    chatEditError: "",
     chatSettings: {
       base_url: "",
       model: "",
@@ -332,6 +335,76 @@ export function chatUI(request) {
         this.$refs.chatRenameInput.focus();
         this.$refs.chatRenameInput.select();
       });
+    },
+    editChatMessage(message) {
+      if (this.chatNavigationBusy()) return;
+      this.chatEditing = message;
+      this.chatEditText = message.content;
+      this.chatEditError = "";
+      this.$refs.chatEditDialog.showModal();
+      this.$nextTick(() => this.$refs.chatEditInput.focus());
+    },
+    async resendChatEdit() {
+      if (!this.chatEditing || this.chatNavigationBusy()) return;
+      if (!this.chatEditText.trim() && !this.chatEditing.uploads?.length) {
+        this.chatEditError = "Enter a message.";
+        return;
+      }
+      this.chatPending = {
+        id: this.chatSessionID,
+        request_id: newID(),
+        edit_turn_id: this.chatEditing.turn_id,
+        user: this.chatState.user,
+        text: this.chatEditText,
+      };
+      local.set("songya-chat-pending", JSON.stringify(this.chatPending));
+      this.stopChatUpdates();
+      events?.close();
+      watch++;
+      this.chatProgress = null;
+      this.$refs.chatEditDialog.close();
+      this.chatEditing = null;
+      this.chatFollow = true;
+      await this.flushChatPending();
+      this.$refs.chatInput?.focus();
+    },
+    async deleteChat() {
+      if (!this.chatState || this.chatNavigationBusy()) return;
+      if (
+        !confirm(
+          "Delete this conversation permanently? Saved memories and their files will stay.",
+        )
+      )
+        return;
+      this.chatManaging = true;
+      this.chatError = "";
+      this.stopChatUpdates();
+      events?.close();
+      watch++;
+      try {
+        const remove = () =>
+          request("/api/chat/sessions/" + this.chatSessionID, {
+            method: "DELETE",
+          });
+        await remove().catch(remove);
+        local.set(this.chatDraftKey(), null);
+        local.set(this.chatDraftKey() + ":files", null);
+        local.set("songya-chat-selected:" + this.chatUser, null);
+        this.chatState = null;
+        this.chatSessionID = "";
+        this.chatProgress = null;
+        this.chatArchived = false;
+        this.chatConnection = "";
+        this.$refs.chatActions.removeAttribute("open");
+        this.loadChatDraft();
+        await this.refreshChatSessions();
+        this.$refs.chatInput?.focus();
+      } catch (e) {
+        await this.selectChat();
+        this.chatError = e.message;
+      } finally {
+        this.chatManaging = false;
+      }
     },
     async updateChatSession(fields) {
       if (!this.chatState || this.chatNavigationBusy()) return;
@@ -506,6 +579,7 @@ export function chatUI(request) {
         ...queue.map((m) => ({
           role: "user",
           content: m.text,
+          turn_id: m.id,
           uploads: m.uploads,
           status: "Queued",
         })),
@@ -744,6 +818,7 @@ export function chatUI(request) {
     },
     async sendChat() {
       if (
+        this.chatManaging ||
         !this.chatUser ||
         !this.chatSettings.configured ||
         this.chatState?.archived

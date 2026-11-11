@@ -2191,6 +2191,110 @@ test(
   },
 );
 
+test("chat edits rewind and resend, preserve the composer, and conversations can be deleted", async (t) => {
+  const requests = [];
+  const provider = await chatProvider(t, async (res, body) => {
+    const users = body.messages
+      .filter((m) => m.role === "user")
+      .map((m) => m.content);
+    requests.push(users);
+    streamChunk(res, { role: "assistant", content: "Reply: " + users.at(-1) });
+    streamFinish(res);
+  });
+  const { page, context } = await pageFor(undefined, undefined, "chat");
+  t.after(() => context.close());
+  await setupBrowserChat(page, provider.base, "history-editor");
+  const input = page.getByLabel("Message Songya", { exact: true });
+  for (const text of ["Wrong words", "Later message"]) {
+    await input.fill(text);
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await page
+      .getByRole("log", { name: "Chat messages" })
+      .getByText("Reply: " + text, { exact: true })
+      .waitFor();
+    await page.getByText("Reply complete.", { exact: true }).waitFor();
+  }
+  const id = await page.evaluate(
+    () => window.Alpine.$data(document.body).chatSessionID,
+  );
+  await input.fill("Keep my next draft");
+  const edit = page
+    .getByRole("button", { name: "Edit message", exact: true })
+    .first();
+  await edit.click();
+  const dialog = page.getByRole("dialog", {
+    name: "Edit message",
+    exact: true,
+  });
+  assert.equal(
+    await dialog.getByLabel("Corrected message").inputValue(),
+    "Wrong words",
+  );
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  assert.equal(await page.locator(".chat-message.user").count(), 2);
+  await edit.click();
+  await dialog.getByLabel("Corrected message").fill("Correct words");
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.ok(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth));
+  let lostEditReply = false;
+  await page.route("**/api/chat", async (route) => {
+    if (!lostEditReply && route.request().postDataJSON()?.edit_turn_id) {
+      lostEditReply = true;
+      await route.fetch();
+      await route.abort();
+    } else await route.continue();
+  });
+  await dialog
+    .getByRole("button", { name: "Save and resend", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Retry pending messages", exact: true })
+    .click();
+  await page
+    .getByRole("log", { name: "Chat messages" })
+    .getByText("Reply: Correct words", { exact: true })
+    .waitFor();
+  await page.getByText("Reply complete.", { exact: true }).waitFor();
+  assert.equal(await input.inputValue(), "Keep my next draft");
+  assert.equal(await page.locator(".chat-message.user").count(), 1);
+  assert.equal(requests.at(-1).at(-1), "Correct words");
+  assert.ok(
+    requests
+      .at(-1)
+      .every((text) => !["Wrong words", "Later message"].includes(text)),
+  );
+  await page.reload();
+  await page
+    .getByRole("log", { name: "Chat messages" })
+    .getByText("Reply: Correct words", { exact: true })
+    .waitFor();
+  await page.getByLabel("Conversation actions", { exact: true }).click();
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page
+    .getByRole("button", { name: "Delete conversation", exact: true })
+    .click();
+  assert.equal((await fetch(url + "/api/chat/sessions/" + id)).status, 200);
+  let lostDeleteReply = false;
+  await page.route("**/api/chat/sessions/" + id, async (route) => {
+    if (!lostDeleteReply && route.request().method() === "DELETE") {
+      lostDeleteReply = true;
+      await route.fetch();
+      await route.abort();
+    } else await route.continue();
+  });
+  page.once("dialog", (dialog) => dialog.accept());
+  await page
+    .getByRole("button", { name: "Delete conversation", exact: true })
+    .click();
+  await page.waitForFunction(
+    () => !window.Alpine.$data(document.body).chatSessionID,
+  );
+  assert.equal((await fetch(url + "/api/chat/sessions/" + id)).status, 404);
+  await page.reload();
+  assert.equal(await page.locator(".chat-message").count(), 0);
+  assert.deepEqual(errors, []);
+});
+
 test("chat lost acknowledgements replay one accepted message and truncated streams retain a retry", async (t) => {
   const provider = await chatProvider(t, async (res, body, n) => {
     streamChunk(res, { role: "assistant", content: "Partial response" });
