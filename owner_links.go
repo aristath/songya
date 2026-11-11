@@ -90,6 +90,10 @@ func normalizeOwnerLinks(root *os.Root, journal *batchJournal, settings *typeCon
 			return err
 		}
 		if position, ok := positions[id]; ok {
+			// A redundant requested link alone is not a change to the record.
+			if before := journal.Entries[position].Before; len(before) > 0 && len(changedRecordFields(before, data)) == 0 {
+				data = before
+			}
 			journal.Entries[position].After = data
 			journal.Entries[position].Revision = dataRevision(data)
 			continue

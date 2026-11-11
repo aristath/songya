@@ -95,6 +95,13 @@ func TestMyEntityCleansBothDirectionsAndPreservesOtherRecords(t *testing.T) {
 	if len(identity.Metadata().Relations) != 0 || len(after.Metadata().Relations) != 1 || after.Body != "Updated event" {
 		t.Fatal("batch save restored redundant links", identity.Metadata(), after.Metadata())
 	}
+	if _, err := s.ApplyBatch(ctx, BatchRequest{Key: "redundant-link-only", Changes: []Change{{ID: own.ID, AddRelations: []Relation{{"related_to", person.ID}}}}}); err != nil {
+		t.Fatal(err)
+	}
+	unchanged, _ := s.Read(own.ID)
+	if unchanged.Revision != after.Revision {
+		t.Fatal("omitting a redundant link changed the record's timestamp")
+	}
 	// Creating a new, unrelated entity can still refer to an existing memory.
 	newEntity, err := s.Create(Entities, map[string]any{"name": "Mary", "relations": []Relation{{"related_to", own.ID}}}, "A different person")
 	if err != nil || len(newEntity.Metadata().Relations) != 1 {
