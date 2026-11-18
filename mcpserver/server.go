@@ -13,6 +13,7 @@ import (
 	"maps"
 	"math"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,8 +37,8 @@ replace_file and remove_file permanently change bytes; use them only for the per
 Use normal Markdown for a caption or deliberate inline link. Use the actual filename from the successful tool result. Do not add a duplicate file list in metadata.
 
 TYPES
-The user's My entity setting identifies their own entity. Do not link memories owned by that user to their own entity, in either direction: ownership already connects them. Other users' memories may link to it. Songya removes redundant owner links when saving. Read type_configuration to see the selected entity.
-Types belong to the selected user. Read type_configuration for that user before assigning a type unless the app already supplied the choices. Use only configured IDs and their definitions. Omit type if none fits. type_user selects whose classification changes; it does not change the record owner. Empty type clears only that user's assignment. Never invent types, change type settings, write a global metadata.type, or change another user's classifications. Shared identities can have different types for different users.
+My entity identifies this store's owner entity. Ownership already connects its memories, so do not add redundant links to that entity. Read type_configuration to see it.
+Types belong to the selected store. Read type_configuration before assigning a type. Use configured IDs; omit type if none fits. Empty type clears the classification.
 
 WHAT TO SAVE WHERE
 - Memory: one event WITH its details, or a standalone fact or preference. All people, food, conversation, feelings, and quotes from one dinner belong together. A different dinner is a different memory. An unrelated home address or usual drink preference can be a standalone fact; do not attach it to the dinner. Include all supplied details. Say whose feelings or opinions they are. Do not invent missing details or shorten away important words. One detailed event can take several paragraphs; there is no fixed word limit.
@@ -49,9 +50,7 @@ Put experiences and detailed history in linked memories, not in this description
 Do not rewrite or reorganize existing records just to change their style or structure. Change an existing record's style or structure only when the person asks for that change.
 
 OWNER
-An owner is the user whose collection holds a memory/story, not everyone taking part. The selected user ID is a collection label, not automatically a person's name or entity ID. Use it for new memories/stories. Omit user on an update to keep the existing owner; change it only if asked.
-Entities/topics are shared identities. Different owners can link to the same identity; do not copy it for each owner. You can find shared identities while searching the selected user's collection.
-For owned searches, supply the selected user. Use user="all" only when the person explicitly asks to search everyone's collections. If no user is supplied by the client and the collection is unclear, ask which collection to use.
+Every call requires store: one of the configured store names. Each store is an isolated collection with its own memories, entities, topics, stories and attachments. IDs and links belong only to that store. Never link records across stores.
 
 WORK IN THIS ORDER
 1. For a question, read the evidence needed to answer; do not change records merely because someone asked about them. A missing search result does not prove an event never happened.
@@ -72,13 +71,13 @@ Tool reply data may be inside structuredContent.data. A positive number in the f
 Read ALL pages before replacing words, so unseen details are not deleted. If content is incomplete but no next position is returned, read the needed record by ID or report what you could not read. Do not invent missing words or a page position.
 
 SOURCE VERSUS BODY
-In view="source", the normal file header lies between the first two lines containing only ---. It holds fields such as title, user, time, and relations. The body is ALL writing AFTER the second --- line.
+In view="source", the normal file header lies between the first two lines containing only ---. It holds fields such as title, type, time, and relations. The body is ALL writing AFTER the second --- line.
 Only the body goes in text for memories/stories, or description for entities/topics. Never paste the header block, its field lines, or its --- divider lines into those arguments. Dates, names, and places still belong in ordinary body sentences when part of the account. Send a changed header field in its own argument too.
 If the header is damaged or its end is unclear, read view="body" separately. Do not guess a replacement or delete unreadable words; report that record's problem and continue other clear work.
 
 SAVES
 Call one tool at a time, with JSON arguments. Do not write pretend calls or XML tags in reply text.
-New memory: omit id; always send a short title and text. Send the selected user unless the client supplies user. New stories also need a title. Example: call save_memory with this JSON:
+New memory: omit id; always send a short title and text. Send the selected store. New stories also need a title. Example: call save_memory with this JSON:
 {"title":"Alex and Sam's favorite soup","text":"Alex and Sam enjoy the soup at Cedar Café.","relations":[{"type":"related_to","target":"Alex"},{"type":"related_to","target":"Sam"},{"type":"related_to","target":{"kind":"entities","name":"Cedar Café"}}]}
 Change a memory/story: send id and the fields to change. text replaces ALL body words. For a correction, change only wrong claims and copy all other wording, details, names, and quotes exactly. append adds words about the SAME account after the old words; it must not add a different dated event or a conflicting claim.
 Change entity/topic words: send id and description, NOT text. For dates only, send id and time; leave text and description out.
@@ -103,8 +102,8 @@ Exact day example arguments for save_memory:
 Month-only example arguments for save_memory:
 {"id":"EVENT_ID","time":{"date":null,"earliest":"2019-11-01","latest":"2019-11-30"}}
 For a one-time event, these bounds are first/last possible days, not known exact days. A range alone does not prove an event lasted for the whole range.
-For an ongoing state SINCE July 2025, earliest is the start bound and latest is the end bound. Use an open end, not July 31. Example creation arguments for a NEW changed preference (replace SELECTED_USER with the selected user ID):
-{"user":"SELECTED_USER","title":"Sam prefers tea since July 2025","text":"Since July 2025, Sam prefers tea to coffee.","time":{"date":null,"earliest":"2025-07-01","latest":null}}
+For an ongoing state SINCE July 2025, earliest is the start bound and latest is the end bound. Use an open end, not July 31. Example creation arguments for a NEW changed preference (replace STORE_NAME with the selected store name):
+{"store":"STORE_NAME","title":"Sam prefers tea since July 2025","text":"Since July 2025, Sam prefers tea to coffee.","time":{"date":null,"earliest":"2025-07-01","latest":null}}
 Do not change the earlier true preference. If correcting the start of this same already-saved state, send its returned id and these time fields instead. The body says "Since July 2025"; July 1 is a bound, not an asserted exact starting day.
 All three time fields accept ONLY real YYYY-MM-DD dates or null. Never put "ongoing", "since July", "unknown", "last summer", a bare month/year, timestamps, or empty strings there. Put these explanations in the body. For an event IN July, use July 1 through July 31 as possible bounds; for a state SINCE July, leave the end null.
 A date bound worked out from known facts is an inferred bound; explain those facts in the memory body. Check ages and event order too. Do not guess an exact day or an age.
@@ -127,8 +126,15 @@ created/updated means changes were made, not that they were correct. unchanged m
 // App keeps import access separate from record-store access. Import roots are
 // supplied by the process owner, never accepted as arbitrary client paths.
 type App struct {
-	Store       *songya.Store
+	Stores      map[string]*songya.Store
 	ImportRoots map[string]string
+}
+
+type selectedStore struct{}
+
+func (a *App) store(ctx context.Context) *songya.Store {
+	name, _ := ctx.Value(selectedStore{}).(string)
+	return a.Stores[name]
 }
 
 type pageInput struct {
@@ -142,8 +148,6 @@ type pageInput struct {
 	Limit   int    `json:"limit,omitempty"`
 }
 type recordPage struct {
-	User            string                 `json:"user,omitempty"`
-	UserTruncated   bool                   `json:"user_truncated,omitempty"`
 	ID              string                 `json:"id,omitempty"`
 	Source          string                 `json:"source,omitempty"`
 	Pending         bool                   `json:"pending,omitempty"`
@@ -247,7 +251,7 @@ func normalize(value any, key string, kind songya.Destination) any {
 			}
 			return int(n)
 		}
-	case "user", "key", "original_text", "name", "description", "title", "relation", "id", "kind", "ref", "body", "append", "story", "text", "direction", "type", "related_to", "action", "root", "path", "source", "view", "archive", "relation_type", "target", "mode":
+	case "store", "key", "original_text", "name", "description", "title", "relation", "id", "kind", "ref", "body", "append", "story", "text", "direction", "type", "related_to", "action", "root", "path", "source", "view", "archive", "relation_type", "target", "mode":
 		switch v := value.(type) {
 		case bool:
 			return strconv.FormatBool(v)
@@ -303,7 +307,16 @@ func object() map[string]any {
 
 func array(item any) map[string]any { return map[string]any{"type": "array", "items": item} }
 
-func tool[T any](server *mcp.Server, name, description string, input any, readOnly bool, handler func(context.Context, T) (any, error)) {
+func tool[T any](app *App, server *mcp.Server, name, description string, input any, readOnly bool, handler func(context.Context, T) (any, error)) {
+	inputSchema := input.(map[string]any)
+	names := []string{}
+	for name := range app.Stores {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	inputSchema["properties"].(map[string]any)["store"] = map[string]any{"type": "string", "enum": names, "description": "Configured store to use. Records and links stay inside this store."}
+	required, _ := inputSchema["required"].([]string)
+	inputSchema["required"] = append(required, "store")
 	closed := false
 	server.AddTool(&mcp.Tool{Name: name, Description: description, InputSchema: input, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: readOnly, OpenWorldHint: &closed}}, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if !readOnly && editsOriginalAccounts(request.Params.Arguments) {
@@ -323,20 +336,15 @@ func tool[T any](server *mcp.Server, name, description string, input any, readOn
 		if text, ok := request.Params.Meta["songya/original-text"].(string); ok {
 			ctx = songya.WithOriginalText(ctx, text)
 		}
-		var classification struct {
-			User  string `json:"type_user"`
-			Owner string `json:"user"`
+		var selection struct {
+			Store string `json:"store"`
 		}
-		_ = json.Unmarshal(request.Params.Arguments, &classification)
-		if classification.User == "" && classification.Owner != "all" {
-			classification.User = classification.Owner
+		_ = json.Unmarshal(request.Params.Arguments, &selection)
+		if app.Stores[selection.Store] == nil {
+			return result(nil, fmt.Errorf("choose a configured store")), nil
 		}
-		if classification.User != "" && songya.TypeUser(ctx) == "" {
-			ctx = songya.WithTypeUser(ctx, classification.User)
-		}
-		if user, ok := request.Params.Meta["songya/user"].(string); ok {
-			ctx = songya.WithTypeUser(ctx, user)
-		}
+		ctx = context.WithValue(ctx, selectedStore{}, selection.Store)
+
 		output, err := handler(ctx, value)
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -515,7 +523,6 @@ func (a *App) read(ctx context.Context, input pageInput) (any, error) {
 	}
 	var data []byte
 	var err error
-	user := ""
 	pending := false
 	unconfirmed := false
 	var diagnostics []string
@@ -527,17 +534,17 @@ func (a *App) read(ctx context.Context, input pageInput) (any, error) {
 		if view == "" {
 			view = "proposed"
 		}
-		data, err = a.Store.BatchData(ctx, input.Key, input.ID, view)
+		data, err = a.store(ctx).BatchData(ctx, input.Key, input.ID, view)
 	} else if input.Archive != "" {
-		data, err = a.Store.ReadArchive(input.Archive)
+		data, err = a.store(ctx).ReadArchive(input.Archive)
 	} else if input.Root != "" {
 		root, ok := a.ImportRoots[input.Root]
 		if !ok {
 			return nil, fmt.Errorf("import root %q is not configured", input.Root)
 		}
-		data, _, err = a.Store.ImportSource(root, input.Source)
+		data, _, err = a.store(ctx).ImportSource(root, input.Source)
 	} else if input.ID != "" {
-		doc, readErr := a.Store.Read(input.ID)
+		doc, readErr := a.store(ctx).Read(input.ID)
 		if readErr != nil {
 			return nil, readErr
 		}
@@ -553,32 +560,20 @@ func (a *App) read(ctx context.Context, input pageInput) (any, error) {
 		pending = doc.Pending
 		unconfirmed = doc.Unconfirmed
 		diagnostics = doc.Diagnostics()
-		owned := kindFor(input.ID) == songya.Memories || kindFor(input.ID) == songya.Stories
-		if owned {
-			user = doc.Metadata().User
-		}
 		if input.View == "source" {
 			source := string(kindFor(input.ID)) + "/" + input.ID + "/record.md"
-			data, err = a.Store.ReadSource(source)
-			if err == nil && owned {
-				user = songya.Parse(data).Metadata().User
-			}
+			data, err = a.store(ctx).ReadSource(source)
 		} else {
 			data = []byte(doc.Body)
 		}
 	} else {
-		data, err = a.Store.ReadSource(input.Source)
+		data, err = a.store(ctx).ReadSource(input.Source)
 	}
 	if err != nil {
 		return nil, err
 	}
 	page := bytePage(data, input.Offset, input.Limit)
-	page.UserTruncated = len(user) > 160
-	if page.UserTruncated {
-		user = user[:160]
-	}
 	page.ProfilePicture = profile
-	page.User = user
 	page.ID, page.Source, page.Pending, page.Unconfirmed = input.ID, input.Source, pending, unconfirmed
 	for _, warning := range diagnostics {
 		if len(page.Diagnostics) == 4 {
@@ -587,11 +582,11 @@ func (a *App) read(ctx context.Context, input pageInput) (any, error) {
 		page.Diagnostics = append(page.Diagnostics, clipError(warning))
 	}
 	if input.ID != "" && input.Offset == 0 {
-		if files, err := a.Store.Attachments(ctx, input.ID); err == nil {
+		if files, err := a.store(ctx).Attachments(ctx, input.ID); err == nil {
 			page.AttachmentCount = len(files.Files)
 			end := min(8, len(files.Files))
 			for _, file := range files.Files[:end] {
-				page.Attachments = append(page.Attachments, newAttachmentRef(input.ID, file))
+				page.Attachments = append(page.Attachments, newAttachmentRef(ctx.Value(selectedStore{}).(string), input.ID, file))
 			}
 			if end < len(files.Files) {
 				page.AttachmentsNext = end
@@ -615,24 +610,10 @@ func kindFor(id string) songya.Destination {
 	}
 }
 
-func New(lifetime context.Context, store *songya.Store, roots map[string]string) *mcp.Server {
-	return NewForUser(lifetime, store, roots, "")
-}
-func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]string, user string) *mcp.Server {
-	cfg := songya.TypeConfiguration{User: user, Kinds: map[songya.Destination][]songya.TypeDefinition{}}
-	instructions := Guide
-	if user != "" {
-		var err error
-		cfg, err = store.TypeConfiguration(lifetime, user)
-		if err != nil {
-			instructions += "\nType settings could not be read. Omit classifications and report the problem: " + err.Error()
-		} else {
-			instructions += "\n" + songya.TypeInstructions(cfg)
-		}
-	}
-	writeSchemas := WriteSchemas(cfg)
-	app := &App{Store: store, ImportRoots: roots}
-	server := mcp.NewServer(&mcp.Implementation{Name: "songya", Version: processVersion}, &mcp.ServerOptions{Instructions: instructions})
+func New(lifetime context.Context, stores map[string]*songya.Store, roots map[string]string) *mcp.Server {
+	writeSchemas := WriteSchemas(songya.TypeConfiguration{})
+	app := &App{Stores: stores, ImportRoots: roots}
+	server := mcp.NewServer(&mcp.Implementation{Name: "songya", Version: processVersion}, &mcp.ServerOptions{Instructions: Guide})
 	// The SDK keeps request contexts independent of Run's context. Propagate our
 	// process lifetime explicitly so shutdown cancels unaccepted lock waiters.
 	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
@@ -644,41 +625,40 @@ func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]
 			if err := lifetime.Err(); err != nil {
 				return nil, err
 			}
-			if user != "" {
-				ctx = songya.WithTypeUser(ctx, user)
-			}
 			return next(ctx, method, request)
 		}
 	})
-	tool(server, "type_configuration", "Read the selected user's type choices and definitions before assigning types. Settings changes are made by the person in Songya, not by the model.", schema(map[string]any{"user": str("Selected user whose type choices to read"), "schemas": map[string]any{"type": "boolean", "description": "App integration flag. Omit when reading the choices normally"}}, "user"), true, func(ctx context.Context, input struct {
-		User    string `json:"user"`
-		Schemas bool   `json:"schemas"`
+	tool(app, server, "type_configuration", "Read this store's type choices and definitions before assigning types.", schema(map[string]any{"schemas": map[string]any{"type": "boolean"}}), true, func(ctx context.Context, input struct {
+		Schemas bool `json:"schemas"`
 	}) (any, error) {
-		cfg, err := store.TypeConfiguration(ctx, input.User)
-		if err != nil {
-			return cfg, err
-		}
-		value := map[string]any{"user": cfg.User, "my_entity": cfg.MyEntity, "kinds": cfg.Kinds, "version": cfg.Version, "diagnostics": cfg.Diagnostics, "instructions": songya.TypeInstructions(cfg)}
+		cfg, err := app.store(ctx).TypeConfiguration(ctx)
+		value := map[string]any{"my_entity": cfg.MyEntity, "kinds": cfg.Kinds, "version": cfg.Version, "diagnostics": cfg.Diagnostics, "instructions": songya.TypeInstructions(cfg)}
 		if input.Schemas {
-			value["write_schemas"] = WriteSchemas(cfg)
+			schemas := WriteSchemas(cfg)
+			for _, schema := range schemas {
+				schema["properties"].(map[string]any)["store"] = map[string]any{"type": "string", "enum": []string{ctx.Value(selectedStore{}).(string)}}
+				required, _ := schema["required"].([]string)
+				schema["required"] = append(required, "store")
+			}
+			value["write_schemas"] = schemas
 		}
-		return value, nil
+		return value, err
 	})
-	tool(server, "prepare_memory", "Find existing memories, entities and topics related to text.", schema(map[string]any{"text": str("The memory or subject to search"), "user": str("Selected user to search. Supply that user. Use all only when the person explicitly asks to search everyone. Omitted user searches everyone; do not omit it for a selected-user search. Shared entities/topics are still included."), "limit": count()}, "text"), true, func(ctx context.Context, input struct {
+	tool(app, server, "prepare_memory", "Find existing memories, entities and topics related to text.", schema(map[string]any{"text": str("The memory or subject to search"), "limit": count()}, "text"), true, func(ctx context.Context, input struct {
 		Text  string `json:"text"`
-		User  string `json:"user"`
 		Limit int    `json:"limit"`
 	}) (any, error) {
-		prepared, err := store.Prepare(ctx, input.Text, input.User, limit(input.Limit, 8, 8))
-		return map[string]any{"query": prepared.Query, "user": prepared.User, "matches": prepared.Matches, "ambiguities": prepared.Ambiguities, "possible_duplicates": prepared.PossibleDuplicates, "diagnostics": prepared.Diagnostics, "truncated": prepared.Truncated, "next": prepared.Next}, err
+		prepared, err := app.store(ctx).Prepare(ctx, input.Text, limit(input.Limit, 8, 8))
+		return map[string]any{"query": prepared.Query, "matches": prepared.Matches, "ambiguities": prepared.Ambiguities, "possible_duplicates": prepared.PossibleDuplicates, "diagnostics": prepared.Diagnostics, "truncated": prepared.Truncated, "next": prepared.Next}, err
 	})
-	tool(server, "save_memory", memoryDescription, writeSchemas["save_memory"], false, func(ctx context.Context, input songya.MemoryInput) (any, error) {
+
+	tool(app, server, "save_memory", memoryDescription, writeSchemas["save_memory"], false, func(ctx context.Context, input songya.MemoryInput) (any, error) {
 		if input.ID == "" && (input.Text == nil || strings.TrimSpace(*input.Text) == "") && strings.TrimSpace(input.Append) == "" {
 			return map[string]any{"status": "not_accepted"}, fmt.Errorf("provide the new memory's content in text; to modify an existing memory, supply id and the fields to change")
 		}
 		input.Key = requestKey(ctx)
-		receipt, err := store.SaveMemory(ctx, input)
-		return savedWrite(ctx, store, receipt, "memory", err)
+		receipt, err := app.store(ctx).SaveMemory(ctx, input)
+		return savedWrite(ctx, app.store(ctx), receipt, "memory", err)
 	})
 	for _, item := range []struct {
 		name        string
@@ -686,67 +666,67 @@ func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]
 		description string
 	}{{"save_entity", songya.Entities, "Save a named entity. time.start and time.end record the beginning and end of its existence, for any entity type. Send id to change an existing entity. Send description to change its words; text does not work here. Put events in linked memories. For a new record, send create:true and name, without id. For an update, send its id; a name alone never updates a record."}, {"save_topic", songya.Topics, "Save a subject. Send id to change an existing topic. Send description to change its words; text does not work here. For a new record, send create:true and name, without id. For an update, send its id; a name alone never updates a record."}} {
 		inputSchema := writeSchemas[item.name]
-		tool(server, item.name, item.description, inputSchema, false, func(ctx context.Context, input songya.NamedInput) (any, error) {
+		tool(app, server, item.name, item.description, inputSchema, false, func(ctx context.Context, input songya.NamedInput) (any, error) {
 			input.Key = requestKey(ctx)
-			receipt, err := store.SaveNamed(ctx, item.kind, input)
-			return savedWrite(ctx, store, receipt, "record", err)
+			receipt, err := app.store(ctx).SaveNamed(ctx, item.kind, input)
+			return savedWrite(ctx, app.store(ctx), receipt, "record", err)
 		})
 	}
-	tool(server, "save_story", "Save a story. Send id to change one. text replaces all story words. Put related_to links to its memories in reading order.", writeSchemas["save_story"], false, func(ctx context.Context, input songya.StoryInput) (any, error) {
+	tool(app, server, "save_story", "Save a story. Send id to change one. text replaces all story words. Put related_to links to its memories in reading order.", writeSchemas["save_story"], false, func(ctx context.Context, input songya.StoryInput) (any, error) {
 		input.Key = requestKey(ctx)
-		receipt, err := store.SaveStory(ctx, input)
-		return savedWrite(ctx, store, receipt, "story", err)
+		receipt, err := app.store(ctx).SaveStory(ctx, input)
+		return savedWrite(ctx, app.store(ctx), receipt, "story", err)
 	})
-	querySchema := schema(map[string]any{"user": str("Selected user to search. Supply that user. Use all only when the person explicitly asks to search everyone. Omitted user searches everyone; do not omit it for a selected-user search. Shared entities/topics are still included."), "text": str("Search text; omit to list"), "kind": str("Record directory: memories, entities, topics or stories. Use entities for entity lookup."), "related_to": str("Optional outgoing target ID"), "relation_type": str("Optional relationship type"), "include_retired": map[string]any{"type": "boolean"}, "offset": count(), "limit": count()})
+	querySchema := schema(map[string]any{"text": str("Search text; omit to list"), "kind": str("Record directory: memories, entities, topics or stories. Use entities for entity lookup."), "related_to": str("Optional outgoing target ID"), "relation_type": str("Optional relationship type"), "include_retired": map[string]any{"type": "boolean"}, "offset": count(), "limit": count()})
 	searchProperties := maps.Clone(querySchema["properties"].(map[string]any))
 	searchProperties["mode"] = str("lexical finds words (default). semantic finds similar meaning")
 	searchSchema := schema(searchProperties)
 
-	tool(server, "recall_memory", "Find a person, place, or subject by name or ID. Read its connected memories and stories. If next is present, send next as offset with the same text and user to read more.", schema(map[string]any{"text": str("Name, subject or record ID to recall"), "user": str("Selected user to search. Supply that user. Use all only when the person explicitly asks to search everyone. Omitted user searches everyone; do not omit it for a selected-user search. Shared entities/topics are still included."), "offset": count(), "limit": count()}, "text"), true, func(ctx context.Context, input songya.RecallQuery) (any, error) {
-		page, err := store.Recall(ctx, input)
+	tool(app, server, "recall_memory", "Find a person, place, or subject by name or ID. Read its connected memories and stories. If next is present, send next as offset with the same text and store to read more.", schema(map[string]any{"text": str("Name, subject or record ID to recall"), "offset": count(), "limit": count()}, "text"), true, func(ctx context.Context, input songya.RecallQuery) (any, error) {
+		page, err := app.store(ctx).Recall(ctx, input)
 
 		return page, err
 	})
-	tool(server, "search_memory", "Find records by words. Use mode=semantic to search by meaning. To find a person, use kind=entities and their name in text. Omit text to list records. Follow next for more results.", searchSchema, true, func(ctx context.Context, input songya.Query) (any, error) {
+	tool(app, server, "search_memory", "Find records by words. Use mode=semantic to search by meaning. To find a person, use kind=entities and their name in text. Omit text to list records. Follow next for more results.", searchSchema, true, func(ctx context.Context, input songya.Query) (any, error) {
 		input.Limit = limit(input.Limit, 8, 8)
-		return store.Search(ctx, input)
+		return app.store(ctx).Search(ctx, input)
 	})
-	tool(server, "read_memory", "Read a record by id. Use view=source to read all fields and words before editing. If next is present, send it as offset with the same id and view to read more.", schema(map[string]any{"id": str("Record ID"), "source": str("Relative source path"), "root": str("Configured import root name; omitted for the store"), "key": str("Saved request key for proposed, before or original_text views"), "archive": str("Preserved import archive checksum"), "view": str("body (default) or source; with key use proposed, before or original_text"), "offset": count(), "limit": count()}), true, app.read)
-	tool(server, "explore_memory", "Read links from or to a record. direction is outgoing, incoming, or both. depth is how many links to follow. If a record was split, check all replacements; do not guess one.", schema(map[string]any{"user": str("Selected user to search. Supply that user. Use all only when the person explicitly asks to search everyone. Omitted user searches everyone; do not omit it for a selected-user search. Shared entities/topics are still included."), "id": str("Starting ID; omit for paged edges"), "direction": str("incoming, outgoing or both"), "type": str("Optional edge type"), "depth": count(), "offset": count(), "limit": count()}), true, func(ctx context.Context, input songya.GraphQuery) (any, error) {
+	tool(app, server, "read_memory", "Read a record by id. Use view=source to read all fields and words before editing. If next is present, send it as offset with the same id and view to read more.", schema(map[string]any{"id": str("Record ID"), "source": str("Relative source path"), "root": str("Configured import root name; omitted for the store"), "key": str("Saved request key for proposed, before or original_text views"), "archive": str("Preserved import archive checksum"), "view": str("body (default) or source; with key use proposed, before or original_text"), "offset": count(), "limit": count()}), true, app.read)
+	tool(app, server, "explore_memory", "Read links from or to a record. direction is outgoing, incoming, or both. depth is how many links to follow. If a record was split, check all replacements; do not guess one.", schema(map[string]any{"id": str("Starting ID; omit for paged edges"), "direction": str("incoming, outgoing or both"), "type": str("Optional edge type"), "depth": count(), "offset": count(), "limit": count()}), true, func(ctx context.Context, input songya.GraphQuery) (any, error) {
 		input.Limit = limit(input.Limit, 20, 10)
-		return store.Graph(ctx, input)
+		return app.store(ctx).Graph(ctx, input)
 	})
-	tool(server, "memory_timeline", "Read events in time order using dates and links. Check diagnostics for conflicts. Unknown dates do not become exact dates. The tool does not guess unknown order.", querySchema, true, func(ctx context.Context, input songya.Query) (any, error) {
+	tool(app, server, "memory_timeline", "Read events in time order using dates and links. Check diagnostics for conflicts. Unknown dates do not become exact dates. The tool does not guess unknown order.", querySchema, true, func(ctx context.Context, input songya.Query) (any, error) {
 		input.Limit = limit(input.Limit, 8, 8)
-		return store.Timeline(ctx, input)
+		return app.store(ctx).Timeline(ctx, input)
 	})
-	tool(server, "compose_story", "Read a story and its linked memories in reading order. Follow next as offset to read more. Missing records and loops are reported.", schema(map[string]any{"id": str("Story ID"), "offset": count(), "limit": count()}, "id"), true, func(ctx context.Context, input pageInput) (any, error) {
-		return store.Compose(ctx, input.ID, input.Offset, limit(input.Limit, 12288, 8192))
+	tool(app, server, "compose_story", "Read a story and its linked memories in reading order. Follow next as offset to read more. Missing records and loops are reported.", schema(map[string]any{"id": str("Story ID"), "offset": count(), "limit": count()}, "id"), true, func(ctx context.Context, input pageInput) (any, error) {
+		return app.store(ctx).Compose(ctx, input.ID, input.Offset, limit(input.Limit, 12288, 8192))
 	})
 	app.registerFiles(server)
-	tool(server, "attach_file", "Attach a completed upload to an existing record. Read list_files first and send its revision. Use only an upload value supplied by the app. Filename is optional; existing filenames are never silently overwritten. The result gives the actual saved filename. A saved memory alone does not attach its files.", schema(map[string]any{"id": str("Record ID"), "revision": str("Latest revision from list_files"), "upload": str("Completed upload value supplied by the app"), "filename": str("Optional desired filename; no folders")}, "id", "revision", "upload"), false, func(ctx context.Context, input songya.FileChange) (any, error) {
+	tool(app, server, "attach_file", "Attach a completed upload to an existing record. Read list_files first and send its revision. Use only an upload value supplied by the app. Filename is optional; existing filenames are never silently overwritten. The result gives the actual saved filename. A saved memory alone does not attach its files.", schema(map[string]any{"id": str("Record ID"), "revision": str("Latest revision from list_files"), "upload": str("Completed upload value supplied by the app"), "filename": str("Optional desired filename; no folders")}, "id", "revision", "upload"), false, func(ctx context.Context, input songya.FileChange) (any, error) {
 		input.Key = requestKey(ctx)
 		input.Action = "add"
 		input.Key = fileRequestKey(input)
-		return store.ChangeFile(ctx, input)
+		return app.store(ctx).ChangeFile(ctx, input)
 	})
-	tool(server, "replace_file", "Replace the bytes of an existing file only when the person asked to replace it. Read list_files first. Send the exact filename, current revision, and completed upload value. This permanently replaces that file's old bytes. It does not edit the record's words.", schema(map[string]any{"id": str("Record ID"), "revision": str("Latest revision from list_files"), "filename": str("Actual existing filename"), "upload": str("Completed upload value supplied by the app")}, "id", "revision", "filename", "upload"), false, func(ctx context.Context, input songya.FileChange) (any, error) {
+	tool(app, server, "replace_file", "Replace the bytes of an existing file only when the person asked to replace it. Read list_files first. Send the exact filename, current revision, and completed upload value. This permanently replaces that file's old bytes. It does not edit the record's words.", schema(map[string]any{"id": str("Record ID"), "revision": str("Latest revision from list_files"), "filename": str("Actual existing filename"), "upload": str("Completed upload value supplied by the app")}, "id", "revision", "filename", "upload"), false, func(ctx context.Context, input songya.FileChange) (any, error) {
 		input.Key = requestKey(ctx)
 		input.Action = "replace"
 		input.Key = fileRequestKey(input)
-		return store.ChangeFile(ctx, input)
+		return app.store(ctx).ChangeFile(ctx, input)
 	})
-	tool(server, "remove_file", "Permanently remove one attached file only when the person asked to remove it. Read list_files first. Send the record ID, current revision, and exact filename. This does not delete the record or change its words.", schema(map[string]any{"id": str("Record ID"), "revision": str("Latest revision from list_files"), "filename": str("Actual existing filename")}, "id", "revision", "filename"), false, func(ctx context.Context, input songya.FileChange) (any, error) {
+	tool(app, server, "remove_file", "Permanently remove one attached file only when the person asked to remove it. Read list_files first. Send the record ID, current revision, and exact filename. This does not delete the record or change its words.", schema(map[string]any{"id": str("Record ID"), "revision": str("Latest revision from list_files"), "filename": str("Actual existing filename")}, "id", "revision", "filename"), false, func(ctx context.Context, input songya.FileChange) (any, error) {
 		input.Key = requestKey(ctx)
 		input.Action = "remove"
 		input.Key = fileRequestKey(input)
-		return store.ChangeFile(ctx, input)
+		return app.store(ctx).ChangeFile(ctx, input)
 	})
 
-	tool(server, "file_status", "Check an attachment operation after a failed or lost reply. Copy the exact key returned by the file tool. committed confirms that operation finished; pending means it is retained. memory_maintenance with action=recover retries retained work. Do not invent a new save to check an old one.", schema(map[string]any{"key": str("Exact file operation key returned by the file tool")}, "key"), true, func(ctx context.Context, input struct {
+	tool(app, server, "file_status", "Check an attachment operation after a failed or lost reply. Copy the exact key returned by the file tool. committed confirms that operation finished; pending means it is retained. memory_maintenance with action=recover retries retained work. Do not invent a new save to check an old one.", schema(map[string]any{"key": str("Exact file operation key returned by the file tool")}, "key"), true, func(ctx context.Context, input struct {
 		Key string `json:"key"`
 	}) (any, error) {
-		return store.FileChangeReceipt(ctx, input.Key)
+		return app.store(ctx).FileChangeReceipt(ctx, input.Key)
 	})
 
 	type organization struct {
@@ -763,7 +743,7 @@ func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]
 		} `json:"parts"`
 	}
 	part := schema(map[string]any{"kind": str("Record kind"), "metadata": object(), "text": str("Part narrative")}, "text")
-	tool(server, "organize_memory", "Join records with action=merge and sources. Split one record with action=split, source, and parts. Read records first. Old words remain readable.", schema(map[string]any{"action": str("merge or split"), "sources": array(str("Source ID to merge")), "source": str("Source ID to split"), "kind": str("Kind of the merged record"), "metadata": object(), "text": str("Merged narrative"), "parts": array(part)}, "action"), false, func(ctx context.Context, input organization) (any, error) {
+	tool(app, server, "organize_memory", "Join records with action=merge and sources. Split one record with action=split, source, and parts. Read records first. Old words remain readable.", schema(map[string]any{"action": str("merge or split"), "sources": array(str("Source ID to merge")), "source": str("Source ID to split"), "kind": str("Kind of the merged record"), "metadata": object(), "text": str("Merged narrative"), "parts": array(part)}, "action"), false, func(ctx context.Context, input organization) (any, error) {
 		key := requestKey(ctx)
 		if key == "" {
 			key = "organize_" + rand.Text()
@@ -776,13 +756,13 @@ func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]
 			for _, id := range input.Sources {
 				sources = append(sources, songya.Version{ID: id})
 			}
-			receipt, err = store.Merge(ctx, songya.MergeRequest{Key: key, Sources: sources, Kind: input.Kind, Fields: input.Metadata, Body: input.Text})
+			receipt, err = app.store(ctx).Merge(ctx, songya.MergeRequest{Key: key, Sources: sources, Kind: input.Kind, Fields: input.Metadata, Body: input.Text})
 		case "split":
 			parts := []songya.Part{}
 			for _, part := range input.Parts {
 				parts = append(parts, songya.Part{Kind: part.Kind, Fields: part.Metadata, Body: part.Text})
 			}
-			receipt, err = store.Split(ctx, songya.SplitRequest{Key: key, Source: songya.Version{ID: input.Source}, Parts: parts})
+			receipt, err = app.store(ctx).Split(ctx, songya.SplitRequest{Key: key, Source: songya.Version{ID: input.Source}, Parts: parts})
 		default:
 			return nil, fmt.Errorf("choose merge or split")
 		}
@@ -805,7 +785,6 @@ func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]
 		Fields map[string]any     `json:"metadata"`
 	}
 	type importInput struct {
-		User   string         `json:"user"`
 		Action string         `json:"action"`
 		Root   string         `json:"root"`
 		Path   string         `json:"path"`
@@ -814,14 +793,14 @@ func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]
 		Limit  int            `json:"limit"`
 	}
 	importPart := schema(map[string]any{"start": count(), "end": count(), "kind": str("Optional directory"), "metadata": object()}, "start", "end")
-	tool(server, "import_memories", "Preview or apply imports from an explicitly configured root. Parts are exact reviewed byte ranges; omitting parts preserves a whole file. Originals, mappings and coverage are retained.", schema(map[string]any{"user": str("Default owner for imported memories/stories; part metadata.user can override it."), "action": str("preview or apply"), "root": str("Configured root name"), "path": str("Relative source file"), "parts": array(importPart), "offset": count(), "limit": count()}, "action", "root"), false, func(ctx context.Context, input importInput) (any, error) {
+	tool(app, server, "import_memories", "Preview or apply imports from an explicitly configured root. Parts are exact reviewed byte ranges; omitting parts preserves a whole file. Originals, mappings and coverage are retained.", schema(map[string]any{"action": str("preview or apply"), "root": str("Configured root name"), "path": str("Relative source file"), "parts": array(importPart), "offset": count(), "limit": count()}, "action", "root"), false, func(ctx context.Context, input importInput) (any, error) {
 		root, ok := roots[input.Root]
 		if !ok {
 			return nil, fmt.Errorf("import root %q is not configured", input.Root)
 		}
 		switch input.Action {
 		case "preview":
-			return store.PreviewImports(ctx, root, input.Offset, limit(input.Limit, 8, 8))
+			return app.store(ctx).PreviewImports(ctx, root, input.Offset, limit(input.Limit, 8, 8))
 		case "apply":
 			parts := []songya.ImportPart{}
 			for _, part := range input.Parts {
@@ -830,13 +809,13 @@ func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]
 				}
 				parts = append(parts, songya.ImportPart{Start: *part.Start, End: *part.End, Kind: part.Kind, Fields: part.Fields})
 			}
-			mapping, err := store.Import(ctx, root, songya.ImportRequest{User: input.User, Path: input.Path, Parts: parts})
+			mapping, err := app.store(ctx).Import(ctx, root, songya.ImportRequest{Path: input.Path, Parts: parts})
 			return importPage(mapping, input.Offset, limit(input.Limit, 20, 10)), err
 		default:
 			return nil, fmt.Errorf("choose preview or apply")
 		}
 	})
-	tool(server, "memory_maintenance", "Check problems with action=status. Check a save with action=receipt and key. recover resumes saved work. rebuild refreshes the search index. embed refreshes vectors. abandon stops unfinished work. Do not repeat an accepted save with a new key.", schema(map[string]any{"action": str("status, receipt, recover, abandon, rebuild or embed"), "key": str("Request key for receipt or deliberate abandonment"), "view": str("source returns a byte page of the full receipt"), "offset": count(), "limit": count()}, "action"), false, func(ctx context.Context, input struct {
+	tool(app, server, "memory_maintenance", "Check problems with action=status. Check a save with action=receipt and key. recover resumes saved work. rebuild refreshes the search index. embed refreshes vectors. abandon stops unfinished work. Do not repeat an accepted save with a new key.", schema(map[string]any{"action": str("status, receipt, recover, abandon, rebuild or embed"), "key": str("Request key for receipt or deliberate abandonment"), "view": str("source returns a byte page of the full receipt"), "offset": count(), "limit": count()}, "action"), false, func(ctx context.Context, input struct {
 		Action string `json:"action"`
 		View   string `json:"view"`
 		Key    string `json:"key"`
@@ -845,9 +824,9 @@ func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]
 	}) (any, error) {
 		switch input.Action {
 		case "status":
-			return map[string]any{"diagnostics": store.Diagnostics(), "import_roots": rootNames(roots), "runtime": runtimeStatus()}, nil
+			return map[string]any{"diagnostics": app.store(ctx).Diagnostics(), "import_roots": rootNames(roots), "runtime": runtimeStatus()}, nil
 		case "receipt":
-			receipt, err := store.BatchStatus(ctx, input.Key)
+			receipt, err := app.store(ctx).BatchStatus(ctx, input.Key)
 			if err != nil {
 				return receipt, err
 			}
@@ -861,14 +840,14 @@ func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]
 			}
 			return receiptPage(receipt, input.Offset, limit(input.Limit, 20, 10)), nil
 		case "abandon":
-			return store.AbandonBatch(ctx, input.Key)
+			return app.store(ctx).AbandonBatch(ctx, input.Key)
 		case "recover":
-			err := store.Recover()
-			return map[string]any{"diagnostics": store.Diagnostics()}, err
+			err := app.store(ctx).Recover()
+			return map[string]any{"diagnostics": app.store(ctx).Diagnostics()}, err
 		case "embed":
-			return store.IndexEmbeddings(ctx)
+			return app.store(ctx).IndexEmbeddings(ctx)
 		case "rebuild":
-			catalog, err := store.Rebuild(ctx)
+			catalog, err := app.store(ctx).Rebuild(ctx)
 			return map[string]any{"records": len(catalog.Records), "diagnostics": catalog.Diagnostics}, err
 		default:
 			return nil, fmt.Errorf("choose status, receipt, recover, abandon, rebuild or embed")
@@ -877,7 +856,7 @@ func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]
 	server.AddResource(&mcp.Resource{URI: "memory://guide", Name: "Memory engine guide", MIMEType: "text/markdown"}, func(_ context.Context, request *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: "memory://guide", MIMEType: "text/markdown", Text: Guide}}}, nil
 	})
-	server.AddResourceTemplate(&mcp.ResourceTemplate{URITemplate: "memory://records/{id}/{offset}", Name: "Paged canonical record", MIMEType: "application/json"}, func(ctx context.Context, request *mcp.ReadResourceRequest) (output *mcp.ReadResourceResult, err error) {
+	server.AddResourceTemplate(&mcp.ResourceTemplate{URITemplate: "memory://records/{store}/{id}/{offset}", Name: "Paged canonical record", MIMEType: "application/json"}, func(ctx context.Context, request *mcp.ReadResourceRequest) (output *mcp.ReadResourceResult, err error) {
 		defer func() {
 			if err != nil {
 				err = errors.New(clipError(err.Error()))
@@ -888,14 +867,18 @@ func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]
 			return nil, err
 		}
 		parts := strings.Split(strings.Trim(uri.Path, "/"), "/")
-		if uri.Host != "records" || len(parts) != 2 {
-			return nil, fmt.Errorf("use memory://records/id/offset")
+		if uri.Host != "records" || len(parts) != 3 {
+			return nil, fmt.Errorf("use memory://records/store/id/offset")
 		}
-		offset, err := strconv.Atoi(parts[1])
+		if app.Stores[parts[0]] == nil {
+			return nil, fmt.Errorf("choose a configured store")
+		}
+		ctx = context.WithValue(ctx, selectedStore{}, parts[0])
+		offset, err := strconv.Atoi(parts[2])
 		if err != nil {
 			return nil, err
 		}
-		value, err := app.read(ctx, pageInput{ID: parts[0], Offset: offset, View: "source"})
+		value, err := app.read(ctx, pageInput{ID: parts[1], Offset: offset, View: "source"})
 		if err != nil {
 			return nil, err
 		}
@@ -904,7 +887,7 @@ func NewForUser(lifetime context.Context, store *songya.Store, roots map[string]
 		// tool. Avoid duplicating them inside a second JSON-encoded resource envelope.
 		page.Diagnostics = nil
 		data, _ := json.Marshal(page)
-		canonical := "memory://records/" + parts[0] + "/" + strconv.Itoa(page.Offset)
+		canonical := "memory://records/" + url.PathEscape(parts[0]) + "/" + parts[1] + "/" + strconv.Itoa(page.Offset)
 		return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: canonical, MIMEType: "application/json", Text: string(data)}}}, nil
 	})
 	return server

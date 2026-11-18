@@ -30,27 +30,26 @@ type Diagnostic struct {
 
 // Record is the derived search/graph view. Source Markdown is authoritative.
 type Record struct {
-	User           string            `json:"user,omitempty"`
-	ID             string            `json:"id"`
-	Source         string            `json:"source"`
-	Kind           Destination       `json:"kind"`
-	Revision       string            `json:"-"`
-	UpdatedAt      string            `json:"updated_at,omitempty"`
-	Pending        bool              `json:"pending,omitempty"`
-	Unconfirmed    bool              `json:"unconfirmed,omitempty"`
-	Title          string            `json:"title"`
-	Name           string            `json:"name,omitempty"`
-	Aliases        []string          `json:"aliases,omitempty"`
-	Description    string            `json:"description,omitempty"`
-	Type           string            `json:"type,omitempty"`
-	Types          map[string]string `json:"types,omitempty"`
-	Relations      []Relation        `json:"relations,omitempty"`
-	Redirects      []string          `json:"redirects,omitempty"`
-	Time           RecordTime        `json:"time"`
-	Body           string            `json:"body"`
-	ProfilePicture *ProfilePicture   `json:"profile_picture,omitempty"`
-	Context        string            `json:"context,omitempty"`
-	Diagnostics    []string          `json:"diagnostics,omitempty"`
+	ID          string      `json:"id"`
+	Source      string      `json:"source"`
+	Kind        Destination `json:"kind"`
+	Revision    string      `json:"-"`
+	UpdatedAt   string      `json:"updated_at,omitempty"`
+	Pending     bool        `json:"pending,omitempty"`
+	Unconfirmed bool        `json:"unconfirmed,omitempty"`
+	Title       string      `json:"title"`
+	Name        string      `json:"name,omitempty"`
+	Aliases     []string    `json:"aliases,omitempty"`
+	Description string      `json:"description,omitempty"`
+	Type        string      `json:"type,omitempty"`
+
+	Relations      []Relation      `json:"relations,omitempty"`
+	Redirects      []string        `json:"redirects,omitempty"`
+	Time           RecordTime      `json:"time"`
+	Body           string          `json:"body"`
+	ProfilePicture *ProfilePicture `json:"profile_picture,omitempty"`
+	Context        string          `json:"context,omitempty"`
+	Diagnostics    []string        `json:"diagnostics,omitempty"`
 }
 type Catalog struct {
 	Records     []Record     `json:"records"`
@@ -94,9 +93,6 @@ func recordFromDocument(source string, d *Document, kind Destination) Record {
 	if !metadata.UpdatedAt.IsZero() {
 		r.UpdatedAt = metadata.UpdatedAt.UTC().Format(time.RFC3339Nano)
 	}
-	if userOwned(kind) {
-		r.User = metadata.User
-	}
 	r.Name = strings.Join(nodeStrings("name", d), " ")
 	if r.Title == "" {
 		r.Title = r.Name
@@ -107,8 +103,7 @@ func recordFromDocument(source string, d *Document, kind Destination) Record {
 	if kind == Entities || kind == Topics {
 		r.Description = d.Body
 	}
-	r.Types = documentTypes(d)
-	r.Type = r.Types[r.User]
+	r.Type = documentType(d)
 	r.Redirects = nodeStrings("redirects", d)
 	r.Time = recordTime(metadataField(&d.Frontmatter, "time"), kind)
 	if kind == Entities {
@@ -288,8 +283,8 @@ func clip(value string, maximum int) string {
 }
 
 type Query struct {
-	Mode           string      `json:"mode,omitempty"`
-	User           string      `json:"user,omitempty"`
+	Mode string `json:"mode,omitempty"`
+
 	Text           string      `json:"text,omitempty"`
 	Kind           Destination `json:"kind,omitempty"`
 	RelatedTo      string      `json:"related_to,omitempty"`
@@ -299,8 +294,8 @@ type Query struct {
 	Limit          int         `json:"limit,omitempty"`
 }
 type Match struct {
-	Type             string      `json:"type,omitempty"`
-	User             string      `json:"user,omitempty"`
+	Type string `json:"type,omitempty"`
+
 	ID               string      `json:"id,omitempty"`
 	Source           string      `json:"source"`
 	Kind             Destination `json:"kind"`
@@ -356,7 +351,7 @@ func boundedDiagnostics(diagnostics []Diagnostic) []Diagnostic {
 }
 
 func rankMatches(c Catalog, q Query) []Match {
-	c = userCatalog(c, q.User)
+
 	matches := []Match{}
 	normalizedText := " " + strings.Join(words(q.Text), " ") + " "
 	tokens := words(q.Text)
@@ -431,7 +426,7 @@ func rankMatches(c Catalog, q Query) []Match {
 		for _, warning := range r.Diagnostics[:min(4, len(r.Diagnostics))] {
 			warnings = append(warnings, clip(warning, 512))
 		}
-		matches = append(matches, Match{Type: r.Type, User: clip(r.User, 160), ID: r.ID, Source: r.Source, Kind: r.Kind, Revision: r.Revision, Pending: r.Pending, Unconfirmed: r.Unconfirmed, Title: clip(r.Title, 160), Aliases: aliases, Excerpt: clip(excerpt, 512), Redirects: redirects, Score: float64(score), Reasons: reasons, Diagnostics: warnings, DetailsTruncated: detailsTruncated || len(r.User) > 160})
+		matches = append(matches, Match{Type: r.Type, ID: r.ID, Source: r.Source, Kind: r.Kind, Revision: r.Revision, Pending: r.Pending, Unconfirmed: r.Unconfirmed, Title: clip(r.Title, 160), Aliases: aliases, Excerpt: clip(excerpt, 512), Redirects: redirects, Score: float64(score), Reasons: reasons, Diagnostics: warnings, DetailsTruncated: detailsTruncated})
 	}
 	sort.Slice(matches, func(i, j int) bool {
 		if matches[i].Score != matches[j].Score {
@@ -491,25 +486,6 @@ func (s *Store) ReadSource(source string) ([]byte, error) {
 		}
 	}
 	return data, err
-}
-
-// ForUsers selects explicit owners and shared identities. An empty selection
-// includes only shared records; all is the explicit unrestricted selector.
-func (c Catalog) ForUsers(owners []string) Catalog {
-	allowed := map[string]bool{}
-	for _, owner := range owners {
-		allowed[strings.TrimSpace(owner)] = true
-	}
-	selected := Catalog{Diagnostics: c.Diagnostics}
-	for _, r := range c.Records {
-		if !userOwned(r.Kind) || allowed[r.User] || allowed["all"] {
-			if len(owners) == 1 {
-				r.Type = r.Types[strings.TrimSpace(owners[0])]
-			}
-			selected.Records = append(selected.Records, r)
-		}
-	}
-	return selected
 }
 
 // Select applies the engine's lexical ranking/filters without another scan.

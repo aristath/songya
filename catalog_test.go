@@ -10,20 +10,9 @@ import (
 	"testing"
 )
 
-func testUserFields(kind Destination, fields map[string]any) map[string]any {
-	if !userOwned(kind) {
-		return fields
-	}
-	fields = copyFields(fields)
-	if _, supplied := fields["user"]; !supplied {
-		fields["user"] = "test"
-	}
-	return fields
-}
-
 func createRecord(t *testing.T, s *Store, kind Destination, fields map[string]any, body string) *Document {
 	t.Helper()
-	d, err := s.Create(kind, testUserFields(kind, fields), body)
+	d, err := s.Create(kind, fields, body)
 	if err != nil {
 		t.Fatal(err)
 	}

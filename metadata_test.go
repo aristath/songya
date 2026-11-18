@@ -29,13 +29,13 @@ func TestInvalidAnchorsPreserveValuesAndReferences(t *testing.T) {
 		}
 		reference := &yaml.Node{Kind: yaml.AliasNode, Value: "bad anchor", Alias: definition}
 		reserved := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Anchor: "bad_anchor", Value: "Keep reserved"}
-		doc, err := store.Create(Memories, testUserFields(Memories, map[string]any{
+		doc, err := store.Create(Memories, map[string]any{
 			"title": "Healthy title",
 			"details": map[string]any{
 				"fact":   "Healthy fact",
 				"values": []*yaml.Node{definition, reference, reserved},
 			},
-		}), "Healthy body")
+		}, "Healthy body")
 		if err != nil {
 			t.Fatal(err)
 		}

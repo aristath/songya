@@ -11,31 +11,24 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// UserEntity reads the existing identity selection without computing type usage.
-func (s *Store) UserEntity(ctx context.Context, user string) (string, error) {
+// OwnerEntity reads the existing identity selection without computing type usage.
+func (s *Store) OwnerEntity(ctx context.Context) (string, error) {
 	var entity string
 	err := s.lockedContext(ctx, func(root *os.Root) error {
-		entity = configuredOwnerEntity(root, user)
+		entity = configuredOwnerEntity(root)
 		return nil
 	})
 	return entity, err
 }
 
-// Ownership already connects a user's memories to their identity. Normalize
+// Ownership already connects the store's memories to their identity. Normalize
 // both link directions in the same durable batch as the requested changes.
 func normalizeOwnerLinks(root *os.Root, journal *batchJournal, settings *typeConfigurationChange) error {
-	entities := map[string]string{}
-	entityFor := func(user string) string {
-		if entity, ok := entities[user]; ok {
-			return entity
-		}
-		entity := configuredOwnerEntity(root, user)
-		entities[user] = entity
-		return entity
-	}
+	entity := configuredOwnerEntity(root)
 	if settings != nil {
-		entities[settings.User] = settings.Configuration.MyEntity
+		entity = settings.Configuration.MyEntity
 	}
+
 	docs := map[string]*Document{}
 	positions := map[string]int{}
 	queue := []string{}
@@ -75,7 +68,7 @@ func normalizeOwnerLinks(root *os.Root, journal *batchJournal, settings *typeCon
 			}
 			for _, entry := range entries {
 				if ValidID(entry.Name()) && kindOf(entry.Name()) == Memories {
-					if doc := read(entry.Name()); doc != nil && documentUser(doc) == settings.User {
+					if doc := read(entry.Name()); doc != nil {
 						add(entry.Name())
 					}
 				}
@@ -90,9 +83,9 @@ func normalizeOwnerLinks(root *os.Root, journal *batchJournal, settings *typeCon
 			continue
 		}
 		if kindOf(id) == Memories {
-			add(entityFor(documentUser(doc)))
+			add(entity)
 		}
-		if !stripOwnerLinks(doc, id, kindOf(id), entityFor, read) {
+		if !stripOwnerLinks(doc, id, kindOf(id), entity, read) {
 			continue
 		}
 		_ = doc.Set("updated_at", time.Now().UTC())
@@ -125,11 +118,11 @@ func normalizeOwnerLinks(root *os.Root, journal *batchJournal, settings *typeCon
 	return nil
 }
 
-func configuredOwnerEntity(root *os.Root, user string) string {
+func configuredOwnerEntity(root *os.Root) string {
 	var cfg struct {
 		MyEntity string `json:"my_entity"`
 	}
-	data, _ := readFile(root, typeConfigurationPath(user))
+	data, _ := readFile(root, typeConfigurationPath())
 	// Unreadable settings cannot justify deleting a relationship.
 	if json.Unmarshal(data, &cfg) != nil || !ValidID(cfg.MyEntity) || kindOf(cfg.MyEntity) != Entities {
 		return ""
@@ -138,7 +131,7 @@ func configuredOwnerEntity(root *os.Root, user string) string {
 }
 
 func normalizeOwnerDocument(root *os.Root, doc *Document, id string, kind Destination) {
-	stripOwnerLinks(doc, id, kind, func(user string) string { return configuredOwnerEntity(root, user) }, func(target string) *Document {
+	stripOwnerLinks(doc, id, kind, configuredOwnerEntity(root), func(target string) *Document {
 		name, err := recordName(target)
 		if err != nil {
 			return nil
@@ -148,13 +141,13 @@ func normalizeOwnerDocument(root *os.Root, doc *Document, id string, kind Destin
 	})
 }
 
-func stripOwnerLinks(doc *Document, id string, kind Destination, entityFor func(string) string, read func(string) *Document) bool {
+func stripOwnerLinks(doc *Document, id string, kind Destination, entity string, read func(string) *Document) bool {
 	if kind != Memories && kind != Entities {
 		return false
 	}
 	ownerEntity := ""
 	if kind == Memories {
-		ownerEntity = entityFor(documentUser(doc))
+		ownerEntity = entity
 	}
 	relations := dereference(metadataField(&doc.Frontmatter, "relations"))
 	if relations == nil || relations.Kind != yaml.SequenceNode {
@@ -169,7 +162,7 @@ func stripOwnerLinks(doc *Document, id string, kind Destination, entityFor func(
 			remove = ownerEntity != "" && relation.Target == ownerEntity
 			if kind == Entities && id != "" && kindOf(relation.Target) == Memories {
 				if memory := read(relation.Target); memory != nil {
-					remove = entityFor(documentUser(memory)) == id
+					remove = entity == id
 				}
 			}
 		}

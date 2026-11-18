@@ -43,9 +43,6 @@ func (s *Store) Update(id, revision string, fields map[string]any, body string) 
 	}
 	previousTime := metadataField(&Parse(doc.OriginalSource()).Frontmatter, "time")
 	applyFields(doc, fields, body)
-	if err := requireUser(doc, kindOf(id)); err != nil {
-		return doc, err
-	}
 	if err := validateTimeChange(previousTime, metadataField(&doc.Frontmatter, "time"), kindOf(id)); err != nil {
 		return doc, err
 	}

@@ -97,7 +97,7 @@ func TestMemorySaveChangesDatesAndRetryOutcomes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	timeline, err := store.Timeline(ctx, songya.Query{Kind: songya.Memories, User: "ari"})
+	timeline, err := store.Timeline(ctx, songya.Query{Kind: songya.Memories})
 	if err != nil {
 		t.Fatal(err)
 	}

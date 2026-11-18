@@ -104,29 +104,13 @@ func pendingChatTool(c chatConversation) (int, *chatToolCall) {
 	return 0, nil
 }
 
-func defaultChatOwner(tool *mcp.Tool, args map[string]any, user string) {
-	if strings.HasPrefix(tool.Name, "save_") {
-		args["type_user"] = user
-	}
-	if _, supplied := args["user"]; supplied {
-		return
-	}
-	if (tool.Name == "save_memory" || tool.Name == "save_story") && args["id"] != nil {
-		return
-	}
-	data, _ := json.Marshal(tool.InputSchema)
-	var schema struct {
-		Properties map[string]any `json:"properties"`
-	}
-	_ = json.Unmarshal(data, &schema)
-	if _, ok := schema.Properties["user"]; ok {
-		args["user"] = user
-	}
-}
-
 func (a *chatApp) run(ctx context.Context, id string) error {
 	ct, st := mcp.NewInMemoryTransports()
-	server := mcpserver.New(ctx, a.store, nil)
+	conversation, err := a.conversation(id)
+	if err != nil {
+		return err
+	}
+	server := mcpserver.New(ctx, map[string]*songya.Store{conversation.Store: a.store}, nil)
 	ss, err := server.Connect(ctx, st, nil)
 	if err != nil {
 		return err
@@ -185,9 +169,9 @@ func (a *chatApp) run(ctx context.Context, id string) error {
 				result = map[string]any{"error": issue.Error()}
 			} else {
 				a.setProgress(id, c.TurnID, "tool")
-				defaultChatOwner(tool, args, c.User)
+				args["store"] = c.Store
 				key := fmt.Sprintf("chat:%s%s:%d:%s", id, c.BranchID, index, call.ID)
-				result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: call.Function.Name, Arguments: args, Meta: mcp.Meta{"songya/request-key": key, "songya/original-text": originalTurnText(c), "songya/user": c.User}})
+				result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: call.Function.Name, Arguments: args, Meta: mcp.Meta{"songya/request-key": key, "songya/original-text": originalTurnText(c)}})
 				if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
 					a.recordsChanged()
 				}
@@ -226,7 +210,7 @@ func (a *chatApp) run(ctx context.Context, id string) error {
 		if s.BaseURL == "" || s.Model == "" {
 			return fmt.Errorf("Configure the API base URL and model in Chat settings, then retry the saved turn.")
 		}
-		cfg, typeIssue := a.store.TypeConfiguration(ctx, c.User)
+		cfg, typeIssue := a.store.TypeConfiguration(ctx)
 		typeGuide := songya.TypeInstructions(cfg)
 		if typeIssue != nil {
 			typeGuide = "Type settings could not be read. Omit type and report the issue: " + typeIssue.Error()
@@ -237,12 +221,14 @@ func (a *chatApp) run(ctx context.Context, id string) error {
 			tool := tools[name]
 			schema := tool.InputSchema
 			if scoped, ok := schemas[tool.Name]; ok {
+				scoped["properties"].(map[string]any)["store"] = map[string]any{"type": "string", "enum": []string{c.Store}}
+				scoped["required"] = []string{"store"}
 				schema = scoped
 			}
 			data, _ := json.Marshal(map[string]any{"type": "function", "function": map[string]any{"name": tool.Name, "description": tool.Description, "parameters": schema}})
 			definitions = append(definitions, param.Override[openai.ChatCompletionToolUnionParam](json.RawMessage(data)))
 		}
-		system := c.Prompt + "\n\n" + typeGuide + "\n\n# Connected Songya MCP guide\n" + session.InitializeResult().Instructions + fmt.Sprintf("\n\nThe person currently talking is user %q. This identifies ownership, not an entity.\n", c.User)
+		system := c.Prompt + "\n\n" + typeGuide + "\n\n# Connected Songya MCP guide\n" + session.InitializeResult().Instructions + fmt.Sprintf("\n\nThe selected isolated store is %q. Every tool call uses this store.\n", c.Store)
 		messages := chatRequestMessages(c, system)
 		client := s.client()
 		requests++

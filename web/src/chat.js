@@ -7,15 +7,15 @@ const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true });
 const local = {
   get(key, fallback = "") {
     try {
-      return localStorage.getItem(key) ?? fallback;
+      return localStorage.getItem(location.pathname + key) ?? fallback;
     } catch {
       return fallback;
     }
   },
   set(key, value) {
     try {
-      if (value === null) localStorage.removeItem(key);
-      else localStorage.setItem(key, value);
+      if (value === null) localStorage.removeItem(location.pathname + key);
+      else localStorage.setItem(location.pathname + key, value);
     } catch {
       /* Accepted messages are stored by the server. */
     }
@@ -37,13 +37,14 @@ export function chatUI(request) {
   const attachmentFiles = new Map(),
     attachmentTasks = new Map();
   return {
-    chatUser: local.get("songya-chat-user"),
+    chatStore:
+      document.querySelector('meta[name="songya-store"]')?.content || "store",
     chatAttachments: [],
     chatUploadStates: {},
     chatFilesBusy: false,
     chatFilesError: "",
     async refreshChatUploads() {
-      const user = this.chatUser;
+      const user = this.chatStore;
       if (!user) return;
       const uploads = [
         ...this.chatAttachments,
@@ -55,14 +56,14 @@ export function chatUI(request) {
           async (id) => {
             try {
               const state = await request(
-                "/api/uploads/" +
+                "api/uploads/" +
                   id +
                   "?" +
                   new URLSearchParams({ scope: "chat:" + user }),
               );
-              if (user === this.chatUser) this.chatUploadStates[id] = state;
+              if (user === this.chatStore) this.chatUploadStates[id] = state;
             } catch (e) {
-              if (user === this.chatUser) this.chatFilesError = e.message;
+              if (user === this.chatStore) this.chatFilesError = e.message;
             }
           },
         ),
@@ -76,7 +77,7 @@ export function chatUI(request) {
     hasChatAttachmentFile(attachment) {
       return attachmentFiles.has(attachment.key);
     },
-    async uploadChatAttachment(attachment, user = this.chatUser) {
+    async uploadChatAttachment(attachment, user = this.chatStore) {
       if (attachment.status === "ready") return;
       if (attachmentTasks.has(attachment.key))
         return attachmentTasks.get(attachment.key);
@@ -85,7 +86,7 @@ export function chatUI(request) {
       const scope = "chat:" + user;
       const lookup = () =>
         request(
-          "/api/uploads/by-key/" +
+          "api/uploads/by-key/" +
             attachment.key +
             "?" +
             new URLSearchParams({ scope }),
@@ -103,7 +104,7 @@ export function chatUI(request) {
             receipt = await lookup();
           }
           Object.assign(attachment, receipt, { status: "ready", error: "" });
-          if (user === this.chatUser)
+          if (user === this.chatStore)
             this.chatUploadStates[receipt.upload] = receipt;
         } catch (e) {
           attachment.status = "error";
@@ -122,7 +123,7 @@ export function chatUI(request) {
       return task;
     },
     async uploadChatFiles(files) {
-      if (!this.chatUser || this.chatState?.archived) return;
+      if (!this.chatStore || this.chatState?.archived) return;
       this.chatFilesError = "";
       const tasks = [];
       for (const file of files) {
@@ -184,8 +185,6 @@ export function chatUI(request) {
     chatProgress: null,
     chatNow: Date.now(),
     chatFollow: true,
-    chatAddingUser: false,
-    chatNewUser: "",
     chatDraftUser: "",
     chatDraftSession: "",
     chatSearch: "",
@@ -219,7 +218,7 @@ export function chatUI(request) {
       this.watchRecords();
       const generation = settingsGeneration;
       await Promise.allSettled([
-        request("/api/chat/settings")
+        request("api/chat/settings")
           .then((value) => {
             if (generation === settingsGeneration) this.chatSettings = value;
           })
@@ -228,19 +227,18 @@ export function chatUI(request) {
           }),
         this.refreshChatSessions(),
       ]);
-      if (!this.chatUser) this.chatUser = this.chatUsers()[0] || "";
       try {
         this.chatPending = JSON.parse(local.get("songya-chat-pending", "null"));
       } catch {
         this.chatPending = null;
       }
       if (this.chatPending) {
-        this.chatUser = this.chatPending.user;
+        this.chatStore = this.chatPending.store;
         this.chatSessionID = this.chatPending.id;
         this.loadChatDraft();
         await this.selectChat();
         await this.flushChatPending();
-      } else await this.changeChatUser();
+      } else await this.selectStoreChat();
       this.$nextTick(() => this.initChatLayout());
     },
     initChatLayout() {
@@ -284,7 +282,7 @@ export function chatUI(request) {
       );
     },
     loadChatDraft() {
-      this.chatDraftUser = this.chatUser;
+      this.chatDraftUser = this.chatStore;
       this.chatDraftSession = this.chatSessionID;
       this.chatInput = local.get(this.chatDraftKey());
       try {
@@ -305,7 +303,7 @@ export function chatUI(request) {
       if (this.chatNavigationBusy()) return;
       this.keepChatDraft();
       this.chatSessionID = id;
-      local.set("songya-chat-selected:" + this.chatUser, id);
+      local.set("songya-chat-selected:" + this.chatStore, id);
       this.loadChatDraft();
       await this.selectChat();
       this.closeChatSidebar();
@@ -354,7 +352,7 @@ export function chatUI(request) {
         id: this.chatSessionID,
         request_id: newID(),
         edit_turn_id: this.chatEditing.turn_id,
-        user: this.chatState.user,
+        store: this.chatState.store,
         text: this.chatEditText,
       };
       local.set("songya-chat-pending", JSON.stringify(this.chatPending));
@@ -383,13 +381,13 @@ export function chatUI(request) {
       watch++;
       try {
         const remove = () =>
-          request("/api/chat/sessions/" + this.chatSessionID, {
+          request("api/chat/sessions/" + this.chatSessionID, {
             method: "DELETE",
           });
         await remove().catch(remove);
         local.set(this.chatDraftKey(), null);
         local.set(this.chatDraftKey() + ":files", null);
-        local.set("songya-chat-selected:" + this.chatUser, null);
+        local.set("songya-chat-selected:" + this.chatStore, null);
         this.chatState = null;
         this.chatSessionID = "";
         this.chatProgress = null;
@@ -411,10 +409,10 @@ export function chatUI(request) {
       this.chatManaging = true;
       this.chatError = "";
       try {
-        const value = await request(
-          "/api/chat/sessions/" + this.chatSessionID,
-          { method: "PATCH", body: JSON.stringify(fields) },
-        );
+        const value = await request("api/chat/sessions/" + this.chatSessionID, {
+          method: "PATCH",
+          body: JSON.stringify(fields),
+        });
         this.applyChat(value);
         this.chatArchived = !!value.archived;
         this.$refs.chatRenameDialog.close();
@@ -426,20 +424,11 @@ export function chatUI(request) {
         this.chatManaging = false;
       }
     },
-    chatUsers() {
-      return [
-        ...new Set([
-          ...Object.keys(this.owners),
-          ...this.chatSessions.map((c) => c.user),
-          ...(this.chatUser ? [this.chatUser] : []),
-        ]),
-      ].sort();
-    },
     chatHistory() {
       const search = this.chatSearch.trim().toLocaleLowerCase();
       return this.chatSessions.filter(
         (c) =>
-          c.user === this.chatUser &&
+          c.store === this.chatStore &&
           !!c.archived === this.chatArchived &&
           (!search ||
             (c.title + " " + (c.preview || ""))
@@ -451,7 +440,7 @@ export function chatUI(request) {
       const ticket = ++historyListing;
       clearTimeout(historyTimer);
       try {
-        const value = await request("/api/chat/sessions");
+        const value = await request("api/chat/sessions");
         if (ticket !== historyListing) return;
         this.chatSessions = value.sessions;
         if (value.diagnostics?.length)
@@ -479,7 +468,7 @@ export function chatUI(request) {
     },
     watchRecords() {
       recordEvents?.close();
-      recordEvents = new EventSource("/api/records/events");
+      recordEvents = new EventSource("api/records/events");
       recordEvents.onmessage = () => this.refreshChatRecords();
     },
     async refreshChatRecords() {
@@ -495,12 +484,12 @@ export function chatUI(request) {
       )
         recordsTimer = setTimeout(() => this.refreshChatRecords(), 1000);
     },
-    async changeChatUser() {
+    async selectStoreChat() {
       this.keepChatDraft();
-      local.set("songya-chat-user", this.chatUser);
-      const selected = local.get("songya-chat-selected:" + this.chatUser);
+      local.set("songya-chat-user", this.chatStore);
+      const selected = local.get("songya-chat-selected:" + this.chatStore);
       this.chatSessionID = this.chatSessions.some(
-        (c) => c.id === selected && c.user === this.chatUser,
+        (c) => c.id === selected && c.store === this.chatStore,
       )
         ? selected
         : "";
@@ -510,19 +499,6 @@ export function chatUI(request) {
       this.chatSearch = "";
       this.loadChatDraft();
       await this.selectChat();
-    },
-    addChatUser() {
-      if (this.chatSending || this.chatPending) return;
-      const user = this.chatNewUser.trim();
-      if (!user || user === "all") {
-        this.chatError =
-          "Enter one person's user name; ‘all’ selects multiple collections.";
-        return;
-      }
-      this.chatUser = user;
-      this.chatNewUser = "";
-      this.chatAddingUser = false;
-      this.changeChatUser();
     },
     async selectChat() {
       this.stopChatUpdates();
@@ -536,7 +512,7 @@ export function chatUI(request) {
       if (!this.chatSessionID) return;
       const ticket = watch;
       try {
-        const value = await request("/api/chat/sessions/" + this.chatSessionID);
+        const value = await request("api/chat/sessions/" + this.chatSessionID);
         if (ticket !== watch) return;
         this.applyChat(value);
         if (["pending", "running"].includes(value.status)) this.watchChat();
@@ -651,12 +627,12 @@ export function chatUI(request) {
         this.refreshChatUploads();
       }
       this.chatSessionID = value.id;
-      local.set("songya-chat-selected:" + value.user, value.id);
+      local.set("songya-chat-selected:" + value.store, value.id);
       this.chatConnection = "";
       const existing = this.chatSessions.find((c) => c.id === value.id);
       const summary = {
         id: value.id,
-        user: value.user,
+        store: value.store,
         title: value.title,
         status: value.status,
         updated_at: value.updated_at,
@@ -735,10 +711,9 @@ export function chatUI(request) {
       reconnectTimer = null;
       if (ticket !== watch || !this.chatBusy()) return;
       try {
-        const value = await request(
-          "/api/chat/sessions/" + this.chatSessionID,
-          { signal: AbortSignal.timeout(10000) },
-        );
+        const value = await request("api/chat/sessions/" + this.chatSessionID, {
+          signal: AbortSignal.timeout(10000),
+        });
         if (ticket !== watch) return;
         this.applyChat(value);
         if (!this.chatBusy()) return;
@@ -769,7 +744,7 @@ export function chatUI(request) {
         }, 15000);
       };
       events = new EventSource(
-        "/api/chat/sessions/" + this.chatSessionID + "/events",
+        "api/chat/sessions/" + this.chatSessionID + "/events",
       );
       const source = events;
       progressClock = setInterval(() => {
@@ -819,7 +794,7 @@ export function chatUI(request) {
     async sendChat() {
       if (
         this.chatManaging ||
-        !this.chatUser ||
+        !this.chatStore ||
         !this.chatSettings.configured ||
         this.chatState?.archived
       )
@@ -828,7 +803,7 @@ export function chatUI(request) {
         const message = {
           id: this.chatSessionID || this.chatPending?.id || newID(),
           request_id: newID(),
-          user: this.chatUser,
+          store: this.chatStore,
           text: this.chatInput,
           attachments: [...this.chatAttachments],
         };
@@ -845,7 +820,7 @@ export function chatUI(request) {
         this.chatSessionID = message.id;
         this.chatDraftSession = message.id;
         this.keepChatDraft();
-        local.set("songya-chat-selected:" + this.chatUser, message.id);
+        local.set("songya-chat-selected:" + this.chatStore, message.id);
         this.chatFollow = true;
         this.$refs.chatInput?.focus();
         this.$nextTick(() => this.scrollChat());
@@ -861,7 +836,7 @@ export function chatUI(request) {
           const { next, attachments, ...message } = this.chatPending;
           if (attachments) {
             for (const attachment of attachments) {
-              await this.uploadChatAttachment(attachment, message.user);
+              await this.uploadChatAttachment(attachment, message.store);
               if (attachment.status !== "ready")
                 throw new Error(attachment.filename + ": " + attachment.error);
             }
@@ -871,7 +846,7 @@ export function chatUI(request) {
             this.chatPending.uploads = message.uploads;
             local.set("songya-chat-pending", JSON.stringify(this.chatPending));
           }
-          const value = await request("/api/chat", {
+          const value = await request("api/chat", {
             method: "POST",
             body: JSON.stringify(message),
           });
@@ -897,7 +872,7 @@ export function chatUI(request) {
       const ticket = watch;
       const id = this.chatSessionID;
       try {
-        const value = await request("/api/chat/sessions/" + id + "/retry", {
+        const value = await request("api/chat/sessions/" + id + "/retry", {
           method: "POST",
         });
         if (ticket !== watch) return;
@@ -912,7 +887,7 @@ export function chatUI(request) {
       const ticket = watch;
       const id = this.chatSessionID;
       try {
-        const value = await request("/api/chat/sessions/" + id + "/pause", {
+        const value = await request("api/chat/sessions/" + id + "/pause", {
           method: "POST",
         });
         if (ticket === watch) this.applyChat(value);
@@ -949,7 +924,7 @@ export function chatUI(request) {
         };
         if (draft.api_key || draft.clear_key)
           payload.api_key = draft.clear_key ? "" : draft.api_key;
-        this.chatSettings = await request("/api/chat/settings", {
+        this.chatSettings = await request("api/chat/settings", {
           method: "PUT",
           body: JSON.stringify(payload),
         });
@@ -968,7 +943,7 @@ export function chatUI(request) {
       if (!(await this.saveChatSettings(false))) return;
       this.chatSettingsBusy = true;
       try {
-        const value = await request("/api/chat/models");
+        const value = await request("api/chat/models");
         this.chatModels = value.models;
         this.chatSettingsNotice = `Connected. ${value.models.length} models available.`;
       } catch (e) {

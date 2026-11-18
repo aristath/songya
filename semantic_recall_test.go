@@ -20,7 +20,7 @@ func writeRecallPolicy(t *testing.T, s *Store, policy RecallPolicy) {
 }
 func retrieveTest(t *testing.T, s *Store, text string) SemanticRecallResult {
 	t.Helper()
-	r, err := s.Retrieve(context.Background(), RecallRequest{Message: text, Owners: []string{"ari", "clara"}})
+	r, err := s.Retrieve(context.Background(), RecallRequest{Message: text})
 	if err != nil || len(r.Results) != 1 {
 		t.Fatal(r, err)
 	}
@@ -33,7 +33,8 @@ func TestRetrievalAllKindsSearchReturnAndGraphPolicies(t *testing.T) {
 	memory := createEmbeddedRecord(t, s, Memories, map[string]any{"user": "ari", "emotion": "uncertain tenderness", "time": map[string]any{"date": "2001-06-12"}, "relations": []Relation{{"related_to", entity.ID}}}, "Around college, we talked after rehearsal.")
 	topic := createEmbeddedRecord(t, s, Topics, map[string]any{"name": "Orchestra"}, "Orchestral music")
 	story := createEmbeddedRecord(t, s, Stories, map[string]any{"user": "ari", "title": "Orchestral rehearsals", "relations": []Relation{{"related_to", memory.ID}}}, "College story introduction")
-	excluded := createEmbeddedRecord(t, s, Memories, map[string]any{"user": "bob", "relations": []Relation{{"related_to", entity.ID}}}, "Bob's violoncello account")
+	otherStore, _ := Open(t.TempDir(), EmbeddingConfig{BaseURL: f.server.URL})
+	excluded := createEmbeddedRecord(t, otherStore, Memories, map[string]any{"user": "bob", "relations": []Relation{{"related_to", entity.ID}}}, "Bob's violoncello account")
 	createEmbeddedRecord(t, s, Memories, map[string]any{"user": "clara"}, "A violoncello performance")
 	// Cycle plus a second path. An incoming edge must still be traversable.
 	_, err := s.Update(entity.ID, entity.Revision, map[string]any{"relations": []Relation{{"related_to", topic.ID}, {"possibly_same_as", story.ID}}}, entity.Body)

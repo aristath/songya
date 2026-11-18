@@ -67,7 +67,7 @@ func TestStoreCreatesAndReadsAllDestinations(t *testing.T) {
 	}
 	body := "\r\n# Original body\r\n\r\nLiteral --- text."
 	for _, destination := range []Destination{Memories, Entities, Topics, Stories} {
-		doc, err := store.Create(destination, testUserFields(destination, fields), body)
+		doc, err := store.Create(destination, fields, body)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -154,7 +154,7 @@ func TestStoreWorksWithoutDerivedIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := store.Create(Memories, testUserFields(Memories, nil), "Body")
+	doc, err := store.Create(Memories, nil, "Body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestStoreWorksWithoutDerivedIndex(t *testing.T) {
 	if _, err := store.Read(doc.ID); err != nil {
 		t.Fatalf("read depended on index: %v", err)
 	}
-	if _, err := store.Create(Entities, testUserFields(Entities, nil), "Entity"); err != nil {
+	if _, err := store.Create(Entities, nil, "Entity"); err != nil {
 		t.Fatalf("creation depended on index: %v", err)
 	}
 	if _, err := Open(path); err != nil {
@@ -183,11 +183,11 @@ func TestStoreRejectsInvalidInputAndIsolatesDamagedRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, destination := range []Destination{"", "../outside", "unknown"} {
-		if _, err := store.Create(destination, testUserFields(destination, nil), "Body"); err == nil {
+		if _, err := store.Create(destination, nil, "Body"); err == nil {
 			t.Fatalf("accepted destination %q", destination)
 		}
 	}
-	damaged, err := store.Create(Memories, testUserFields(Memories, map[string]any{"relations": []Relation{{Type: "after", Target: "bad-id"}}}), "Body")
+	damaged, err := store.Create(Memories, map[string]any{"relations": []Relation{{Type: "after", Target: "bad-id"}}}, "Body")
 	if err != nil || damaged.Body != "Body" || len(damaged.Diagnostics()) == 0 {
 		t.Fatalf("bad link blocked creation: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestStoreRejectsInvalidInputAndIsolatesDamagedRecords(t *testing.T) {
 		if string(data) != content {
 			t.Fatal("damaged record was rewritten")
 		}
-		healthy, err := store.Create(Memories, testUserFields(Memories, nil), "Healthy record")
+		healthy, err := store.Create(Memories, nil, "Healthy record")
 		if err != nil {
 			t.Fatalf("damaged record blocked healthy creation: %v", err)
 		}
@@ -272,7 +272,7 @@ func TestStoreRejectsSymlinksOutsideRoot(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(path, "linked")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Create("linked", testUserFields("linked", nil), "Body"); err == nil {
+	if _, err := store.Create("linked", nil, "Body"); err == nil {
 		t.Fatal("accepted a non-record directory")
 	}
 	entries, _ := os.ReadDir(outside)
@@ -293,14 +293,14 @@ func TestStoreInitializationRejectsNonDirectoryAndExternalLinks(t *testing.T) {
 				if err != nil || len(store.Diagnostics()) == 0 {
 					t.Fatalf("coordination problem was not isolated: %v", err)
 				}
-				if _, err := store.Create(Topics, testUserFields(Topics, nil), "Blocked write"); err == nil {
+				if _, err := store.Create(Topics, nil, "Blocked write"); err == nil {
 					t.Fatal("wrote through an unsafe lock")
 				}
 			} else {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, err := store.Create(Topics, testUserFields(Topics, nil), "Healthy"); err != nil {
+				if _, err := store.Create(Topics, nil, "Healthy"); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -319,7 +319,7 @@ func TestStoreInitializationRejectsNonDirectoryAndExternalLinks(t *testing.T) {
 	if err != nil || len(store.Diagnostics()) == 0 {
 		t.Fatalf("one bad directory disabled the store: %v", err)
 	}
-	if _, err := store.Create(Topics, testUserFields(Topics, nil), "Healthy"); err != nil {
+	if _, err := store.Create(Topics, nil, "Healthy"); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(name)
@@ -417,7 +417,7 @@ func TestStoreLockIsReleasedWhenWriterProcessDies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	existing, err := store.Create(Topics, testUserFields(Topics, nil), "Already committed")
+	existing, err := store.Create(Topics, nil, "Already committed")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -450,7 +450,7 @@ func TestStoreLockIsReleasedWhenWriterProcessDies(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, err := store.Create(Memories, testUserFields(Memories, nil), "After interruption")
+		_, err := store.Create(Memories, nil, "After interruption")
 		done <- err
 	}()
 	select {
@@ -536,7 +536,7 @@ func TestStoreProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := range 8 {
-		if _, err := store.Create(destinations[i%len(destinations)], testUserFields(destinations[i%len(destinations)], map[string]any{"title": "Concurrent"}), strings.Repeat("x", 128*1024)); err != nil {
+		if _, err := store.Create(destinations[i%len(destinations)], map[string]any{"title": "Concurrent"}, strings.Repeat("x", 128*1024)); err != nil {
 			t.Fatal(err)
 		}
 	}

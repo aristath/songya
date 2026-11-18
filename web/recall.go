@@ -130,7 +130,7 @@ func (a *chatApp) prepareRecall(ctx context.Context, id string, c chatConversati
 	}
 	recallCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	result, err := a.store.RetrieveWithConfiguration(recallCtx, songya.RecallRequest{Message: message, Owners: []string{c.User}}, *config, issue)
+	result, err := a.store.RetrieveWithConfiguration(recallCtx, songya.RecallRequest{Message: message}, *config, issue)
 	if ctx.Err() != nil {
 		return c, ctx.Err()
 	}

@@ -12,7 +12,7 @@ import (
 )
 
 func batchProcessRequest() BatchRequest {
-	return BatchRequest{User: "test", Key: "process-capture", Account: "Original account", Changes: []Change{{Ref: "one", Body: textPointer("One")}, {Ref: "two", Body: textPointer("Two"), Fields: map[string]any{"relations": []Relation{{"related_to", "$one"}}}}}}
+	return BatchRequest{Key: "process-capture", Account: "Original account", Changes: []Change{{Ref: "one", Body: textPointer("One")}, {Ref: "two", Body: textPointer("Two"), Fields: map[string]any{"relations": []Relation{{"related_to", "$one"}}}}}}
 }
 
 func testBatchProcess(t *testing.T, role, path string) {

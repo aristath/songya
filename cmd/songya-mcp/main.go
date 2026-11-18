@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"path/filepath"
 
 	"strings"
 	"syscall"
@@ -31,32 +30,26 @@ func (r rootsFlag) Set(value string) error {
 func main() {
 	flags := flag.NewFlagSet("songya-mcp", flag.ExitOnError)
 	flags.SetOutput(os.Stderr)
-	storePath := flags.String("store", "", "authoritative memory store directory (required)")
-	configPath := flags.String("config", "", "configuration file (default: STORE/config.json)")
-	user := flags.String("user", "", "optional selected user for model-facing type schemas")
+	stores := rootsFlag{}
+	flags.Var(stores, "store", "configured name=/store/path; repeat for each accessible store")
 	roots := rootsFlag{}
 	flags.Var(roots, "import-root", "optional named import root; repeat for more roots")
 	_ = flags.Parse(os.Args[1:])
-	if *storePath == "" {
+	if len(stores) == 0 {
 		flags.Usage()
 		os.Exit(2)
 	}
-	path := *configPath
-	if path == "" {
-		path = filepath.Join(*storePath, "config.json")
+	opened := map[string]*songya.Store{}
+	for name, directory := range stores {
+		store, err := songya.Open(directory)
+		if err != nil {
+			log.Fatal(err)
+		}
+		opened[name] = store
 	}
-	_, issue := songya.LoadEmbeddingConfig(path)
-	if issue != nil {
-		log.Print("Songya configuration needs repair; readable values and defaults remain usable")
-	}
-	store, err := songya.Open(*storePath)
-	if err != nil {
-		log.Fatal(err)
-	}
-	store.UseConfiguration(path)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	server := mcpserver.NewForUser(ctx, store, roots, *user)
+	server := mcpserver.New(ctx, opened, roots)
 	if err := server.Run(ctx, &mcp.StdioTransport{}); err != nil && ctx.Err() == nil {
 		log.Fatal(err)
 	}

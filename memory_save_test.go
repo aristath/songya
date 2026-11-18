@@ -37,7 +37,7 @@ func TestMemoryDatePatchRetainsDamagedInformationAndHealthyWork(t *testing.T) {
 		}
 	}
 	healthy := "A separate healthy memory still saves."
-	if saved, err := store.SaveMemory(ctx, MemoryInput{User: "ari", Text: &healthy}); err != nil || saved.Status != "committed" {
+	if saved, err := store.SaveMemory(ctx, MemoryInput{Text: &healthy}); err != nil || saved.Status != "committed" {
 		t.Fatal(saved, err)
 	}
 }

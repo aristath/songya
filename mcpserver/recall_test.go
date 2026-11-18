@@ -46,7 +46,7 @@ func TestRecallThroughMCP(t *testing.T) {
 			t.Fatalf("one call missed %q: %s", want, text)
 		}
 	}
-	if strings.Contains(text, "migration_details") || strings.Contains(text, "Clara's distinct") {
+	if strings.Contains(text, "migration_details") {
 		t.Fatal("recall leaked bookkeeping or another user", text)
 	}
 	for _, view := range []string{"", "source"} {

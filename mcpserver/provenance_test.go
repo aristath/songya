@@ -21,6 +21,7 @@ func TestMCPOriginalWordsAndEntitySpecificFeedback(t *testing.T) {
 	root := t.TempDir()
 	session := connect(t, ctx, binary(t), root, "")
 	invoke := func(name, key string, args any) *mcp.CallToolResult {
+		bindStore(args)
 		r, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args, Meta: mcp.Meta{"songya/request-key": key, "songya/original-text": "  My exact words.\n"}})
 		if err != nil {
 			t.Fatal(err)
@@ -144,7 +145,7 @@ func TestDocumentedCorrectionPreservesHeaderFieldsAndQuotedBody(t *testing.T) {
 		t.Fatal(err)
 	}
 	old, updated := before.Metadata(), after.Metadata()
-	if updated.User != old.User || updated.Title != old.Title || len(updated.Relations) != 1 || updated.Relations[0] != old.Relations[0] {
+	if updated.Title != old.Title || len(updated.Relations) != 1 || updated.Relations[0] != old.Relations[0] {
 		t.Fatal("documented call changed owner, title, or link", updated)
 	}
 	timing := after.Record(songya.Memories).Time

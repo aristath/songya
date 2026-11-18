@@ -9,15 +9,15 @@ import { newID } from "./ids.js";
 const storage = {
   get(key) {
     try {
-      return localStorage.getItem(key);
+      return localStorage.getItem(location.pathname + key);
     } catch {
       return null;
     }
   },
   set(key, value) {
     try {
-      if (value === null) localStorage.removeItem(key);
-      else localStorage.setItem(key, value);
+      if (value === null) localStorage.removeItem(location.pathname + key);
+      else localStorage.setItem(location.pathname + key, value);
     } catch {
       /* The open form retains its draft. */
     }
@@ -55,11 +55,8 @@ export function typesUI(request) {
       type.color = value === "custom" ? mochaColor(type.color) : value;
       this.keepTypeDraft();
     },
-    classificationUser: storage.get("songya-classification-user") || "",
     classificationPolicy: null,
     classificationBusy: false,
-    typeUsers: [],
-    typeSettingsUser: "",
     typeSettings: null,
     typeDraft: null,
     typeReplacements: {},
@@ -70,36 +67,14 @@ export function typesUI(request) {
     typeSettingsNotice: "",
     typeKinds: ["entities", "memories", "topics", "stories"],
     async initTypes() {
-      try {
-        const { users } = await request("/api/type-users");
-        this.typeUsers = users;
-        this.classificationUser ||= this.chatUser || users[0] || "";
-        if (this.classificationUser) {
-          await this.loadClassificationPolicy();
-          await Promise.all([this.refresh(), this.refreshGraph()]);
-        }
-      } catch (e) {
-        this.failure = e.message;
-      }
-    },
-    classificationUsers() {
-      return [
-        ...new Set([
-          ...this.typeUsers,
-          ...Object.keys(this.owners),
-          ...this.chatUsers(),
-          ...(this.classificationUser ? [this.classificationUser] : []),
-        ]),
-      ].sort();
+      await this.loadClassificationPolicy();
+      await Promise.all([this.refresh(), this.refreshGraph()]);
     },
     async loadClassificationPolicy() {
       const ticket = ++generation;
       this.classificationBusy = true;
-      storage.set("songya-classification-user", this.classificationUser);
       try {
-        const value = await request(
-          "/api/types/" + encodeURIComponent(this.classificationUser),
-        );
+        const value = await request("api/types");
         if (ticket === generation) this.classificationPolicy = value;
       } catch (e) {
         if (ticket === generation) this.failure = e.message;
@@ -108,9 +83,7 @@ export function typesUI(request) {
       }
     },
     typeChoices(kind) {
-      return this.classificationPolicy?.user === this.classificationUser
-        ? this.classificationPolicy.kinds[kind] || []
-        : [];
+      return this.classificationPolicy?.kinds[kind] || [];
     },
     typeLabel(id, kind) {
       const lists = kind
@@ -119,11 +92,7 @@ export function typesUI(request) {
       return lists.find((t) => t.id === id)?.name || id;
     },
     recordType() {
-      return (
-        this.fields.find((f) => f.key === "types")?.assignments?.[
-          this.classificationUser
-        ] || ""
-      );
+      return this.fields.find((f) => f.key === "type")?.text || "";
     },
     recordTypeDefinition() {
       return (
@@ -132,13 +101,8 @@ export function typesUI(request) {
         )?.description || ""
       );
     },
-    async changeClassificationUser() {
-      await this.loadClassificationPolicy();
-      this.filters.type = "";
-      await Promise.all([this.refresh(), this.refreshGraph()]);
-    },
-    typeDraftKey(user = this.typeSettings?.user) {
-      return "songya-type-draft:" + user;
+    typeDraftKey() {
+      return "songya-type-draft";
     },
     keepTypeDraft() {
       if (!this.typeSettings || !this.typeDraft) return;
@@ -154,15 +118,9 @@ export function typesUI(request) {
         }),
       );
     },
-    async openTypeSettings(user) {
-      this.typeSettingsUser =
-        user ||
-        this.chatUser ||
-        this.classificationUser ||
-        this.classificationUsers()[0] ||
-        "";
+    async openTypeSettings() {
       this.$refs.typeSettingsDialog.showModal();
-      if (this.typeSettingsUser) await this.loadTypeSettings();
+      await this.loadTypeSettings();
     },
     async loadTypeSettings(reload = false) {
       this.keepTypeDraft();
@@ -170,11 +128,8 @@ export function typesUI(request) {
       this.typeSettingsBusy = true;
       this.typeSettingsError = this.typeSettingsNotice = "";
       try {
-        const user = this.typeSettingsUser.trim();
-        if (!user || user === "all")
-          throw Error("Choose one user for type settings.");
-        const value = await request("/api/types/" + encodeURIComponent(user));
-        const raw = storage.get(this.typeDraftKey(user));
+        const value = await request("api/types");
+        const raw = storage.get(this.typeDraftKey());
         let saved = null;
         if (raw && !reload) {
           try {
@@ -207,7 +162,6 @@ export function typesUI(request) {
         if (value.diagnostics?.length)
           this.typeSettingsError = value.diagnostics.join("\n");
         if (reload) storage.set(this.typeDraftKey(), null);
-        this.typeUsers = [...new Set([...this.typeUsers, user])].sort();
       } catch (e) {
         this.typeSettingsError = e.message;
       } finally {
@@ -289,10 +243,10 @@ export function typesUI(request) {
         };
         this.keepTypeDraft();
         const submitted = this.typePending;
-        const value = await request(
-          "/api/types/" + encodeURIComponent(this.typeSettings.user),
-          { method: "PUT", body: JSON.stringify(submitted) },
-        );
+        const value = await request("api/types", {
+          method: "PUT",
+          body: JSON.stringify(submitted),
+        });
         this.typePending = null;
         const compared = copy(value.kinds);
         for (const kind of this.typeKinds)
@@ -332,9 +286,9 @@ export function typesUI(request) {
           this.typeMyEntity = value.my_entity;
           this.typeReplacements = {};
           storage.set(this.typeDraftKey(), null);
-          this.typeSettingsNotice = "Types saved for " + value.user + ".";
+          this.typeSettingsNotice = "Types saved.";
         }
-        if (this.classificationUser === value.user) {
+        {
           await this.loadClassificationPolicy();
           await Promise.all([this.refresh(), this.refreshGraph()]);
         }

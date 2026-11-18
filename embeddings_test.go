@@ -105,17 +105,13 @@ func TestSemanticIndexNamesDescriptionsContentsAndRefresh(t *testing.T) {
 		}
 	}
 	before := f.count()
-	result, err := s.Search(context.Background(), Query{Mode: "semantic", Text: "orchestral performer", User: "ari", Kind: Memories})
+	result, err := s.Search(context.Background(), Query{Mode: "semantic", Text: "orchestral performer", Kind: Memories})
 	if err != nil || result.Mode != "semantic" || result.Incomplete || result.Matches[0].ID != memory.ID || f.count() != before+1 {
 		t.Fatal(result, err, "requests", f.count()-before)
 	}
-	for _, m := range result.Matches {
-		if m.User != "ari" {
-			t.Fatal("wrong user", m)
-		}
-	}
-	result, err = s.Search(context.Background(), Query{Mode: "semantic", Text: "orchestral performer", User: "bob", Kind: Entities})
-	if err != nil || len(result.Matches) != 1 || result.Matches[0].ID != entity.ID || result.Matches[0].User != "" {
+
+	result, err = s.Search(context.Background(), Query{Mode: "semantic", Text: "orchestral performer", Kind: Entities})
+	if err != nil || len(result.Matches) != 1 || result.Matches[0].ID != entity.ID {
 		t.Fatal("shared identity lost", result, err)
 	}
 	after, _ := s.ReadSource("memories/" + memory.ID + "/record.md")
@@ -319,16 +315,16 @@ func TestEmbeddingNumericStringsAndEmptySelection(t *testing.T) {
 	if err != nil || status.Incomplete || status.Dimensions != 3 {
 		t.Fatal("numeric strings were rejected", status, err)
 	}
-	result, err := s.Search(context.Background(), Query{Mode: "semantic", Text: "an evening", User: "ari"})
+	result, err := s.Search(context.Background(), Query{Mode: "semantic", Text: "an evening"})
 	if err != nil || result.Mode != "semantic" || result.Matches[0].Score < 0.99 {
 		t.Fatal(result, err)
 	}
 	// No selected records needs no provider, and is an ordinary empty result.
-	offline, err := Open(s.path, EmbeddingConfig{BaseURL: "http://127.0.0.1:1"})
+	offline, err := Open(t.TempDir(), EmbeddingConfig{BaseURL: "http://127.0.0.1:1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err = offline.Search(context.Background(), Query{Mode: "semantic", Text: "anything", User: "nobody"})
+	result, err = offline.Search(context.Background(), Query{Mode: "semantic", Text: "anything"})
 	if err != nil || result.Mode != "semantic" || len(result.Diagnostics) > 0 || len(result.Matches) != 0 {
 		t.Fatal("empty selection treated as failure", result, err)
 	}

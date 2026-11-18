@@ -338,7 +338,7 @@ func (s *Store) semanticSearch(ctx context.Context, c Catalog, q Query) (SearchR
 	}
 
 	candidates := []Match{}
-	for _, match := range rankMatches(c, Query{User: q.User, Kind: q.Kind, RelatedTo: q.RelatedTo, RelationType: q.RelationType, IncludeRetired: q.IncludeRetired}) {
+	for _, match := range rankMatches(c, Query{Kind: q.Kind, RelatedTo: q.RelatedTo, RelationType: q.RelationType, IncludeRetired: q.IncludeRetired}) {
 		candidates = append(candidates, match)
 	}
 	if len(candidates) == 0 {

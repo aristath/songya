@@ -85,7 +85,7 @@ func TestNodeContainersKeepAliases(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			doc, err := store.Create(Memories, testUserFields(Memories, map[string]any{"payload": value}), "Body")
+			doc, err := store.Create(Memories, map[string]any{"payload": value}, "Body")
 			if err != nil || len(doc.Diagnostics()) != 0 {
 				t.Fatalf("valid YAML aliases were replaced: %v, %v", err, doc.Diagnostics())
 			}

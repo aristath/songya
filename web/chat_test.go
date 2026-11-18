@@ -96,7 +96,7 @@ func TestChatStreamsThroughRealMCPAndSurvivesBrowserDisconnect(t *testing.T) {
 		if !body.Stream || body.Model != "memory-model" || len(body.Tools) < 20 {
 			t.Error("streaming request lost model or MCP definitions")
 		}
-		if !strings.Contains(body.Messages[0].Content, `user "ari"`) || !strings.Contains(body.Messages[0].Content, "Songya stores connected Markdown records") {
+		if !strings.Contains(body.Messages[0].Content, `store is "store"`) || !strings.Contains(body.Messages[0].Content, "Songya stores connected Markdown records") {
 			t.Error("system prompt lost user or live MCP guide")
 		}
 		switch requests.Add(1) {
@@ -161,7 +161,7 @@ func TestChatStreamsThroughRealMCPAndSurvivesBrowserDisconnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	memories := catalog.Select(songya.Query{Kind: songya.Memories, User: "ari"})
+	memories := catalog.Select(songya.Query{Kind: songya.Memories})
 	if len(memories) != 1 || memories[0].Time.Date == nil || *memories[0].Time.Date != "1981-03-06" {
 		t.Fatal(memories)
 	}
@@ -196,7 +196,7 @@ func TestChatStartupRecoversAcceptedToolFromOriginalReceipt(t *testing.T) {
 	id := chatID()
 	text := "The original account."
 	key := "chat:" + id + ":1:save_existing"
-	receipt, err := store.SaveMemory(context.Background(), songya.MemoryInput{Key: key, User: "ari", Text: &text})
+	receipt, err := store.SaveMemory(context.Background(), songya.MemoryInput{Key: key, Text: &text})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestChatStartupRecoversAcceptedToolFromOriginalReceipt(t *testing.T) {
 	tool := chatToolCall{ID: "save_existing", Type: "function"}
 	tool.Function.Name = "save_memory"
 	tool.Function.Arguments = `{"text":"The original account."}`
-	c := chatConversation{ID: id, User: "ari", Status: "running", TurnID: "original", Prompt: defaultChatPrompt, Requests: map[string]string{"original": chatFingerprint("ari", "Save this account.")}, Messages: []chatMessage{{Role: "user", Content: "Save this account.", TurnID: "original"}, {Role: "assistant", ToolCalls: []chatToolCall{tool}, TurnID: "original"}}}
+	c := chatConversation{Store: "store", ID: id, Status: "running", TurnID: "original", Prompt: defaultChatPrompt, Requests: map[string]string{"original": chatFingerprint("store", "Save this account.")}, Messages: []chatMessage{{Role: "user", Content: "Save this account.", TurnID: "original"}, {Role: "assistant", ToolCalls: []chatToolCall{tool}, TurnID: "original"}}}
 	data, _ := json.Marshal(c)
 	if err := fixtureWriteFile(filepath.Join(root, ".chats", id+".json"), data, 0600); err != nil {
 		t.Fatal(err)
@@ -378,7 +378,7 @@ func TestChatPublicationRecoversAfterStorageRepairAndIsolatesDamagedConversation
 	goodID := chatID()
 	_, err = app.chat.edit(ctx, goodID, func(c *chatConversation) error {
 		c.Requests["accepted"] = "receipt"
-		c.User = "healthy"
+		c.Store = "store"
 		c.Status = "done"
 		c.Title = "Intact conversation"
 		return nil
@@ -399,7 +399,7 @@ func TestChatPublicationRecoversAfterStorageRepairAndIsolatesDamagedConversation
 func TestChatReadsAndEditsExistingMemoryWithoutChangingItsOwner(t *testing.T) {
 	store, _ := songya.Open(t.TempDir())
 	text := "The family moved to Mytilene after Ari's birth."
-	saved, err := store.SaveMemory(context.Background(), songya.MemoryInput{Key: "existing-account", User: "ari", Text: &text})
+	saved, err := store.SaveMemory(context.Background(), songya.MemoryInput{Key: "existing-account", Text: &text})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -445,7 +445,7 @@ func TestChatReadsAndEditsExistingMemoryWithoutChangingItsOwner(t *testing.T) {
 	postChat(t, app, id, "edit", "clara", "Add that the move was a few months after birth, earliest 1 May 1981.")
 	c := waitChat(t, app, id, "done")
 	doc, err := store.Read(memoryID)
-	if err != nil || doc.Record(songya.Memories).User != "ari" || doc.Record(songya.Memories).Time.Earliest == nil || *doc.Record(songya.Memories).Time.Earliest != "1981-05-01" || !strings.Contains(doc.Body, "few months after birth") {
+	if err != nil || doc.Record(songya.Memories).Time.Earliest == nil || *doc.Record(songya.Memories).Time.Earliest != "1981-05-01" || !strings.Contains(doc.Body, "few months after birth") {
 		t.Fatal(doc, err)
 	}
 	if c.Messages[1].ToolCalls[0].ID == c.Messages[5].ToolCalls[0].ID {

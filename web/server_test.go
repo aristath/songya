@@ -85,7 +85,7 @@ func TestTableProjectsMetadataAndRevisionFromTheCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	record, err := store.Create(songya.Entities, map[string]any{"name": "Cedar", "description": "Stale metadata", "types": map[string]string{"ari": "plant"}, "aliases": []string{"Cedrus", "Atlas cedar"}}, "A tree")
+	record, err := store.Create(songya.Entities, map[string]any{"name": "Cedar", "description": "Stale metadata", "type": "plant", "aliases": []string{"Cedrus", "Atlas cedar"}}, "A tree")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,9 +151,6 @@ func TestGraphIncludesAllRecordKindsAndStoredConnections(t *testing.T) {
 	}
 	if aliases := nodes[entity.ID]["aliases"].([]any); len(aliases) != 1 || aliases[0] != "Alexander" {
 		t.Fatal("Graph lost searchable aliases", nodes[entity.ID])
-	}
-	if nodes[memory.ID]["user"] != "ari" || nodes[story.ID]["user"] != "clara" || nodes[entity.ID]["user"] != "" || nodes[topic.ID]["user"] != "" {
-		t.Fatal("Graph lost record ownership or assigned an owner to shared identities", nodes)
 	}
 	want := map[[3]string]bool{
 		{memory.ID, "related_to", entity.ID}:          true,

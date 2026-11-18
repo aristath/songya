@@ -127,7 +127,7 @@ func TestThinkingProgressStreamsReasoningWithoutRewritingEveryChunk(t *testing.T
 }
 
 func TestChatFileArgumentsKeepBulkFilenameBindingsAndAllowOtherRenames(t *testing.T) {
-	c := chatConversation{TurnID: "turn", Messages: []chatMessage{{Role: "user", TurnID: "turn", Uploads: []songya.Upload{{ID: "john", Filename: "john.txt"}, {ID: "mary", Filename: "mary.txt"}}}}}
+	c := chatConversation{Store: "store", TurnID: "turn", Messages: []chatMessage{{Role: "user", TurnID: "turn", Uploads: []songya.Upload{{ID: "john", Filename: "john.txt"}, {ID: "mary", Filename: "mary.txt"}}}}}
 	for _, tool := range []string{"attach_file", "replace_file"} {
 		if err := chatFileArguments(c, tool, map[string]any{"filename": "john.txt", "upload": "mary"}); err == nil {
 			t.Fatal("swapped upload accepted", tool)
@@ -144,8 +144,8 @@ func TestChatRejectsSwappedBulkFileBeforeRunningTool(t *testing.T) {
 	store, _ := songya.Open(t.TempDir())
 	ctx := context.Background()
 	record, _ := store.Create(songya.Memories, map[string]any{"user": "john", "title": "Letters"}, "Keep these words.")
-	john, _ := store.Upload(ctx, "john", "chat:john", "john.txt", strings.NewReader("John's original"))
-	mary, _ := store.Upload(ctx, "mary", "chat:john", "mary.txt", strings.NewReader("Mary's original"))
+	john, _ := store.Upload(ctx, "john", "chat:store", "john.txt", strings.NewReader("John's original"))
+	mary, _ := store.Upload(ctx, "mary", "chat:store", "mary.txt", strings.NewReader("Mary's original"))
 	requests := 0
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++

@@ -17,7 +17,7 @@ func TestNewTimeFieldsAcceptOnlyCalendarDatesOrNull(t *testing.T) {
 			if _, err := store.Create(Memories, map[string]any{"user": "ari", "time": timing}, "Not published"); err == nil {
 				t.Fatal("Create accepted a non-date", bad)
 			}
-			if r, err := store.SaveMemory(ctx, MemoryInput{User: "ari", Text: textValue("Not published"), Time: timing}); err == nil || r.Status != "not_accepted" {
+			if r, err := store.SaveMemory(ctx, MemoryInput{Text: textValue("Not published"), Time: timing}); err == nil || r.Status != "not_accepted" {
 				t.Fatal("SaveMemory accepted a non-date", r, err)
 			}
 			doc := &Document{Body: "Not published"}
@@ -35,7 +35,7 @@ func TestNewTimeFieldsAcceptOnlyCalendarDatesOrNull(t *testing.T) {
 	}
 	store, _ := Open(t.TempDir())
 	for _, input := range []any{nil, map[string]any{"date": "2024-02-29"}, map[string]any{"date": nil, "earliest": "2025-07-01", "latest": nil}} {
-		if _, err := store.SaveMemory(ctx, MemoryInput{User: "ari", Text: textValue("A useful memory"), Time: input}); err != nil {
+		if _, err := store.SaveMemory(ctx, MemoryInput{Text: textValue("A useful memory"), Time: input}); err != nil {
 			t.Fatal("valid date/null rejected", input, err)
 		}
 	}
@@ -44,7 +44,7 @@ func TestNewTimeFieldsAcceptOnlyCalendarDatesOrNull(t *testing.T) {
 func TestOngoingStateAndInvalidDateUpdatesPreserveStoredAccount(t *testing.T) {
 	store, _ := Open(t.TempDir())
 	ctx := context.Background()
-	r, err := store.SaveMemory(ctx, MemoryInput{User: "ari", Text: textValue("Since July 2025, Ari prefers tea."), Time: map[string]any{"date": nil, "earliest": "2025-07-01", "latest": nil}})
+	r, err := store.SaveMemory(ctx, MemoryInput{Text: textValue("Since July 2025, Ari prefers tea."), Time: map[string]any{"date": nil, "earliest": "2025-07-01", "latest": nil}})
 	if err != nil {
 		t.Fatal(err)
 	}

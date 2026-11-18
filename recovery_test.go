@@ -72,7 +72,7 @@ func TestUnsupportedMetadataDoesNotCrashOrLoseBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := store.Create(Memories, testUserFields(Memories, map[string]any{"title": 3, "unencodable": func() {}}), "Original body")
+	doc, err := store.Create(Memories, map[string]any{"title": 3, "unencodable": func() {}}, "Original body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestBrokenOptionalDirectoriesDoNotDisableStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := store.Create(Memories, testUserFields(Memories, nil), "Healthy")
+	doc, err := store.Create(Memories, nil, "Healthy")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,10 +114,10 @@ func TestBrokenOptionalDirectoriesDoNotDisableStore(t *testing.T) {
 	if read, err := store.Read(doc.ID); err != nil || read.Body != "Healthy" {
 		t.Fatalf("healthy memory unavailable: %v", err)
 	}
-	if _, err := store.Create(Topics, testUserFields(Topics, nil), "Healthy topic"); err != nil {
+	if _, err := store.Create(Topics, nil, "Healthy topic"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Create(Entities, testUserFields(Entities, nil), "Blocked destination"); err == nil {
+	if _, err := store.Create(Entities, nil, "Blocked destination"); err == nil {
 		t.Fatal("could not store entity but claimed success")
 	}
 	data, _ := os.ReadFile(filepath.Join(path, "entities"))
@@ -139,7 +139,7 @@ func TestExistingStoreNeedsOnlyTraversalOfAncestors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := store.Create(Memories, testUserFields(Memories, nil), "Body")
+	doc, err := store.Create(Memories, nil, "Body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestIncompleteAndConflictingWritesStayIsolated(t *testing.T) {
 	if doc, err := store.Read("m_000000000000"); err != nil || !doc.Pending || doc.Body != "Incomplete original" || len(doc.Diagnostics()) == 0 {
 		t.Fatalf("incomplete bytes were hidden or claimed complete: %v", err)
 	}
-	if _, err := store.Create(Topics, testUserFields(Topics, nil), "Healthy"); err != nil {
+	if _, err := store.Create(Topics, nil, "Healthy"); err != nil {
 		t.Fatal(err)
 	}
 	if len(store.Diagnostics()) < 2 {
@@ -380,7 +380,7 @@ func TestBrokenCoordinationLeavesRecordsReadable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := store.Create(Memories, testUserFields(Memories, nil), "Committed body")
+	doc, err := store.Create(Memories, nil, "Committed body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +397,7 @@ func TestBrokenCoordinationLeavesRecordsReadable(t *testing.T) {
 	if read, err := store.Read(doc.ID); err != nil || read.Body != "Committed body" {
 		t.Fatalf("coordination failure hid a committed memory: %v", err)
 	}
-	if _, err := store.Create(Memories, testUserFields(Memories, nil), "Blocked write"); err == nil {
+	if _, err := store.Create(Memories, nil, "Blocked write"); err == nil {
 		t.Fatal("unsafe write accepted")
 	}
 }

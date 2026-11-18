@@ -58,7 +58,7 @@ func TestInlineExplicitCreationAndIDUpdatesProtectExistingIdentity(t *testing.T)
 		t.Fatal(err)
 	}
 	id := first.Refs["record"]
-	nameOnly, err := store.SaveMemory(ctx, MemoryInput{User: "sam", Text: textValue("A useful account."), Relations: []RelationInput{{Type: "related_to", Target: map[string]any{"name": "Alex", "description": "Must not replace or extend the cousin by name"}}}})
+	nameOnly, err := store.SaveMemory(ctx, MemoryInput{Text: textValue("A useful account."), Relations: []RelationInput{{Type: "related_to", Target: map[string]any{"name": "Alex", "description": "Must not replace or extend the cousin by name"}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestInlineExplicitCreationAndIDUpdatesProtectExistingIdentity(t *testing.T)
 	if unchanged.Body != "Sam's cousin." {
 		t.Fatal("unique-name lookup mutated the cousin", unchanged.Body)
 	}
-	created, err := store.SaveMemory(ctx, MemoryInput{User: "sam", Text: textValue("Lunch with coworker Alex"), Relations: []RelationInput{{Type: "related_to", Target: map[string]any{"kind": "entities", "create": true, "name": "Alex", "description": "Sam's coworker."}}}})
+	created, err := store.SaveMemory(ctx, MemoryInput{Text: textValue("Lunch with coworker Alex"), Relations: []RelationInput{{Type: "related_to", Target: map[string]any{"kind": "entities", "create": true, "name": "Alex", "description": "Sam's coworker."}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestInlineExplicitCreationAndIDUpdatesProtectExistingIdentity(t *testing.T)
 	}
 	// A name-only attempt to enrich an identity must retain the account without
 	// choosing which Alex to change. An explicit ID can make that update safely.
-	_, err = store.SaveMemory(ctx, MemoryInput{User: "sam", Text: textValue("A clear account remains useful."), Relations: []RelationInput{{Type: "related_to", Target: map[string]any{"name": "Alex", "description": "Wrong automatic enrichment"}}}})
+	_, err = store.SaveMemory(ctx, MemoryInput{Text: textValue("A clear account remains useful."), Relations: []RelationInput{{Type: "related_to", Target: map[string]any{"name": "Alex", "description": "Wrong automatic enrichment"}}}})
 	if err != nil {
 		t.Fatal(err)
 	}

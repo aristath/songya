@@ -17,7 +17,7 @@ import (
 type RecallRequest struct {
 	Message  string   `json:"message,omitempty"`
 	Messages []string `json:"messages,omitempty"`
-	Owners   []string `json:"owners"`
+
 	KnownIDs []string `json:"known_ids,omitempty"`
 }
 type RecallHop struct {
@@ -26,9 +26,9 @@ type RecallHop struct {
 	Type string `json:"type"`
 }
 type Recollection struct {
-	ID               string      `json:"id"`
-	Kind             Destination `json:"kind"`
-	User             string      `json:"user,omitempty"`
+	ID   string      `json:"id"`
+	Kind Destination `json:"kind"`
+
 	Title            string      `json:"title"`
 	Time             RecordTime  `json:"time"`
 	Content          string      `json:"content"`
@@ -61,14 +61,6 @@ type RecallResponse struct {
 func (r RecallRequest) Validate() error {
 	if (strings.TrimSpace(r.Message) != "") == (len(r.Messages) > 0) {
 		return fmt.Errorf("provide message or messages, not both")
-	}
-	if len(r.Owners) == 0 {
-		return fmt.Errorf("provide a nonempty owners scope; use [\"all\"] explicitly for every collection")
-	}
-	for _, owner := range r.Owners {
-		if strings.TrimSpace(owner) == "" {
-			return fmt.Errorf("owners must not contain an empty user")
-		}
 	}
 	for _, message := range r.Messages {
 		if strings.TrimSpace(message) == "" {
@@ -136,8 +128,7 @@ func (s *Store) RetrieveWithConfiguration(ctx context.Context, request RecallReq
 		return response, err
 	}
 	allRecords := catalogMap(c)
-	response.Known = s.knownRecollections(ctx, request.KnownIDs, request.Owners, c)
-	c = c.ForUsers(request.Owners)
+	response.Known = s.knownRecollections(ctx, request.KnownIDs, c)
 	diagnostics := append([]Diagnostic{}, c.Diagnostics...)
 	if configIssue != nil {
 		diagnostics = append(diagnostics, Diagnostic{"config.json", configIssue.Error()})
@@ -328,27 +319,26 @@ func (s *Store) RetrieveWithConfiguration(ctx context.Context, request RecallReq
 func recallItem(r Record) Recollection {
 	// Each record supplies its own prose. Related story introductions/events are
 	// explicit bounded graph results, never hidden expansion outside the policy.
-	label, _ := json.Marshal(map[string]any{"id": r.ID, "kind": r.Kind, "user": r.User, "title": r.Title, "name": r.Name, "aliases": r.Aliases, "time": r.Time, "relations": r.Relations, "pending": r.Pending, "unconfirmed": r.Unconfirmed, "diagnostics": r.Diagnostics})
+	label, _ := json.Marshal(map[string]any{"id": r.ID, "kind": r.Kind, "title": r.Title, "name": r.Name, "aliases": r.Aliases, "time": r.Time, "relations": r.Relations, "pending": r.Pending, "unconfirmed": r.Unconfirmed, "diagnostics": r.Diagnostics})
 	metadataTruncated := len(label) > 8192
 	if metadataTruncated {
-		label, _ = json.Marshal(map[string]any{"id": r.ID, "kind": r.Kind, "user": clip(r.User, 512), "title": clip(r.Title, 512), "time": r.Time, "metadata_truncated": true})
+		label, _ = json.Marshal(map[string]any{"id": r.ID, "kind": r.Kind, "title": clip(r.Title, 512), "time": r.Time, "metadata_truncated": true})
 	}
 	body := r.Body
 	if r.Context != "" {
 		body += "\n" + r.Context
 	}
 	clipped := clip(body, 8192)
-	return Recollection{ID: r.ID, Kind: r.Kind, User: r.User, Title: clip(r.Title, 512), Time: r.Time, Content: string(label) + "\n" + clipped, ContentTruncated: body != clipped || metadataTruncated || len(r.Title) > 512}
+	return Recollection{ID: r.ID, Kind: r.Kind, Title: clip(r.Title, 512), Time: r.Time, Content: string(label) + "\n" + clipped, ContentTruncated: body != clipped || metadataTruncated || len(r.Title) > 512}
 }
 
 // Already-injected records are refreshed independently of ranking. An unreadable
-// source is unknown, never a deletion; scope exclusions are explicit retractions.
-func (s *Store) knownRecollections(ctx context.Context, ids, owners []string, catalog Catalog) []KnownRecollection {
+// source is unknown, never a deletion; retired records are explicit retractions.
+func (s *Store) knownRecollections(ctx context.Context, ids []string, catalog Catalog) []KnownRecollection {
 	if len(ids) == 0 {
 		return nil
 	}
 	all := catalogMap(catalog)
-	scoped := catalogMap(catalog.ForUsers(owners))
 	root, openErr := os.OpenRoot(s.path)
 	if root != nil {
 		defer root.Close()
@@ -366,9 +356,7 @@ func (s *Store) knownRecollections(ctx context.Context, ids, owners []string, ca
 			continue
 		}
 		if r, ok := all[id]; ok {
-			if _, allowed := scoped[id]; !allowed {
-				state.Status = "retracted"
-			} else if !r.Pending && !r.Unconfirmed {
+			if !r.Pending && !r.Unconfirmed {
 				if len(r.Redirects) > 0 {
 					state.Status = "retracted"
 				} else {

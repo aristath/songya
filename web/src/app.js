@@ -62,7 +62,6 @@ Alpine.data("songya", () => {
       }
     },
     records: [],
-    owners: {},
     types: {},
     filters: { title: "", description: "", type: "", aliases: "" },
     sortKey: "updated_at",
@@ -71,7 +70,6 @@ Alpine.data("songya", () => {
     inspecting: false,
     q: "",
     kind: "",
-    owner: "",
     selected: null,
     source: "",
     fields: [],
@@ -99,8 +97,6 @@ Alpine.data("songya", () => {
     graphSearchOpen: false,
     graphMode: "2d",
     graphExpanded: false,
-    graphOwner: "",
-    graphOwners: [],
     graphKindColors: { ...defaultKindColors },
     graphKinds: { memories: true, entities: true, topics: true, stories: true },
     async init() {
@@ -124,12 +120,7 @@ Alpine.data("songya", () => {
     async refreshGraph() {
       const ticket = ++graphListing;
       try {
-        const data = await request(
-          "/api/graph?" +
-            new URLSearchParams({
-              classification_user: this.classificationUser,
-            }),
-        );
+        const data = await request("api/graph?" + new URLSearchParams({}));
         if (ticket !== graphListing) return;
         graphData = data;
         this.graphWeightStatus = data.weights?.status || "";
@@ -137,12 +128,6 @@ Alpine.data("songya", () => {
           .filter((node) => ["entities", "topics"].includes(node.kind))
           .sort((a, b) => (a.title || a.id).localeCompare(b.title || b.id));
         this.graphKindColors = data.kind_colors || { ...defaultKindColors };
-        this.graphOwners = [
-          ...new Set([
-            ...data.nodes.map((node) => node.user).filter(Boolean),
-            ...(this.graphOwner ? [this.graphOwner] : []),
-          ]),
-        ].sort();
         this.renderGraph();
         return true;
       } catch {
@@ -155,33 +140,6 @@ Alpine.data("songya", () => {
     renderGraph(refit = false) {
       if (!graphData) return;
       let nodes = graphData.nodes;
-      if (this.graphOwner) {
-        const owned = new Set(
-          nodes
-            .filter(
-              (node) =>
-                node.user === this.graphOwner &&
-                ["memories", "stories"].includes(node.kind),
-            )
-            .map((node) => node.id),
-        );
-        const shared = new Set(
-          nodes
-            .filter((node) => ["entities", "topics"].includes(node.kind))
-            .map((node) => node.id),
-        );
-        const visible = new Set(owned);
-        for (const node of nodes)
-          if (owned.has(node.id) && shared.has(node.owner_entity))
-            visible.add(node.owner_entity);
-        for (const link of graphData.links) {
-          if (owned.has(link.source) && shared.has(link.target))
-            visible.add(link.target);
-          if (owned.has(link.target) && shared.has(link.source))
-            visible.add(link.source);
-        }
-        nodes = nodes.filter((node) => visible.has(node.id));
-      }
       const projected = projectGraph(
         { nodes, links: graphData.links },
         this.graphKinds,
@@ -201,9 +159,7 @@ Alpine.data("songya", () => {
           ? ""
           : Object.values(this.graphKinds).every((value) => !value)
             ? "No record kinds selected."
-            : this.graphOwner
-              ? "No records for this owner."
-              : "No records yet.";
+            : "No records yet.";
       } catch {
         this.graphStatus =
           "Graph unavailable. You can still browse the library.";
@@ -246,17 +202,14 @@ Alpine.data("songya", () => {
       const ticket = ++listing;
       try {
         const result = await request(
-          "/api/records?" +
+          "api/records?" +
             new URLSearchParams({
               q: this.q,
               kind: this.kind,
-              user: this.owner,
-              classification_user: this.classificationUser,
             }),
         );
         if (ticket !== listing) return;
         this.records = result.records;
-        this.owners = result.owners;
         this.types = result.types || {};
         this.diagnostics = result.diagnostics || [];
         if (listingFailure && this.failure === listingFailure)
@@ -272,9 +225,7 @@ Alpine.data("songya", () => {
       const text = (record, key) =>
         key === "aliases"
           ? (record.aliases || []).join(", ")
-          : key === "user"
-            ? record.user || "Shared"
-            : record[key] || "";
+          : record[key] || "";
       return this.records
         .filter((record) =>
           Object.entries(this.filters).every(([key, value]) =>
@@ -388,9 +339,7 @@ Alpine.data("songya", () => {
         else this.remember();
         let saved = force ? null : drafts.get(id);
         if (!saved || (!saved.dirty && !saved.attempt)) {
-          const record = await request(
-            "/api/records/" + encodeURIComponent(id),
-          );
+          const record = await request("api/records/" + encodeURIComponent(id));
           saved = {
             selected: {
               id: record.id,
@@ -412,10 +361,7 @@ Alpine.data("songya", () => {
         this.inspecting = inspect;
         if (inspect && saved.selected.kind === "stories")
           saved = { ...saved, mode: "visual" };
-        if (!this.classificationUser)
-          this.classificationUser =
-            this.chatUser || this.classificationUsers()[0] || "";
-        if (this.classificationUser) await this.loadClassificationPolicy();
+        await this.loadClassificationPolicy();
         this.install(saved);
         await this.loadEditorFiles();
         if (force) {
@@ -455,11 +401,11 @@ Alpine.data("songya", () => {
         if (saved?.dirty) {
           this.install(saved);
         } else {
-          const result = await request("/api/draft", {
+          const result = await request("api/draft", {
             method: "POST",
             body: JSON.stringify({
               source:
-                '---\ntitle: ""\nuser: ""\ntime: {date: null, earliest: null, latest: null}\n---\n',
+                '---\ntitle: ""\ntime: {date: null, earliest: null, latest: null}\n---\n',
             }),
           });
           this.install({
@@ -474,10 +420,7 @@ Alpine.data("songya", () => {
             attempt: null,
           });
         }
-        if (!this.classificationUser)
-          this.classificationUser =
-            this.chatUser || this.classificationUsers()[0] || "";
-        if (this.classificationUser) await this.loadClassificationPolicy();
+        await this.loadClassificationPolicy();
         await this.loadEditorFiles();
         this.showDialog();
         this.showMetadata = true;
@@ -538,7 +481,7 @@ Alpine.data("songya", () => {
     async flush() {
       if (!this.selected) return;
       if (this.mode === "source") {
-        const value = await request("/api/draft", {
+        const value = await request("api/draft", {
           method: "POST",
           body: JSON.stringify({
             source: this.source,
@@ -553,7 +496,7 @@ Alpine.data("songya", () => {
         return;
       }
       const changedFields = JSON.stringify(this.fields) !== metadataStamp;
-      const result = await request("/api/draft", {
+      const result = await request("api/draft", {
         method: "POST",
         body: JSON.stringify({
           source: this.source,
@@ -571,24 +514,17 @@ Alpine.data("songya", () => {
       this.links = result.links || this.links;
     },
     async changeRecordType(value) {
-      if (
-        this.busy ||
-        this.loading ||
-        !this.selected ||
-        !this.classificationUser
-      )
-        return;
+      if (this.busy || this.loading || !this.selected) return;
       this.loading = true;
       this.failure = "";
       try {
         await this.flush();
-        const result = await request("/api/draft", {
+        const result = await request("api/draft", {
           method: "POST",
           body: JSON.stringify({
             source: this.source,
             id: this.selected.id,
             kind: this.selected.kind,
-            classification_user: this.classificationUser,
             classification_type: value,
           }),
         });
@@ -652,16 +588,6 @@ Alpine.data("songya", () => {
         }
       }
       const owned = kind === "memories" || kind === "stories";
-      if (!owned) this.fields = this.fields.filter((f) => f.key !== "user");
-      else if (!this.fields.some((f) => f.key === "user"))
-        this.fields.push({
-          index: -1,
-          key: "user",
-          value: '""',
-          text: "",
-          type: "text",
-          system: false,
-        });
       if (!owned && !this.fields.some((f) => f.key === "name"))
         this.fields.unshift({
           index: -1,
@@ -763,11 +689,10 @@ Alpine.data("songya", () => {
           kind: this.selected.kind,
           version: this.selected.version,
           source: current,
-          classification_user: this.classificationUser,
         };
         const submitted = attempt;
         const generation = editGeneration;
-        const result = await request("/api/records", {
+        const result = await request("api/records", {
           method: "POST",
           body: JSON.stringify(submitted),
         });
@@ -797,7 +722,7 @@ Alpine.data("songya", () => {
         if (!this.notice) this.notice = "Saved";
         this.refreshGraph();
         await this.refresh();
-        const record = await request("/api/records/" + result.id);
+        const record = await request("api/records/" + result.id);
         this.links = record.links;
         await this.attachEditorUploads();
       } catch (e) {
@@ -811,8 +736,8 @@ Alpine.data("songya", () => {
     async refreshAfterFileChange() {
       const id = this.selected?.id;
       if (!id) return;
-      const record = await request("/api/records/" + id);
-      const listing = await request("/api/records/" + id + "/files");
+      const record = await request("api/records/" + id);
+      const listing = await request("api/records/" + id + "/files");
       if (this.selected?.id !== id) return;
       this.recordFiles = listing.files;
       if (!this.dirty) {
@@ -841,7 +766,7 @@ Alpine.data("songya", () => {
       this.failure = "";
       this.blockers = [];
       try {
-        await request("/api/records/" + record.id, {
+        await request("api/records/" + record.id, {
           method: "DELETE",
           headers: { "If-Match": record.version },
         });
@@ -866,7 +791,7 @@ Alpine.data("songya", () => {
       const query = this.targetQuery;
       try {
         const result = await request(
-          "/api/records?" + new URLSearchParams({ q: query }),
+          "api/records?" + new URLSearchParams({ q: query }),
         );
         if (query === this.targetQuery)
           this.targets = result.records.filter(
@@ -881,7 +806,7 @@ Alpine.data("songya", () => {
       this.loading = true;
       try {
         await this.flush();
-        const result = await request("/api/draft", {
+        const result = await request("api/draft", {
           method: "POST",
           body: JSON.stringify({
             source: this.source,

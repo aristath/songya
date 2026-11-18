@@ -17,13 +17,13 @@ import (
 )
 
 func main() {
-	storePath := flag.String("store", "", "Songya store directory")
+	configPath := flag.String("config", "", "Administrator configuration containing stores and password")
 	address := flag.String("listen", "127.0.0.1:8664", "HTTP listening address")
 	flag.Parse()
-	if *storePath == "" {
-		log.Fatal("provide --store /path/to/store")
+	if *configPath == "" {
+		log.Fatal("provide --config /path/to/songya.json")
 	}
-	store, err := songya.Open(*storePath)
+	config, err := songya.LoadApplicationConfiguration(*configPath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	application := web.Handler(store)
+	application := web.HandlerForStores(config)
 	defer application.Close()
 	server := &http.Server{Handler: application, ReadHeaderTimeout: 10 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

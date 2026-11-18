@@ -80,7 +80,7 @@ func TestInlineIdentityEnrichmentKeepsExistingConnections(t *testing.T) {
 	first := createRecord(t, store, Topics, map[string]any{"name": "First"}, "")
 	second := createRecord(t, store, Topics, map[string]any{"name": "Second"}, "")
 	entity := createRecord(t, store, Entities, map[string]any{"name": "Alex", "relations": []Relation{{"related_to", first.ID}}}, "A musician")
-	receipt, err := store.SaveMemory(context.Background(), MemoryInput{User: "ari", Text: textValue("An afternoon with Alex"), Relations: []RelationInput{{Type: "related_to", Target: map[string]any{"id": entity.ID, "name": "Alex", "relations": []any{map[string]any{"type": "related_to", "target": second.ID}}}}}})
+	receipt, err := store.SaveMemory(context.Background(), MemoryInput{Text: textValue("An afternoon with Alex"), Relations: []RelationInput{{Type: "related_to", Target: map[string]any{"id": entity.ID, "name": "Alex", "relations": []any{map[string]any{"type": "related_to", "target": second.ID}}}}}})
 	if err != nil || receipt.Status != "committed" {
 		t.Fatal(receipt, err)
 	}

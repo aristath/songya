@@ -57,7 +57,7 @@ type chatConversation struct {
 	RecallConfigIssue   string                 `json:"recall_config_issue,omitempty"`
 	ID                  string                 `json:"id"`
 	BranchID            string                 `json:"branch_id,omitempty"`
-	User                string                 `json:"user"`
+	Store               string                 `json:"store"`
 	Title               string                 `json:"title"`
 	Archived            bool                   `json:"archived,omitempty"`
 	Status              string                 `json:"status"`
@@ -197,7 +197,7 @@ func (a *chatApp) conversation(id string) (chatConversation, error) {
 	if err == nil {
 		err = json.Unmarshal(data, &c)
 	}
-	if err == nil && (c.ID != id || c.User == "" || c.Requests == nil) {
+	if err == nil && (c.ID != id || c.Store == "" || c.Requests == nil) {
 		err = fmt.Errorf("conversation metadata needs repair; its file is retained")
 	}
 	return c, err
@@ -265,7 +265,7 @@ func (a *chatApp) summaries() ([]map[string]any, []string, error) {
 		if len([]rune(preview)) > 140 {
 			preview = string([]rune(preview)[:140]) + "…"
 		}
-		rows = append(rows, map[string]any{"id": c.ID, "user": c.User, "title": c.Title, "status": c.Status, "updated_at": c.UpdatedAt, "archived": c.Archived, "preview": preview, "queued": len(c.Queue)})
+		rows = append(rows, map[string]any{"id": c.ID, "store": c.Store, "title": c.Title, "status": c.Status, "updated_at": c.UpdatedAt, "archived": c.Archived, "preview": preview, "queued": len(c.Queue)})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i]["updated_at"].(int64) > rows[j]["updated_at"].(int64) })
 	return rows, issues, nil
@@ -391,7 +391,7 @@ func (a *chatApp) register(mux *http.ServeMux) {
 			return
 		}
 		c, err := a.edit(r.Context(), r.PathValue("id"), func(c *chatConversation) error {
-			if c.User == "" {
+			if c.Store == "" {
 				return fs.ErrNotExist
 			}
 			if input.Archived != nil && *input.Archived && (c.Status != "done" || len(c.Queue) > 0) {
@@ -417,7 +417,7 @@ func (a *chatApp) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/chat/sessions/{id}/retry", a.sessionAction(func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		c, err := a.edit(r.Context(), id, func(c *chatConversation) error {
-			if c.User == "" {
+			if c.Store == "" {
 				return fs.ErrNotExist
 			}
 			if c.Status == "error" || c.Status == "paused" {
@@ -436,7 +436,7 @@ func (a *chatApp) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/chat/sessions/{id}/pause", a.sessionAction(func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		c, err := a.edit(r.Context(), id, func(c *chatConversation) error {
-			if c.User == "" {
+			if c.Store == "" {
 				return fs.ErrNotExist
 			}
 			if c.Status == "pending" || c.Status == "running" {
@@ -462,16 +462,19 @@ func (a *chatApp) sendHTTP(w http.ResponseWriter, r *http.Request) {
 		ID         string   `json:"id"`
 		RequestID  string   `json:"request_id"`
 		EditTurnID string   `json:"edit_turn_id,omitempty"`
-		User       string   `json:"user"`
+		Store      string   `json:"store"`
 		Text       string   `json:"text"`
 		Uploads    []string `json:"uploads,omitempty"`
 	}
 	if !decode(w, r, &input) {
 		return
 	}
-	input.User = strings.TrimSpace(input.User)
-	if !validChatID(input.ID) || input.RequestID == "" || len(input.RequestID) > 120 || input.User == "" || input.User == "all" || (strings.TrimSpace(input.Text) == "" && len(input.Uploads) == 0 && input.EditTurnID == "") {
-		writeStatus(w, 400, map[string]any{"error": "Choose a user and enter a message with valid conversation/request IDs."})
+	input.Store = "store"
+	if navigation, ok := r.Context().Value(storeNavigationKey{}).(storeNavigation); ok {
+		input.Store = navigation.Selected
+	}
+	if !validChatID(input.ID) || input.RequestID == "" || len(input.RequestID) > 120 || input.Store == "" || input.Store == "all" || (strings.TrimSpace(input.Text) == "" && len(input.Uploads) == 0 && input.EditTurnID == "") {
+		writeStatus(w, 400, map[string]any{"error": "Enter a message with valid conversation/request IDs."})
 		return
 	}
 	if err := a.initialize(r.Context()); err != nil {
@@ -492,8 +495,8 @@ func (a *chatApp) sendHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		fingerprint := chatFingerprint("edit:"+input.EditTurnID, input.Text)
-		if existing.User != input.User || existing.Archived {
-			fail(w, fmt.Errorf("%w: restore this conversation and use its owner before editing", songya.ErrConflict))
+		if existing.Store != input.Store || existing.Archived {
+			fail(w, fmt.Errorf("%w: restore this conversation before editing", songya.ErrConflict))
 			return
 		}
 		if previous, ok := existing.Requests[input.RequestID]; ok {
@@ -533,14 +536,14 @@ func (a *chatApp) sendHTTP(w http.ResponseWriter, r *http.Request) {
 		input.Uploads = nil
 	}
 	for _, id := range input.Uploads {
-		state, err := a.store.UploadState(r.Context(), id, "chat:"+input.User)
+		state, err := a.store.UploadState(r.Context(), id, "chat:"+input.Store)
 		if err != nil {
-			fail(w, fmt.Errorf("Completed upload unavailable for this user: %w", err))
+			fail(w, fmt.Errorf("Completed upload unavailable in this store: %w", err))
 			return
 		}
 		uploads = append(uploads, state.Upload)
 	}
-	fingerprint := chatTurnFingerprint(input.User, input.Text, uploads)
+	fingerprint := chatTurnFingerprint(input.Store, input.Text, uploads)
 	var lease interface{ Close() error }
 	if original != nil {
 		fingerprint = chatFingerprint("edit:"+input.EditTurnID, input.Text)
@@ -552,8 +555,8 @@ func (a *chatApp) sendHTTP(w http.ResponseWriter, r *http.Request) {
 		defer lease.Close()
 	}
 	c, err := a.edit(r.Context(), input.ID, func(c *chatConversation) error {
-		if c.User != "" && c.User != input.User {
-			return fmt.Errorf("%w: this conversation belongs to another user", songya.ErrConflict)
+		if c.Store != "" && c.Store != input.Store {
+			return fmt.Errorf("%w: this conversation belongs to another store", songya.ErrConflict)
 		}
 		if previous, ok := c.Requests[input.RequestID]; ok {
 			if previous != fingerprint {
@@ -570,7 +573,7 @@ func (a *chatApp) sendHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			c.Error = ""
 		}
-		c.User = input.User
+		c.Store = input.Store
 		turn := chatQueuedTurn{ID: input.RequestID, Text: input.Text, Uploads: uploads,
 			Prompt:      string(prompt) + "\n\nCurrent turn received at " + time.Now().Format(time.RFC3339) + ".",
 			Temperature: &settings.Temperature, RecallConfiguration: &configuration}

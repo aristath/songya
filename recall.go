@@ -36,10 +36,10 @@ func recallContext(d *Document) string {
 
 // RecallQuery selects connected accounts. Offset and Limit count narrative bytes.
 type RecallQuery struct {
-	Text   string `json:"text"`
-	User   string `json:"user,omitempty"`
-	Offset int    `json:"offset,omitempty"`
-	Limit  int    `json:"limit,omitempty"`
+	Text string `json:"text"`
+
+	Offset int `json:"offset,omitempty"`
+	Limit  int `json:"limit,omitempty"`
 }
 
 type RecallPage struct {
@@ -61,7 +61,7 @@ func (s *Store) Recall(ctx context.Context, q RecallQuery) (RecallPage, error) {
 	if err != nil {
 		return RecallPage{}, err
 	}
-	c = userCatalog(c, q.User)
+
 	records := catalogMap(c)
 	for _, r := range c.Records {
 		if r.ID == "" {
@@ -229,9 +229,6 @@ func (s *Store) Recall(ctx context.Context, q RecallQuery) (RecallPage, error) {
 		}
 		if len(r.Aliases) > 0 {
 			label["aliases"] = r.Aliases
-		}
-		if r.User != "" {
-			label["user"] = r.User
 		}
 		if r.Time.hasDates() {
 			label["time"] = r.Time

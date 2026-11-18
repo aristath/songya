@@ -11,8 +11,8 @@ import (
 func TestColorsDefaultExistingChoicesAndPersistIndependently(t *testing.T) {
 	store, _ := Open(t.TempDir())
 	ctx := context.Background()
-	cfg, _ := store.TypeConfiguration(ctx, "reader")
-	raw, _ := os.ReadFile(filepath.Join(store.Directory(), typeConfigurationPath("reader")))
+	cfg, _ := store.TypeConfiguration(ctx)
+	raw, _ := os.ReadFile(filepath.Join(store.Directory(), typeConfigurationPath()))
 	var existing map[string]any
 	_ = json.Unmarshal(raw, &existing)
 	delete(existing, "kind_colors")
@@ -22,16 +22,16 @@ func TestColorsDefaultExistingChoicesAndPersistIndependently(t *testing.T) {
 		}
 	}
 	legacy, _ := json.Marshal(existing)
-	_ = fixtureWriteFile(filepath.Join(store.Directory(), typeConfigurationPath("reader")), legacy, 0600)
-	cfg, err := store.TypeConfiguration(ctx, "reader")
+	_ = fixtureWriteFile(filepath.Join(store.Directory(), typeConfigurationPath()), legacy, 0600)
+	cfg, err := store.TypeConfiguration(ctx)
 	if err != nil || cfg.KindColor(Memories) != "peach" || cfg.Kinds[Entities][0].Color != "mauve" {
 		t.Fatal(cfg, err)
 	}
-	afterRead, _ := os.ReadFile(filepath.Join(store.Directory(), typeConfigurationPath("reader")))
+	afterRead, _ := os.ReadFile(filepath.Join(store.Directory(), typeConfigurationPath()))
 	if string(afterRead) != string(legacy) {
 		t.Fatal("reading defaults rewrote saved settings")
 	}
-	doc, _ := store.Create(Entities, map[string]any{"name": "John", "types": map[string]string{"reader": "person", "other": "person"}}, "A short identification.")
+	doc, _ := store.Create(Entities, map[string]any{"name": "John", "type": "person"}, "A short identification.")
 	before, _ := store.Read(doc.ID)
 	cfg.Kinds[Entities][0].Color = "#AbC"
 	cfg.KindColors[Memories] = "blue"
@@ -43,11 +43,12 @@ func TestColorsDefaultExistingChoicesAndPersistIndependently(t *testing.T) {
 	if cfg.Kinds[Entities][0].Color != inputColor {
 		t.Fatal("saving modified the caller's intent")
 	}
-	result, _ := store.TypeConfiguration(ctx, "reader")
+	result, _ := store.TypeConfiguration(ctx)
 	if result.Kinds[Entities][0].Color != "#aabbcc" || result.KindColor(Memories) != "blue" {
 		t.Fatal(result)
 	}
-	other, _ := store.TypeConfiguration(ctx, "other")
+	otherStore, _ := Open(t.TempDir())
+	other, _ := otherStore.TypeConfiguration(ctx)
 	if other.Kinds[Entities][0].Color != "mauve" || other.KindColor(Memories) != "peach" {
 		t.Fatal("colors leaked across users", other)
 	}
@@ -69,14 +70,14 @@ func TestColorsDefaultExistingChoicesAndPersistIndependently(t *testing.T) {
 	if _, err = store.SaveTypeConfiguration(ctx, result, result.Version, nil, "words-only"); err != nil {
 		t.Fatal(err)
 	}
-	latest, _ := store.TypeConfiguration(ctx, "reader")
+	latest, _ := store.TypeConfiguration(ctx)
 	if latest.Kinds[Entities][0].Color != "#aabbcc" || latest.KindColor(Memories) != "blue" {
 		t.Fatal("omission cleared colors", latest)
 	}
 	if receipt, err := store.SaveTypeConfiguration(ctx, cfg, cfg.Version, nil, "colors"); err != nil || receipt.Status != "committed" {
 		t.Fatal("accepted retry was lost", receipt, err)
 	}
-	latest, _ = store.TypeConfiguration(ctx, "reader")
+	latest, _ = store.TypeConfiguration(ctx)
 	if latest.Kinds[Entities][0].Description != "A named individual." {
 		t.Fatal("retry overwrote newer settings")
 	}
@@ -85,9 +86,9 @@ func TestColorsDefaultExistingChoicesAndPersistIndependently(t *testing.T) {
 func TestColorValidationAndDamagedColorsLeaveTypesUsable(t *testing.T) {
 	store, _ := Open(t.TempDir())
 	ctx := context.Background()
-	cfg, _ := store.TypeConfiguration(ctx, "reader")
+	cfg, _ := store.TypeConfiguration(ctx)
 	for _, value := range []string{"crust", "mantle", "base", "javascript:red", "blue;display:none", "#gggggg"} {
-		copy, _ := store.TypeConfiguration(ctx, "reader")
+		copy, _ := store.TypeConfiguration(ctx)
 		copy.Kinds[Entities][0].Color = value
 		if _, err := store.SaveTypeConfiguration(ctx, copy, copy.Version, nil, "bad-"+value); err == nil {
 			t.Fatal("invalid color accepted", value)
@@ -104,8 +105,8 @@ func TestColorValidationAndDamagedColorsLeaveTypesUsable(t *testing.T) {
 	defs[1].(map[string]any)["color"] = "not-a-color"
 	data["kind_colors"].(map[string]any)["stories"] = false
 	damaged, _ := json.Marshal(data)
-	_ = fixtureWriteFile(filepath.Join(store.Directory(), typeConfigurationPath("reader")), damaged, 0600)
-	readable, err := store.TypeConfiguration(ctx, "reader")
+	_ = fixtureWriteFile(filepath.Join(store.Directory(), typeConfigurationPath()), damaged, 0600)
+	readable, err := store.TypeConfiguration(ctx)
 	if err != nil || len(readable.Kinds[Entities]) != 12 || len(readable.Diagnostics) < 3 || readable.Kinds[Entities][0].Color != "mauve" {
 		t.Fatal("a damaged color hid healthy types", readable, err)
 	}
@@ -115,8 +116,8 @@ func TestColorValidationAndDamagedColorsLeaveTypesUsable(t *testing.T) {
 	}
 	data["kind_colors"] = "damaged"
 	damaged, _ = json.Marshal(data)
-	_ = fixtureWriteFile(filepath.Join(store.Directory(), typeConfigurationPath("reader")), damaged, 0600)
-	readable, err = store.TypeConfiguration(ctx, "reader")
+	_ = fixtureWriteFile(filepath.Join(store.Directory(), typeConfigurationPath()), damaged, 0600)
+	readable, err = store.TypeConfiguration(ctx)
 	if err != nil || len(readable.Kinds[Entities]) != 12 || readable.KindColor(Memories) != "peach" {
 		t.Fatal("damaged record colors hid healthy types", readable, err)
 	}

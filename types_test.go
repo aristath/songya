@@ -9,16 +9,12 @@ import (
 	"testing"
 )
 
-func TestTypeDefaultsAndIndependentUserDefinitions(t *testing.T) {
+func TestTypeDefaultsAndPersistWithConflictsAndRetries(t *testing.T) {
 	s, _ := Open(t.TempDir())
 	ctx := context.Background()
-	ari, err := s.TypeConfiguration(ctx, "ari")
+	ari, err := s.TypeConfiguration(ctx)
 	if err != nil || len(ari.Kinds[Entities]) != 12 || len(ari.Kinds[Memories]) != 0 {
 		t.Fatal(ari, err)
-	}
-	bob, err := s.TypeConfiguration(ctx, "bob")
-	if err != nil {
-		t.Fatal(err)
 	}
 	ari.Kinds[Entities] = append(ari.Kinds[Entities], TypeDefinition{ID: "ingredient", Name: "Ingredient", Description: "An ingredient used for cooking."})
 	ari.Kinds[Memories] = []TypeDefinition{{ID: "recipe", Name: "Recipe", Description: "Ingredients and instructions for making a dish."}}
@@ -26,12 +22,8 @@ func TestTypeDefaultsAndIndependentUserDefinitions(t *testing.T) {
 	if err != nil || receipt.Status != "committed" {
 		t.Fatal(receipt, err)
 	}
-	got, _ := s.TypeConfiguration(ctx, "bob")
-	if !reflect.DeepEqual(got.Kinds, bob.Kinds) {
-		t.Fatal("another user's choices changed")
-	}
 	reopened, _ := Open(s.Directory())
-	got, err = reopened.TypeConfiguration(ctx, "ari")
+	got, err := reopened.TypeConfiguration(ctx)
 	if err != nil || len(got.Kinds[Entities]) != 13 {
 		t.Fatal(got, err)
 	}
@@ -44,66 +36,25 @@ func TestTypeDefaultsAndIndependentUserDefinitions(t *testing.T) {
 		t.Fatal("accepted settings retry was lost", receipt, err)
 	}
 }
-func TestSharedEntityTypesAreScopedAndValidated(t *testing.T) {
-	s, _ := Open(t.TempDir())
-	ctx := context.Background()
-	doc, err := s.Create(Entities, map[string]any{"name": "Apple", "types": map[string]string{"ari": "plant", "bob": "organization"}}, "A shared name with separate classifications.")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if doc.Metadata().User != "" || doc.TypeFor("ari") != "plant" || doc.TypeFor("bob") != "organization" {
-		t.Fatal(doc)
-	}
-	cfg, _ := s.TypeConfiguration(ctx, "ari")
-	cfg.Kinds[Entities] = append(cfg.Kinds[Entities], TypeDefinition{ID: "ingredient", Name: "Ingredient", Description: "An ingredient used for cooking."})
-	if _, err = s.SaveTypeConfiguration(ctx, cfg, cfg.Version, nil, "ingredient"); err != nil {
-		t.Fatal(err)
-	}
-	receipt, err := s.SaveNamed(WithTypeUser(ctx, "ari"), Entities, NamedInput{ID: doc.ID, Type: textValue("Ingredient")})
-	if err != nil || receipt.Status != "committed" {
-		t.Fatal(receipt, err)
-	}
-	after, _ := s.Read(doc.ID)
-	if after.Body != doc.Body || after.TypeFor("ari") != "ingredient" || after.TypeFor("bob") != "organization" {
-		t.Fatal("classification overwrote identity or another user's assignment", after)
-	}
-	if _, err = s.SaveNamed(WithTypeUser(ctx, "bob"), Entities, NamedInput{ID: doc.ID, Type: textValue("ingredient")}); err == nil {
-		t.Fatal("another user's type list was used")
-	}
-	if _, err = s.ApplyBatch(WithTypeUser(ctx, "ari"), BatchRequest{Key: "cross-user", Changes: []Change{{ID: doc.ID, Fields: map[string]any{"types": map[string]string{"ari": "ingredient", "bob": "object"}}}}}); err == nil {
-		t.Fatal("selected user overwrote someone else's type")
-	}
-	records, err := s.Search(ctx, Query{User: "ari", Text: "Apple"})
-	if err != nil || records.Matches[0].Type != "ingredient" {
-		t.Fatal(records, err)
-	}
-	if _, err = s.SaveNamed(WithTypeUser(ctx, "ari"), Entities, NamedInput{ID: doc.ID, Type: textValue("")}); err != nil {
-		t.Fatal(err)
-	}
-	after, _ = s.Read(doc.ID)
-	if after.TypeFor("ari") != "" || after.TypeFor("bob") != "organization" {
-		t.Fatal("clearing one user's type erased another", after)
-	}
-}
 func TestUnknownTypesCannotBypassEngineWrites(t *testing.T) {
 	s, _ := Open(t.TempDir())
 	ctx := context.Background()
-	for _, fields := range []map[string]any{{"name": "Bad", "type": "person"}, {"name": "Bad", "types": map[string]any{"ari": "made_up"}}, {"name": "Bad", "types": map[string]any{"all": "person"}}} {
+	for _, fields := range []map[string]any{{"name": "Bad", "type": "made_up"}} {
 		if _, err := s.Create(Entities, fields, "Intact words"); err == nil {
 			t.Fatal("invalid type accepted", fields)
 		}
 	}
-	doc, err := s.Create(Entities, map[string]any{"name": "Clara", "types": map[string]string{"ari": "person"}}, "An intact description.")
+	doc, err := s.Create(Entities, map[string]any{"name": "Clara", "type": "person"}, "An intact description.")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.Update(doc.ID, doc.Revision, map[string]any{"types": map[string]string{"ari": "bad"}}, doc.Body); err == nil {
+	if _, err = s.Update(doc.ID, doc.Revision, map[string]any{"type": "bad"}, doc.Body); err == nil {
 		t.Fatal("Update bypassed validation")
 	}
-	if _, err = s.SaveSource(ctx, "source-bypass", doc.ID, Entities, doc.Revision, "---\nname: Clara\ntypes: {ari: bad}\n---\nIntact description."); err == nil {
+	if _, err = s.SaveSource(ctx, "source-bypass", doc.ID, Entities, doc.Revision, "---\nname: Clara\ntype: bad\n---\nIntact description."); err == nil {
 		t.Fatal("Source bypassed validation")
 	}
-	if _, err = s.SaveMemory(ctx, MemoryInput{User: "ari", Text: textValue("A recipe."), Type: textValue("recipe")}); err == nil {
+	if _, err = s.SaveMemory(ctx, MemoryInput{Text: textValue("A recipe."), Type: textValue("recipe")}); err == nil {
 		t.Fatal("unconfigured memory type accepted")
 	}
 	after, _ := s.Read(doc.ID)
@@ -111,14 +62,14 @@ func TestUnknownTypesCannotBypassEngineWrites(t *testing.T) {
 		t.Fatal("rejected writes changed saved data")
 	}
 }
-func TestRemovingUsedTypesRequiresExplicitReassignmentAndPreservesOtherUsers(t *testing.T) {
+func TestRemovingUsedTypesRequiresExplicitReassignmentAndPreservesWords(t *testing.T) {
 	s, _ := Open(t.TempDir())
 	ctx := context.Background()
-	doc, err := s.Create(Entities, map[string]any{"name": "Clara", "types": map[string]string{"ari": "person", "bob": "software"}}, "Friend and collaborator.")
+	doc, err := s.Create(Entities, map[string]any{"name": "Clara", "type": "person"}, "Friend and collaborator.")
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, _ := s.TypeConfiguration(ctx, "ari")
+	cfg, _ := s.TypeConfiguration(ctx)
 	kept := []TypeDefinition{}
 	for _, def := range cfg.Kinds[Entities] {
 		if def.ID != "person" {
@@ -134,11 +85,11 @@ func TestRemovingUsedTypesRequiresExplicitReassignmentAndPreservesOtherUsers(t *
 		t.Fatal(receipt, err)
 	}
 	after, _ := s.Read(doc.ID)
-	if after.Body != doc.Body || after.TypeFor("ari") != "organization" || after.TypeFor("bob") != "software" {
+	if after.Body != doc.Body || documentType(after) != "organization" {
 		t.Fatal(after)
 	}
 	// A completed retry must not undo later explicit work.
-	_, err = s.SaveNamed(WithTypeUser(ctx, "ari"), Entities, NamedInput{ID: doc.ID, Type: textValue("object")})
+	_, err = s.SaveNamed(ctx, Entities, NamedInput{ID: doc.ID, Type: textValue("object")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,43 +98,37 @@ func TestRemovingUsedTypesRequiresExplicitReassignmentAndPreservesOtherUsers(t *
 		t.Fatal(receipt, err)
 	}
 	after, _ = s.Read(doc.ID)
-	if after.TypeFor("ari") != "object" {
+	if documentType(after) != "object" {
 		t.Fatal("terminal retry republished old assignments")
 	}
 }
-func TestDamagedUserTypesDoNotBlockHealthyRecordsOrAnotherUser(t *testing.T) {
+func TestDamagedTypesDoNotBlockUnrelatedEdits(t *testing.T) {
 	s, _ := Open(t.TempDir())
 	ctx := context.Background()
-	doc, err := s.Create(Entities, map[string]any{"name": "A person", "types": map[string]string{"ari": "person"}}, "Original words.")
+	doc, err := s.Create(Entities, map[string]any{"name": "Person", "type": "person"}, "Original words")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = fixtureWriteFile(filepath.Join(s.Directory(), typeConfigurationPath("ari")), []byte("{broken"), 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(s.Directory(), typeConfigurationPath()), []byte("{broken"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.TypeConfiguration(ctx, "ari"); err == nil {
-		t.Fatal("damaged settings were silently replaced")
+	if _, err := s.TypeConfiguration(ctx); err == nil {
+		t.Fatal("damaged settings silently replaced")
 	}
-	if _, err = s.TypeConfiguration(ctx, "bob"); err != nil {
-		t.Fatal("another user's settings were blocked", err)
-	}
-	updated, err := s.Update(doc.ID, doc.Revision, map[string]any{"name": "Corrected name"}, doc.Body)
-	if err != nil || updated.Body != doc.Body {
-		t.Fatal("damaged types blocked an unrelated edit", err)
-	}
-	if _, err = s.SaveNamed(WithTypeUser(ctx, "bob"), Entities, NamedInput{ID: doc.ID, Type: textValue("person")}); err != nil {
-		t.Fatal("damaged ari settings blocked bob", err)
+	after, err := s.Update(doc.ID, doc.Revision, map[string]any{"name": "Corrected name"}, doc.Body)
+	if err != nil || after.Body != doc.Body {
+		t.Fatal(after, err)
 	}
 }
 
 func TestTypeSettingsAndReassignmentRecoverTogetherAfterInterruption(t *testing.T) {
 	s, _ := Open(t.TempDir())
 	ctx := context.Background()
-	doc, err := s.Create(Entities, map[string]any{"name": "Clara", "types": map[string]string{"ari": "person", "bob": "software"}}, "Unchanged description.")
+	doc, err := s.Create(Entities, map[string]any{"name": "Clara", "type": "person"}, "Unchanged description.")
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, _ := s.TypeConfiguration(ctx, "ari")
+	cfg, _ := s.TypeConfiguration(ctx)
 	kept := []TypeDefinition{}
 	for _, def := range cfg.Kinds[Entities] {
 		if def.ID != "person" {
@@ -213,7 +158,7 @@ func TestTypeSettingsAndReassignmentRecoverTogetherAfterInterruption(t *testing.
 		if err := syncNew(root, filepath.Join(pendingName(entry.Source), "batch"), []byte(filepath.Base(batchDirectory(request.Key)))); err != nil {
 			t.Fatal(err)
 		}
-		if entry.ID == typeConfigurationID("ari") {
+		if entry.ID == typeConfigurationID() {
 			if err := fixtureRootWriteFile(root, entry.Source, entry.After, 0600); err != nil {
 				t.Fatal(err)
 			}
@@ -224,10 +169,10 @@ func TestTypeSettingsAndReassignmentRecoverTogetherAfterInterruption(t *testing.
 		t.Fatal(err)
 	}
 	after, err := reopened.Read(doc.ID)
-	if err != nil || after.Body != doc.Body || after.TypeFor("ari") != "organization" || after.TypeFor("bob") != "software" {
+	if err != nil || after.Body != doc.Body || documentType(after) != "organization" {
 		t.Fatal(after, err)
 	}
-	actual, err := reopened.TypeConfiguration(ctx, "ari")
+	actual, err := reopened.TypeConfiguration(ctx)
 	if err != nil || len(actual.Kinds[Entities]) != 11 {
 		t.Fatal(actual, err)
 	}
@@ -239,13 +184,13 @@ func TestTypeSettingsAndReassignmentRecoverTogetherAfterInterruption(t *testing.
 func TestTypeIDWinsOverAnotherDisplayName(t *testing.T) {
 	s, _ := Open(t.TempDir())
 	ctx := context.Background()
-	cfg, _ := s.TypeConfiguration(ctx, "cook")
+	cfg, _ := s.TypeConfiguration(ctx)
 	cfg.Kinds[Entities] = []TypeDefinition{{ID: "food", Name: "Dish", Description: "A prepared dish."}, {ID: "ingredient", Name: "Food", Description: "An ingredient."}}
 	if _, err := s.SaveTypeConfiguration(ctx, cfg, cfg.Version, nil, "name-overlap"); err != nil {
 		t.Fatal(err)
 	}
-	doc, err := s.Create(Entities, map[string]any{"name": "Soup", "types": map[string]string{"cook": "food"}}, "A dish.")
-	if err != nil || doc.TypeFor("cook") != "food" {
+	doc, err := s.Create(Entities, map[string]any{"name": "Soup", "type": "food"}, "A dish.")
+	if err != nil || documentType(doc) != "food" {
 		t.Fatal(doc, err)
 	}
 }
@@ -253,16 +198,16 @@ func TestTypeIDWinsOverAnotherDisplayName(t *testing.T) {
 func TestSettingsEditsPreserveUnrecognizedAndDamagedAssignments(t *testing.T) {
 	s, _ := Open(t.TempDir())
 	ctx := context.Background()
-	doc, err := s.Create(Entities, map[string]any{"name": "Clara", "types": map[string]string{"ari": "person"}}, "Intact words.")
+	doc, err := s.Create(Entities, map[string]any{"name": "Clara", "type": "person"}, "Intact words.")
 	if err != nil {
 		t.Fatal(err)
 	}
 	name, _ := recordName(doc.ID)
-	raw := []byte("---\nname: Clara\ntypes:\n  ari: person\n  bob: {unparsed: keep this}\n---\nIntact words.\n")
+	raw := []byte("---\nname: Clara\ntype: person\ncustom: {unparsed: keep this}\n---\nIntact words.\n")
 	if err := fixtureWriteFile(filepath.Join(s.Directory(), name), raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	cfg, _ := s.TypeConfiguration(ctx, "ari")
+	cfg, _ := s.TypeConfiguration(ctx)
 	kept := []TypeDefinition{}
 	for _, def := range cfg.Kinds[Entities] {
 		if def.ID != "person" {
@@ -278,21 +223,20 @@ func TestSettingsEditsPreserveUnrecognizedAndDamagedAssignments(t *testing.T) {
 	if err := after.Frontmatter.Decode(&fields); err != nil {
 		t.Fatal(err)
 	}
-	assignments := fields["types"].(map[string]any)
-	if after.TypeFor("ari") != "organization" || !reflect.DeepEqual(assignments["bob"], map[string]any{"unparsed": "keep this"}) || after.Body != "Intact words.\n" {
+	if documentType(after) != "organization" || !reflect.DeepEqual(fields["custom"], map[string]any{"unparsed": "keep this"}) || after.Body != "Intact words.\n" {
 		t.Fatal(fields, after.Body)
 	}
 	// An already unrecognized assignment must not block a definition-only edit.
-	if err := fixtureWriteFile(filepath.Join(s.Directory(), name), []byte("---\nname: Clara\ntypes: {ari: old_unknown}\n---\nIntact words.\n"), 0600); err != nil {
+	if err := fixtureWriteFile(filepath.Join(s.Directory(), name), []byte("---\nname: Clara\ntype: old_unknown\n---\nIntact words.\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cfg, _ = s.TypeConfiguration(ctx, "ari")
+	cfg, _ = s.TypeConfiguration(ctx)
 	cfg.Kinds[Entities][0].Name = "Renamed choice"
 	if _, err := s.SaveTypeConfiguration(ctx, cfg, cfg.Version, nil, "rename-with-unknown"); err != nil {
 		t.Fatal(err)
 	}
 	after, _ = s.Read(doc.ID)
-	if after.TypeFor("ari") != "old_unknown" {
+	if documentType(after) != "old_unknown" {
 		t.Fatal("unrecognized metadata discarded")
 	}
 }
@@ -300,7 +244,7 @@ func TestSettingsEditsPreserveUnrecognizedAndDamagedAssignments(t *testing.T) {
 func TestTypeSettingsLockedReadsKeepInterruptedBatchPriorView(t *testing.T) {
 	s, _ := Open(t.TempDir())
 	ctx := context.Background()
-	doc, err := s.Create(Entities, map[string]any{"name": "Clara", "types": map[string]string{"ari": "person"}}, "Earlier words.")
+	doc, err := s.Create(Entities, map[string]any{"name": "Clara", "type": "person"}, "Earlier words.")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +275,7 @@ func TestTypeSettingsLockedReadsKeepInterruptedBatchPriorView(t *testing.T) {
 	}
 	err = s.lockedContext(ctx, func(locked *os.Root) error {
 		read, err := readLockedCopy(locked, doc.ID, entry.Source)
-		if err != nil || read.Body != doc.Body || read.TypeFor("ari") != "person" {
+		if err != nil || read.Body != doc.Body || documentType(read) != "person" {
 			t.Fatalf("partial publication became visible: %+v %v", read, err)
 		}
 		return nil

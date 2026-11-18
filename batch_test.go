@@ -19,7 +19,7 @@ func TestBatchCaptureRetriesAndResolvesLocalReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	request := BatchRequest{User: "test", Key: "capture-one", Account: "I met John for coffee.", Changes: []Change{
+	request := BatchRequest{Key: "capture-one", Account: "I met John for coffee.", Changes: []Change{
 		{Ref: "john", Kind: Entities, Fields: map[string]any{"name": "John", "aliases": []string{"Johnny"}}},
 		{Ref: "music", Kind: Topics, Fields: map[string]any{"title": "Music"}},
 		{Ref: "episode", Kind: Memories, Fields: map[string]any{"title": "Coffee", "relations": []any{map[string]any{"type": "related_to", "target": "$john"}, map[string]any{"type": "related_to", "target": "$music"}}}, Body: textPointer("An episode")},
@@ -89,7 +89,7 @@ func TestBatchPartialPublicationHasCoherentViewAndPreservesConflict(t *testing.T
 	ctx := context.Background()
 	a := createRecord(t, store, Memories, map[string]any{"title": "A"}, "Old A")
 	b := createRecord(t, store, Memories, map[string]any{"title": "B"}, "Old B")
-	request := BatchRequest{User: "test", Key: "partial", Changes: []Change{{ID: a.ID, Revision: a.Revision, Body: textPointer("New A")}, {ID: b.ID, Revision: b.Revision, Body: textPointer("New B")}, {Ref: "new", Kind: Topics, Fields: map[string]any{"title": "New topic"}}}}
+	request := BatchRequest{Key: "partial", Changes: []Change{{ID: a.ID, Revision: a.Revision, Body: textPointer("New A")}, {ID: b.ID, Revision: b.Revision, Body: textPointer("New B")}, {Ref: "new", Kind: Topics, Fields: map[string]any{"title": "New topic"}}}}
 	digest, err := requestRevision(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
@@ -176,7 +176,7 @@ func TestBatchMetadataFaultsStayLocalAndIDsStayEngineOwned(t *testing.T) {
 	ctx := context.Background()
 	cyclic := map[string]any{"fact": "Keep"}
 	cyclic["self"] = cyclic
-	receipt, err := store.ApplyBatch(ctx, BatchRequest{User: "test", Key: "imperfect", Changes: []Change{{Ref: "memory", Fields: map[string]any{"title": 3, "bad": func() {}, "cycle": cyclic}, Body: textPointer("Healthy body")}}})
+	receipt, err := store.ApplyBatch(ctx, BatchRequest{Key: "imperfect", Changes: []Change{{Ref: "memory", Fields: map[string]any{"title": 3, "bad": func() {}, "cycle": cyclic}, Body: textPointer("Healthy body")}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestBatchMetadataFaultsStayLocalAndIDsStayEngineOwned(t *testing.T) {
 	if err != nil || doc.Body != "Healthy body" || doc.Metadata().Title != "3" || len(doc.Diagnostics()) == 0 {
 		t.Fatal("metadata fault disabled useful capture")
 	}
-	if _, err := store.ApplyBatch(ctx, BatchRequest{User: "test", Key: "invented", Changes: []Change{{ID: "m_000000000000", Body: textPointer("Not an allocated ID")}}}); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := store.ApplyBatch(ctx, BatchRequest{Key: "invented", Changes: []Change{{ID: "m_000000000000", Body: textPointer("Not an allocated ID")}}}); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("batch accepted a caller-assigned creation ID: %v", err)
 	}
 }
@@ -209,7 +209,7 @@ func TestStoryMembershipRespectsReplacementAppendAndExistingRevision(t *testing.
 				want += "\n\nNew detail"
 			}
 			change.Fields = map[string]any{"relations": []Relation{{Type: "related_to", Target: member.ID}}}
-			request := BatchRequest{User: "test", Key: mode, Changes: []Change{change}}
+			request := BatchRequest{Key: mode, Changes: []Change{change}}
 			if _, err := store.ApplyBatch(context.Background(), request); err != nil {
 				t.Fatal(err)
 			}
@@ -230,7 +230,7 @@ func TestCaptureRetainsRichOriginalAccounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := createRecord(t, store, Memories, map[string]any{"original_accounts": map[string]any{"raw": "First original", "note": "Keep this metadata"}}, "Body")
-	if _, err := store.ApplyBatch(context.Background(), BatchRequest{User: "test", Key: "enrich-account", Account: "Second original", Changes: []Change{{ID: old.ID, Revision: old.Revision, Append: "New detail"}}}); err != nil {
+	if _, err := store.ApplyBatch(context.Background(), BatchRequest{Key: "enrich-account", Account: "Second original", Changes: []Change{{ID: old.ID, Revision: old.Revision, Append: "New detail"}}}); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := store.Read(old.ID)
@@ -251,7 +251,7 @@ func TestOpenRecoversAcceptedCreationAfterItsDirectoryDisappears(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := BatchRequest{User: "test", Key: "missing-directory", Changes: []Change{{Ref: "topic", Kind: Topics, Body: textPointer("Retained topic")}}}
+	request := BatchRequest{Key: "missing-directory", Changes: []Change{{Ref: "topic", Kind: Topics, Body: textPointer("Retained topic")}}}
 	digest, _ := requestRevision(context.Background(), request)
 	root, err := os.OpenRoot(store.path)
 	if err != nil {

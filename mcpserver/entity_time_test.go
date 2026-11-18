@@ -15,7 +15,7 @@ func TestEntityLifetimeMCPDatesPartialUpdatesNullAndCustomTypes(t *testing.T) {
 	defer cancel()
 	root := t.TempDir()
 	store, _ := songya.Open(root)
-	cfg, err := store.TypeConfiguration(ctx, "reader")
+	cfg, err := store.TypeConfiguration(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

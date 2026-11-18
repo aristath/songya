@@ -21,7 +21,7 @@ func TestHealthyMetadataSurvivesDamagedLeavesAndReread(t *testing.T) {
 	}
 	cycle := map[string]any{"fact": "Keep cyclic neighbour"}
 	cycle["self"] = cycle
-	doc, err := store.Create(Memories, testUserFields(Memories, map[string]any{
+	doc, err := store.Create(Memories, map[string]any{
 		"title":   3,
 		"details": map[string]any{"fact": "Keep fact", "bad": func() {}, "list": []any{"Keep item", make(chan int)}},
 		"cycle":   cycle,
@@ -30,7 +30,7 @@ func TestHealthyMetadataSurvivesDamagedLeavesAndReread(t *testing.T) {
 			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "Keep damaged neighbour"},
 			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "missing value"},
 		}},
-	}), "Original body")
+	}, "Original body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestCreateRetriesItsOwnUnfinishedInitialization(t *testing.T) {
 	if err := os.Chmod(parent, 0700); err != nil {
 		t.Fatal(err)
 	}
-	doc, err := store.Create(Memories, testUserFields(Memories, nil), "Recovered without reopening")
+	doc, err := store.Create(Memories, nil, "Recovered without reopening")
 	if err != nil || doc.Pending {
 		t.Fatalf("same-handle retry failed: %v, %v", err, store.Diagnostics())
 	}
@@ -122,7 +122,7 @@ func TestUnrelatedSaveDoesNotClearDeferredRecovery(t *testing.T) {
 	if err := lock.Unlock(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Create(Entities, testUserFields(Entities, nil), "Unrelated save"); err != nil {
+	if _, err := store.Create(Entities, nil, "Unrelated save"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := root.Lstat(name); !errors.Is(err, fs.ErrNotExist) || len(store.Diagnostics()) == 0 {
@@ -213,7 +213,7 @@ func TestStagingReservationAndAmbiguityStayIsolated(t *testing.T) {
 			t.Fatal("ambiguous data was discarded")
 		}
 	}
-	if _, err := store.Create(Stories, testUserFields(Stories, nil), "Unrelated work continues"); err != nil {
+	if _, err := store.Create(Stories, nil, "Unrelated work continues"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -224,7 +224,7 @@ func TestRecoveryRetainsForeignPendingData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := store.Create(Memories, testUserFields(Memories, nil), "Committed")
+	doc, err := store.Create(Memories, nil, "Committed")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -34,10 +34,10 @@ type Change struct {
 type BatchRequest struct {
 	prepare           func(*os.Root) ([]Change, error)
 	typeConfiguration *typeConfigurationChange
-	User              string   `json:"user,omitempty"`
-	Key               string   `json:"key"`
-	Account           string   `json:"original_text,omitempty"`
-	Changes           []Change `json:"changes"`
+
+	Key     string   `json:"key"`
+	Account string   `json:"original_text,omitempty"`
+	Changes []Change `json:"changes"`
 }
 
 type originalTextKey struct{}
@@ -223,10 +223,9 @@ func requestRevision(ctx context.Context, request BatchRequest) (string, error) 
 		intents = append(intents, item)
 	}
 	payload, err := json.Marshal(struct {
-		User    []byte
 		Account []byte
 		Changes []intent
-	}{[]byte(request.User), []byte(request.Account), intents})
+	}{[]byte(request.Account), intents})
 	if err != nil {
 		return "", err
 	}
@@ -383,13 +382,6 @@ func prepareBatch(ctx context.Context, root *os.Root, request BatchRequest, revi
 		}
 		doc.Kind = kindOf(change.ID)
 		fields := batchFields(change.Fields, journal.Refs)
-		if userOwned(kindOf(change.ID)) {
-			if user, supplied := change.Fields["user"]; supplied {
-				fields["user"] = user // User IDs are not request-local record references.
-			} else if base == "" && request.User != "" {
-				fields["user"] = request.User
-			}
-		}
 		body := doc.Body
 		if change.Body != nil {
 			body = *change.Body
@@ -447,9 +439,6 @@ func prepareBatch(ctx context.Context, root *os.Root, request BatchRequest, revi
 				_ = doc.Set("original_accounts", accountsNode)
 			}
 		}
-		if err := requireUser(doc, kindOf(change.ID)); err != nil {
-			return journal, fmt.Errorf("%s: %w", change.ID, err)
-		}
 		if err := (&Store{path: root.Name()}).validateTypeChange(ctx, root, Parse(before), doc, kindOf(change.ID), request.typeConfiguration); err != nil {
 			return journal, fmt.Errorf("%s: %w", change.ID, err)
 		}
@@ -473,7 +462,7 @@ func prepareBatch(ctx context.Context, root *os.Root, request BatchRequest, revi
 		if len(config.Before) > 0 {
 			base = dataRevision(config.Before)
 		}
-		journal.Entries = append(journal.Entries, batchEntry{ID: typeConfigurationID(config.User), Source: typeConfigurationPath(config.User), Base: base, Revision: dataRevision(config.After), Before: config.Before, After: config.After})
+		journal.Entries = append(journal.Entries, batchEntry{ID: typeConfigurationID(), Source: typeConfigurationPath(), Base: base, Revision: dataRevision(config.After), Before: config.Before, After: config.After})
 	}
 	if len(journal.Entries) == 0 {
 		return journal, errors.New("batch contains no changes")

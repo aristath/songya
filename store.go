@@ -249,9 +249,6 @@ func (s *Store) Create(destination Destination, fields map[string]any, body stri
 	node, warnings := encodeValue(values)
 	d := &Document{Body: body, warnings: warnings, Kind: destination}
 	assignNode(&d.Frontmatter, node)
-	if err := requireUser(d, destination); err != nil {
-		return d, err
-	}
 	if err := validateTimeChange(nil, metadataField(&d.Frontmatter, "time"), destination); err != nil {
 		return d, err
 	}

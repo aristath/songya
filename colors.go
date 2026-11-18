@@ -64,7 +64,7 @@ func (cfg TypeConfiguration) KindColor(kind Destination) string {
 	return DefaultKindColor(kind)
 }
 func (cfg TypeConfiguration) RecordColor(record Record) string {
-	if id := record.Types[cfg.User]; id != "" {
+	if id := record.Type; id != "" {
 		for _, def := range cfg.Kinds[record.Kind] {
 			if def.ID == id {
 				if color := NormalizeColor(def.Color); color != "" {

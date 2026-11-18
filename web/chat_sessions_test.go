@@ -17,7 +17,7 @@ func TestChatSessionRenameAndArchivePreserveHistoryAndPendingWork(t *testing.T) 
 	}
 	id := chatID()
 	seed, err := app.chat.edit(context.Background(), id, func(c *chatConversation) error {
-		c.User, c.Title, c.Status, c.TurnID = "sam", "First conversation", "paused", "first"
+		c.Store, c.Title, c.Status, c.TurnID = "sam", "First conversation", "paused", "first"
 		c.Messages = []chatMessage{{Role: "user", Content: "A remembered afternoon.", TurnID: "first"}}
 		c.Draft = &chatMessage{Role: "assistant", Content: "Partial reply", TurnID: "first"}
 		c.Queue = []chatQueuedTurn{{ID: "second", Text: "A queued detail.", Prompt: "Saved prompt"}}
@@ -32,7 +32,7 @@ func TestChatSessionRenameAndArchivePreserveHistoryAndPendingWork(t *testing.T) 
 		t.Fatal(code)
 	}
 	renamed, _ := app.chat.conversation(id)
-	if renamed.Title != "Island afternoons" || renamed.User != seed.User || renamed.Status != seed.Status || !reflect.DeepEqual(renamed.Messages, seed.Messages) || !reflect.DeepEqual(renamed.Queue, seed.Queue) || !reflect.DeepEqual(renamed.Draft, seed.Draft) || !reflect.DeepEqual(renamed.Requests, seed.Requests) {
+	if renamed.Title != "Island afternoons" || renamed.Store != seed.Store || renamed.Status != seed.Status || !reflect.DeepEqual(renamed.Messages, seed.Messages) || !reflect.DeepEqual(renamed.Queue, seed.Queue) || !reflect.DeepEqual(renamed.Draft, seed.Draft) || !reflect.DeepEqual(renamed.Requests, seed.Requests) {
 		t.Fatal("rename changed saved work", renamed)
 	}
 	code, _ = call(t, app, "PATCH", "/api/chat/sessions/"+id, map[string]any{"archived": true})
@@ -82,7 +82,7 @@ func TestChatSessionRenameAndArchivePreserveHistoryAndPendingWork(t *testing.T) 
 		t.Fatal(code)
 	}
 	restored, _ := reopened.chat.conversation(id)
-	if restored.Archived || !reflect.DeepEqual(restored.Messages, before.Messages) || restored.User != "sam" {
+	if restored.Archived || !reflect.DeepEqual(restored.Messages, before.Messages) || restored.Store != "sam" {
 		t.Fatal("restore lost the history", restored)
 	}
 }

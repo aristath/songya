@@ -86,7 +86,7 @@ func TestCommittedContentWinsOverPendingWhenLockBreaks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	committed, err := store.Create(Memories, testUserFields(Memories, nil), "Authoritative body")
+	committed, err := store.Create(Memories, nil, "Authoritative body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestOpenDoesNotWaitForUnrelatedWriter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := store.Create(Memories, testUserFields(Memories, nil), "Readable body")
+	doc, err := store.Create(Memories, nil, "Readable body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestInitializationRetriesUnsyncedParents(t *testing.T) {
 				store, err := Open(path)
 				if err == nil {
 					unfinished = store
-					if _, err := store.Create(Memories, testUserFields(Memories, nil), "Must remain unacknowledged"); err == nil {
+					if _, err := store.Create(Memories, nil, "Must remain unacknowledged"); err == nil {
 						t.Fatal("save succeeded before the new store's parents could be synced")
 					}
 				}
@@ -266,7 +266,7 @@ func TestInitializationRetriesUnsyncedParents(t *testing.T) {
 			if err := unfinished.Recover(); err != nil || len(unfinished.Diagnostics()) != 0 {
 				t.Fatalf("repaired initialization left stale diagnostics: %v, %v", err, unfinished.Diagnostics())
 			}
-			saved, err := store.Create(Memories, testUserFields(Memories, nil), "Recovered initialization")
+			saved, err := store.Create(Memories, nil, "Recovered initialization")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -281,7 +281,7 @@ func TestInitializationRetriesUnsyncedParents(t *testing.T) {
 			if read, err := store.Read(saved.ID); err != nil || read.Body != saved.Body {
 				t.Fatalf("recovered memory unavailable: %v", err)
 			}
-			if _, err := store.Create(Topics, testUserFields(Topics, nil), "Still writable"); err != nil {
+			if _, err := store.Create(Topics, nil, "Still writable"); err != nil {
 				t.Fatalf("initialized store unnecessarily needed its parent reopened: %v", err)
 			}
 		})

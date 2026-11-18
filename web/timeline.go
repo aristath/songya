@@ -14,8 +14,7 @@ func (a *chatApp) timelineHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	user := r.URL.Query().Get("user")
-	timeline, err := catalog.Timeline(r.Context(), songya.Query{User: user, Kind: songya.Memories})
+	timeline, err := catalog.Timeline(r.Context(), songya.Query{Kind: songya.Memories})
 	if err != nil {
 		fail(w, err)
 		return
@@ -59,7 +58,7 @@ func (a *chatApp) timelineHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			excerpt = excerpt[:end] + "…"
 		}
-		rows = append(rows, map[string]any{"id": entry.ID, "source": record.Source, "title": record.Title, "user": record.User, "kind": record.Kind, "time": entry.Time, "relations": record.Relations, "order_links": orderLinks, "excerpt": excerpt, "color": colors.RecordColor(record), "issues": issues, "pending": record.Pending || record.Unconfirmed})
+		rows = append(rows, map[string]any{"id": entry.ID, "source": record.Source, "title": record.Title, "kind": record.Kind, "time": entry.Time, "relations": record.Relations, "order_links": orderLinks, "excerpt": excerpt, "color": colors.RecordColor(record), "issues": issues, "pending": record.Pending || record.Unconfirmed})
 	}
 	write(w, map[string]any{"records": rows, "constraints": timeline.Constraints, "diagnostics": timeline.Diagnostics})
 }

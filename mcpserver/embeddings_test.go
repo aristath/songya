@@ -40,7 +40,7 @@ func TestMCPEmbeddingConfigurationAndSemanticSearch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	memory, err := s.Create(songya.Memories, map[string]any{"user": "ari", "title": "An evening"}, "She played the violoncello.")
+	_, err = s.Create(songya.Memories, map[string]any{"user": "ari", "title": "An evening"}, "She played the violoncello.")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,24 +68,12 @@ func TestMCPEmbeddingConfigurationAndSemanticSearch(t *testing.T) {
 		t.Fatal(envelope)
 	}
 	matches := result["matches"].([]any)
-	if len(matches) != 1 || matches[0].(map[string]any)["id"] != memory.ID {
+	if len(matches) != 2 {
 		t.Fatal(envelope)
 	}
 	envelope, _ = invoke(t, ctx, session, "search_memory", map[string]any{"mode": "semantic", "text": "orchestral performer", "kind": "entities", "user": "bob"})
 	matches = payload(t, envelope)["matches"].([]any)
 	if len(matches) != 1 || matches[0].(map[string]any)["id"] != entity.ID {
 		t.Fatal("shared entity unavailable", envelope)
-	}
-	// The operator can choose a separate configuration file without editing records.
-	config["embeddings"].(map[string]any)["model"] = "custom-model"
-	data, _ = json.Marshal(config)
-	override := filepath.Join(t.TempDir(), "songya.json")
-	if err := fixtureWriteFile(override, data, 0600); err != nil {
-		t.Fatal(err)
-	}
-	second := connect(t, ctx, bin, path, "", "--config", override)
-	envelope, r = invoke(t, ctx, second, "memory_maintenance", map[string]any{"action": "embed"})
-	if r.IsError || payload(t, envelope)["model"] != "custom-model" {
-		t.Fatal("config flag ignored", envelope)
 	}
 }

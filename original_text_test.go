@@ -10,7 +10,7 @@ func TestOriginalWordsAreSeparateFromGeneratedMemoryAndSurviveRetry(t *testing.T
 	original := "  Correction: we were together from May to November 2019.\nI moved on December 1, 2019.  "
 	generated := "Ari moved on December 1, 2019 after the breakup."
 	ctx := WithOriginalText(context.Background(), original)
-	input := MemoryInput{Key: "source-test", User: "ari", Text: &generated}
+	input := MemoryInput{Key: "source-test", Text: &generated}
 	receipt, err := store.SaveMemory(ctx, input)
 	if err != nil {
 		t.Fatal(err)

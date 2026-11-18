@@ -36,7 +36,7 @@ func TestRecallConnectedNarratives(t *testing.T) {
 	if err := fixtureWriteFile(name, []byte("---\nuser: ari\ntitle: Dimitra damaged account\nbroken: [\n---\nRetained uncertain account."), 0600); err != nil {
 		t.Fatal(err)
 	}
-	q := RecallQuery{Text: "Who was Dimitra?", User: "ari"}
+	q := RecallQuery{Text: "Who was Dimitra?"}
 	page, err := s.Recall(context.Background(), q)
 	if err != nil {
 		t.Fatal(err)
@@ -46,16 +46,11 @@ func TestRecallConnectedNarratives(t *testing.T) {
 			t.Fatalf("missing %q: %s", want, page.Text)
 		}
 	}
-	if page.Truncated || strings.Contains(page.Text, other.Body) {
-		t.Fatal("unexpected scope or truncation", page)
-	}
-	q.User = "all"
-	all, err := s.Recall(context.Background(), q)
-	if err != nil || !strings.Contains(all.Text, other.Body) {
-		t.Fatal("all lost another user's memory", err, all)
+	if page.Truncated || !strings.Contains(page.Text, other.Body) {
+		t.Fatal("store recall lost connected memory", page)
 	}
 	// Subject fallback reaches malformed metadata and reports it rather than hiding prose.
-	p, err := s.Recall(context.Background(), RecallQuery{Text: "Retained uncertain", User: "all"})
+	p, err := s.Recall(context.Background(), RecallQuery{Text: "Retained uncertain"})
 	if err != nil || !strings.Contains(p.Text, "Retained uncertain account.") || len(p.Diagnostics) == 0 {
 		t.Fatal("damaged account hidden", err, p)
 	}
@@ -125,7 +120,7 @@ func TestRecallAmbiguityMissingReferencesAndRetiredMembers(t *testing.T) {
 	retired := create(Memories, map[string]any{"user": "ari", "redirects": []string{replacement.ID}}, "The original account.")
 	story := create(Stories, map[string]any{"user": "ari", "relations": []Relation{{"related_to", retired.ID}, {"related_to", "m_000000000000"}}}, "Healthy story")
 	for text, wants := range map[string][]string{"Dimitra": {"A cellist.", "A neighbour."}, story.ID: {retired.ID, replacement.ID, "The corrected account.", "record unavailable"}} {
-		page, err := s.Recall(context.Background(), RecallQuery{Text: text, User: "ari"})
+		page, err := s.Recall(context.Background(), RecallQuery{Text: text})
 		if err != nil {
 			t.Fatal(err)
 		}

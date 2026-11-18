@@ -73,7 +73,7 @@ func binary(t *testing.T) string {
 }
 func connect(t *testing.T, ctx context.Context, bin, store, source string, extra ...string) *mcp.ClientSession {
 	t.Helper()
-	arguments := append([]string{"--store", store}, extra...)
+	arguments := append([]string{"--store", "store=" + store}, extra...)
 	if source != "" {
 		arguments = append(arguments, "--import-root", "notes="+source)
 	}
@@ -89,11 +89,8 @@ func connect(t *testing.T, ctx context.Context, bin, store, source string, extra
 }
 func invoke(t *testing.T, ctx context.Context, session *mcp.ClientSession, name string, args any) (map[string]any, *mcp.CallToolResult) {
 	t.Helper()
-	if input, ok := args.(map[string]any); ok && (name == "save_memory" || name == "import_memories") {
-		if _, supplied := input["user"]; !supplied {
-			input["user"] = "test"
-		}
-	}
+	bindStore(args)
+
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
 	if err != nil {
 		t.Fatal(err)
@@ -137,7 +134,7 @@ func TestStdioResourcesAndErrorsStayWithinBudget(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	session := connect(t, ctx, bin, path, "")
-	resource, err := session.ReadResource(ctx, &mcp.ReadResourceParams{URI: "memory://records/" + id + "/0"})
+	resource, err := session.ReadResource(ctx, &mcp.ReadResourceParams{URI: "memory://records/store/" + id + "/0"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +142,7 @@ func TestStdioResourcesAndErrorsStayWithinBudget(t *testing.T) {
 	if err != nil || len(encoded) > 32*1024 {
 		t.Fatalf("resource exceeded budget: %d %v", len(encoded), err)
 	}
-	_, err = session.ReadResource(ctx, &mcp.ReadResourceParams{URI: "memory://records/" + strings.Repeat("a", 100000) + "/0"})
+	_, err = session.ReadResource(ctx, &mcp.ReadResourceParams{URI: "memory://records/store/" + strings.Repeat("a", 100000) + "/0"})
 	if err == nil || len(err.Error()) > 1500 {
 		t.Fatalf("resource error was not bounded: %v", err)
 	}
@@ -282,7 +279,7 @@ func TestStdioCancellationAndEOFDoNotPublishWaitingRequests(t *testing.T) {
 	defer lock.Close()
 	callCtx, stop := context.WithTimeout(ctx, 100*time.Millisecond)
 	defer stop()
-	_, err = session.CallTool(callCtx, &mcp.CallToolParams{Name: "save_memory", Arguments: map[string]any{"id": original.ID, "text": "Must not publish"}})
+	_, err = session.CallTool(callCtx, &mcp.CallToolParams{Name: "save_memory", Arguments: map[string]any{"store": "store", "id": original.ID, "text": "Must not publish"}})
 	if err == nil {
 		t.Fatal("blocked request ignored cancellation")
 	}
@@ -322,7 +319,7 @@ func TestStdioShutdownCancelsUnacceptedWaitingWrite(t *testing.T) {
 			defer lock.Close()
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			command := exec.CommandContext(ctx, bin, "--store", path)
+			command := exec.CommandContext(ctx, bin, "--store", "store="+path)
 			stdout, err := command.StdoutPipe()
 			if err != nil {
 				t.Fatal(err)
@@ -345,7 +342,7 @@ func TestStdioShutdownCancelsUnacceptedWaitingWrite(t *testing.T) {
 			finished := make(chan struct{})
 			go func() {
 				defer close(finished)
-				_, _ = session.CallTool(ctx, &mcp.CallToolParams{Name: "save_memory", Arguments: map[string]any{"id": doc.ID, "text": "Must not publish"}})
+				_, _ = session.CallTool(ctx, &mcp.CallToolParams{Name: "save_memory", Arguments: map[string]any{"store": "store", "id": doc.ID, "text": "Must not publish"}})
 			}()
 			// Allow the real transport to dispatch the request. The held lock prevents any
 			// acceptance; this delay does not determine the expected write outcome.
@@ -377,5 +374,15 @@ func TestStdioShutdownCancelsUnacceptedWaitingWrite(t *testing.T) {
 			}
 
 		})
+	}
+}
+
+func bindStore(args any) {
+	if input, ok := args.(map[string]any); ok {
+		if _, exists := input["store"]; !exists {
+			input["store"] = "store"
+		}
+		delete(input, "user")
+		delete(input, "type_user")
 	}
 }

@@ -1,33 +1,31 @@
 # Centralized retrieval
 
 Songya owns message embeddings, ranking, thresholds, result counts, searched and
-returned types, ownership filtering, and relationship traversal. Clients supply
-text and an explicit ownership scope, then consume the returned evidence. Clara
+returned types, store isolation and relationship traversal. Clients supply
+text for one configured store, then consume the returned evidence. Clara
 and Songya Chat use this same engine. Deliberate MCP search/read/write tools remain
 available independently.
 
 ## HTTP contract
 
-`POST /api/recall` accepts JSON:
+`POST /stores/<name>/api/recall` accepts JSON:
 
 ```json
-{"message":"Do you remember our rehearsal?","owners":["ari","clara"]}
+{"message":"Do you remember our rehearsal?"}
 ```
 
 For a batch use `messages: ["first message", "second message"]` instead of
 `message`. A batch shares a catalogue/configuration snapshot and record vectors;
-results correspond to input order. Supply one text form, nonempty messages, and a
-nonempty owners array. `owners:["all"]` explicitly selects all collections.
-Shared entities/topics remain available; memories/stories stay within the requested
-owners at every traversal hop. Ownership is a retrieval scope, not authentication.
+results correspond to input order. Supply one text form and nonempty messages.
+Recall stays inside the selected directory, including graph traversal.
 Request fields cannot override the retrieval policy.
 
 Clients retaining previously emitted evidence can also supply `known_ids`.
 The response then includes `known` entries with `id`, `status`, and an `item`
-for `current` records. These refreshes use the same catalogue and ownership scope,
+for `current` records. These refreshes use the same store catalogue,
 independently of ranking and embedding availability. `missing` confirms an absent
 record in an accessible record directory; `retracted` means the record is retired
-or outside the requested scope. `unknown` means its current state cannot be
+. `unknown` means its current state cannot be
 confirmed, including unavailable or unfinished sources. An omitted search result
 alone never confirms deletion. Clients can preserve earlier blocks and append
 corrections or withdrawal notices at the current interaction.
@@ -38,7 +36,7 @@ The response is `{ "policy": {...}, "results": [...] }`. Each result contains:
 - `items`: records selected by the saved policy.
 - `incomplete`, `truncated`, and bounded `diagnostics` with path/message entries.
 
-Each item contains `id`, `kind`, `user` when owned, `title`, structured `time`,
+Each item contains `id`, `kind`, `title`, structured `time`,
 `content`, `depth`, and `reason`. Direct matches have `reason:"semantic"`, depth
 zero, and a measured `score` (cosine similarity, not a probability). Connected
 items have `reason:"connection"`, `origin_id`, and `path` entries
@@ -101,7 +99,7 @@ neighbor ID and relationship label. Direct seeds are never duplicated as connect
 items. Connection scores do not boost or masquerade as measured similarities.
 Returned prose is bounded to 8,192 UTF-8 bytes per record, plus at most 8,192 bytes of metadata. Oversized metadata is replaced with a compact identifying label and explicitly marked as truncated. Stories contribute their
 own introduction and ordered relationships; their members are explicit traversal
-results, so hidden story expansion cannot bypass ownership/type/depth/count rules.
+results, so hidden story expansion cannot bypass store/type/depth/count rules.
 
 ## Settings interface
 

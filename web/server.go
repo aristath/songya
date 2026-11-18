@@ -44,7 +44,8 @@ func Handler(store *songya.Store) *Application {
 	page := template.Must(template.ParseFS(assets, "assets/index.html"))
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = page.Execute(w, nil)
+		navigation, _ := r.Context().Value(storeNavigationKey{}).(storeNavigation)
+		_ = page.Execute(w, navigation)
 	})
 	mux.Handle("GET /assets/", http.StripPrefix("/assets/", http.FileServerFS(files)))
 	mux.HandleFunc("GET /api/stories/{id}/compose", func(w http.ResponseWriter, r *http.Request) {
@@ -76,7 +77,7 @@ func Handler(store *songya.Store) *Application {
 		links := []map[string]string{}
 		seen := map[[3]string]bool{}
 		byID := map[string]songya.Record{}
-		ownerEntities := map[string]string{}
+		ownerEntity, _ := store.OwnerEntity(r.Context())
 		for _, record := range catalog.Records {
 			byID[record.ID] = record
 		}
@@ -88,13 +89,10 @@ func Handler(store *songya.Store) *Application {
 			if record.ProfilePicture != nil && record.ProfilePicture.Record != "" {
 				revision += byID[record.ProfilePicture.Record].Revision
 			}
-			node := map[string]any{"id": record.ID, "title": record.Title, "aliases": record.Aliases, "kind": record.Kind, "user": record.User, "color": colors.RecordColor(record), "profile_picture": record.ProfilePicture, "revision": revision, "weight": weights[record.ID].Weight, "weight_calculated_at": weights[record.ID].CalculatedAt}
+			node := map[string]any{"id": record.ID, "title": record.Title, "aliases": record.Aliases, "kind": record.Kind, "color": colors.RecordColor(record), "profile_picture": record.ProfilePicture, "revision": revision, "weight": weights[record.ID].Weight, "weight_calculated_at": weights[record.ID].CalculatedAt}
 			if record.Kind == songya.Memories {
-				if _, loaded := ownerEntities[record.User]; !loaded {
-					ownerEntities[record.User], _ = store.UserEntity(r.Context(), record.User)
-				}
-				if entity := ownerEntities[record.User]; byID[entity].Kind == songya.Entities {
-					node["owner_entity"] = entity
+				if byID[ownerEntity].Kind == songya.Entities {
+					node["owner_entity"] = ownerEntity
 				}
 			}
 			nodes = append(nodes, node)
@@ -110,7 +108,7 @@ func Handler(store *songya.Store) *Application {
 				}
 			}
 		}
-		write(w, map[string]any{"nodes": nodes, "links": links, "weights": weightStatus, "kind_colors": colors.KindColors, "color_user": colors.User})
+		write(w, map[string]any{"nodes": nodes, "links": links, "weights": weightStatus, "kind_colors": colors.KindColors})
 	})
 	mux.HandleFunc("GET /api/records", func(w http.ResponseWriter, r *http.Request) {
 		colors := chat.colorConfiguration(r)
@@ -119,32 +117,18 @@ func Handler(store *songya.Store) *Application {
 			fail(w, err)
 			return
 		}
-		if user := r.URL.Query().Get("classification_user"); user != "" && user != "all" {
-			for i := range catalog.Records {
-				catalog.Records[i].Type = catalog.Records[i].Types[user]
-			}
-		}
-		records := catalog.Select(songya.Query{Text: r.URL.Query().Get("q"), Kind: songya.Destination(r.URL.Query().Get("kind")), User: r.URL.Query().Get("user")})
-		if user := r.URL.Query().Get("classification_user"); user != "" && user != "all" {
-			for i := range records {
-				records[i].Type = records[i].Types[user]
-			}
-		}
+		records := catalog.Select(songya.Query{Text: r.URL.Query().Get("q"), Kind: songya.Destination(r.URL.Query().Get("kind"))})
 		summaries := []map[string]any{}
-		owners := map[string]bool{}
 		types := map[string]bool{}
 		for _, record := range catalog.Records {
-			if record.User != "" {
-				owners[record.User] = true
-			}
 			if record.Type != "" {
 				types[record.Type] = true
 			}
 		}
 		for _, record := range records {
-			summaries = append(summaries, map[string]any{"id": record.ID, "source": record.Source, "title": record.Title, "description": record.Description, "type": record.Type, "types": record.Types, "aliases": record.Aliases, "kind": record.Kind, "user": record.User, "updated_at": record.UpdatedAt, "color": colors.RecordColor(record), "version": record.Revision, "pending": record.Pending || record.Unconfirmed})
+			summaries = append(summaries, map[string]any{"id": record.ID, "source": record.Source, "title": record.Title, "description": record.Description, "type": record.Type, "aliases": record.Aliases, "kind": record.Kind, "updated_at": record.UpdatedAt, "color": colors.RecordColor(record), "version": record.Revision, "pending": record.Pending || record.Unconfirmed})
 		}
-		write(w, map[string]any{"records": summaries, "owners": owners, "types": types, "diagnostics": catalog.Diagnostics})
+		write(w, map[string]any{"records": summaries, "types": types, "diagnostics": catalog.Diagnostics})
 	})
 	mux.HandleFunc("GET /api/records/{id}", func(w http.ResponseWriter, r *http.Request) {
 		doc, err := store.Read(r.PathValue("id"))
@@ -178,7 +162,6 @@ func Handler(store *songya.Store) *Application {
 	mux.HandleFunc("POST /api/draft", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			Source             string             `json:"source"`
-			ClassificationUser string             `json:"classification_user"`
 			ClassificationType *string            `json:"classification_type"`
 			ID                 string             `json:"id"`
 			Kind               songya.Destination `json:"kind"`
@@ -194,7 +177,7 @@ func Handler(store *songya.Store) *Application {
 		doc := songya.Parse([]byte(input.Source))
 		doc.ID, doc.Kind = input.ID, input.Kind
 		if input.ClassificationType != nil {
-			if err := doc.SetType(input.ClassificationUser, *input.ClassificationType); err != nil {
+			if err := doc.SetType(*input.ClassificationType); err != nil {
 				writeStatus(w, 422, map[string]any{"error": err.Error()})
 				return
 			}
@@ -286,12 +269,11 @@ func Handler(store *songya.Store) *Application {
 		var input struct {
 			Key, ID, Version, Source string
 			Kind                     songya.Destination
-			ClassificationUser       string `json:"classification_user"`
 		}
 		if !decode(w, r, &input) {
 			return
 		}
-		receipt, err := store.SaveSource(songya.WithTypeUser(r.Context(), input.ClassificationUser), input.Key, input.ID, input.Kind, input.Version, input.Source)
+		receipt, err := store.SaveSource(r.Context(), input.Key, input.ID, input.Kind, input.Version, input.Source)
 		if receipt.Status != "not_accepted" && receipt.Status != "" {
 			chat.recordsChanged()
 		}
@@ -352,7 +334,6 @@ type Field struct {
 	Index          int                    `json:"index"`
 	Text           string                 `json:"text"`
 	Type           string                 `json:"type"`
-	Assignments    map[string]string      `json:"assignments,omitempty"`
 	Key            string                 `json:"key"`
 	Value          string                 `json:"value"`
 	System         bool                   `json:"system"`
@@ -409,9 +390,6 @@ func describe(source string, kind songya.Destination) Draft {
 				f.ProfilePicture = picture
 				f.Type = "profile_picture"
 			}
-		}
-		if name == "types" {
-			f.Assignments = doc.Types()
 		}
 		if name == "time" && value.Kind == yaml.MappingNode {
 			var event songya.RecordTime

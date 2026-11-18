@@ -17,6 +17,7 @@ import (
 
 func keyed(t *testing.T, ctx context.Context, s *mcp.ClientSession, name, key string, args any) map[string]any {
 	t.Helper()
+	bindStore(args)
 	r, err := s.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args, Meta: mcp.Meta{"songya/request-key": key}})
 	if err != nil {
 		t.Fatal(err)
@@ -75,7 +76,7 @@ func TestDirectGuideCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	doc := songya.Parse(data)
-	if doc.Body != args["text"] || doc.Metadata().User != "ari" || len(doc.Metadata().Relations) != 3 {
+	if doc.Body != args["text"] || len(doc.Metadata().Relations) != 3 {
 		t.Fatal("capture lost content", string(data))
 	}
 	for _, v := range entities {
@@ -95,7 +96,7 @@ func TestDirectGuideCapture(t *testing.T) {
 		t.Fatal(prepared)
 	}
 }
-func TestDedicatedWritesOwnershipAndOrganization(t *testing.T) {
+func TestDedicatedWritesAndOrganization(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	session := connect(t, ctx, binary(t), t.TempDir(), "")
@@ -106,11 +107,9 @@ func TestDedicatedWritesOwnershipAndOrganization(t *testing.T) {
 	if a["relations"].([]any)[0].(map[string]any)["target"] != john["id"] || a["relations"].([]any)[1].(map[string]any)["target"] != topic["id"] {
 		t.Fatal("exact names/aliases not reused", a)
 	}
-	for user, count := range map[string]int{"ari": 3, "bob": 3, "all": 4} {
-		found, r := invoke(t, ctx, session, "search_memory", map[string]any{"user": user})
-		if r.IsError || len(payload(t, found)["matches"].([]any)) != count {
-			t.Fatal(user, found)
-		}
+	found, r := invoke(t, ctx, session, "search_memory", map[string]any{})
+	if r.IsError || len(payload(t, found)["matches"].([]any)) != 4 {
+		t.Fatal(found)
 	}
 	story := keyed(t, ctx, session, "save_story", "story", map[string]any{"title": "Meetings", "user": "ari", "relations": []any{map[string]any{"type": "related_to", "target": a["id"]}, map[string]any{"type": "related_to", "target": b["id"]}}})
 	composed, r := invoke(t, ctx, session, "compose_story", map[string]any{"id": story["id"]})

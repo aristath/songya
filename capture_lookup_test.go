@@ -19,7 +19,7 @@ func TestNamedRelationLookupUsesTheOwnedWriteSnapshot(t *testing.T) {
 	}
 	id := entity.Refs["record"]
 	for _, target := range []string{id, "Alex Morgan", "Alex"} {
-		receipt, err := s.SaveMemory(ctx, MemoryInput{Key: "lookup-" + target, User: "ari", Text: textValue("Met Alex"), Relations: []RelationInput{{Type: "related_to", Target: target}}})
+		receipt, err := s.SaveMemory(ctx, MemoryInput{Key: "lookup-" + target, Text: textValue("Met Alex"), Relations: []RelationInput{{Type: "related_to", Target: target}}})
 		if err != nil || receipt.Status != "committed" {
 			t.Fatal(receipt, err)
 		}
@@ -32,7 +32,7 @@ func TestNamedRelationLookupUsesTheOwnedWriteSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := s.SaveMemory(ctx, MemoryInput{Key: "ambiguous", User: "ari", Text: textValue("Met someone"), Relations: []RelationInput{{Type: "related_to", Target: "Alex Morgan"}}})
+	receipt, err := s.SaveMemory(ctx, MemoryInput{Key: "ambiguous", Text: textValue("Met someone"), Relations: []RelationInput{{Type: "related_to", Target: "Alex Morgan"}}})
 	if err != nil || receipt.Status != "committed" {
 		t.Fatal("ambiguous account was lost", receipt, err)
 	}
@@ -53,14 +53,14 @@ func BenchmarkNamedLookupWithWriteHistory(b *testing.B) {
 		}
 	}
 	for i := range 128 {
-		if _, err := s.SaveMemory(ctx, MemoryInput{Key: fmt.Sprint("history", i), User: "ari", Text: textValue("A memory")}); err != nil {
+		if _, err := s.SaveMemory(ctx, MemoryInput{Key: fmt.Sprint("history", i), Text: textValue("A memory")}); err != nil {
 			b.Fatal(err)
 		}
 	}
 	b.ResetTimer()
 	for range b.N {
 		err := s.lockedContext(ctx, func(root *os.Root) error {
-			doc, err := findNamed(ctx, root, Entities, NamedInput{Name: "Person 16", User: "ari"})
+			doc, err := findNamed(ctx, root, Entities, NamedInput{Name: "Person 16"})
 			if err == nil && doc == nil {
 				return fmt.Errorf("identity missing")
 			}

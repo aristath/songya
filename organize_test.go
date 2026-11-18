@@ -62,7 +62,7 @@ func TestPreparationReturnsAmbiguityWithoutChoosingAnIdentity(t *testing.T) {
 	for _, name := range []string{"John Brown", "John Smith"} {
 		createRecord(t, store, Entities, map[string]any{"name": name, "aliases": []string{"John"}}, "A different person")
 	}
-	prepared, err := store.Prepare(context.Background(), "I had coffee with John", "all", 10)
+	prepared, err := store.Prepare(context.Background(), "I had coffee with John", 10)
 	if err != nil || prepared.Key == "" || len(prepared.Matches) != 2 || len(prepared.Ambiguities) != 1 || len(prepared.Ambiguities[0].Candidates) != 2 {
 		t.Fatalf("ambiguity was hidden: %+v, %v", prepared, err)
 	}
@@ -103,7 +103,7 @@ func TestPreparationKeepsDuplicateSuggestionsRelevant(t *testing.T) {
 			createRecord(t, store, Entities, map[string]any{"name": name}, "Distinct account")
 		}
 	}
-	prepared, err := store.Prepare(context.Background(), "Coffee with John", "all", 10)
+	prepared, err := store.Prepare(context.Background(), "Coffee with John", 10)
 	if err != nil {
 		t.Fatal(err)
 	}

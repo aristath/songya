@@ -14,22 +14,8 @@ Chat history and the library scroll independently, and the composer stays inside
 the conversation pane. The graph uses the active palette’s Crust background. Its 2D / 3D toggle
 switches between locally bundled [3d-force-graph](https://github.com/vasturiano/3d-force-graph)
 and [force-graph](https://github.com/vasturiano/force-graph). Node colors come from
-the selected classification user's type colors, with record-kind colors for
-unclassified records. **Colors for** selects that user and stays synchronized
-with the library's **Types for** selector; the owner filter is independent.
-Nodes grow with their incoming and outgoing connection counts. Hover shows the name/title, and clicking opens
-read-only inspection. The top-right owner dropdown defaults to **Any**, showing
-the whole store. Selecting an owner shows their memories and stories plus directly
-connected shared entities/topics, including connections in either direction.
-Unrelated shared records and other owners' accounts are omitted. Graph search
-uses that same selection, which survives view switching and expansion. The graph
-filter is independent of the library filters and refreshes after saves and
-deletions. No CDN is required.
-The legend checkboxes select which record kinds appear as points. Hidden records
-never become replacement points. Every visible pair connected through hidden
-records receives one indirect line; paths stop at visible records. Chains may
-cross any number of hidden records and relationship types. Duplicate paths merge;
-a saved connection between the same points takes precedence.
+the selected store's type colors, with record-kind colors for unclassified records. Hover shows the name/title, and clicking opens
+read-only inspection. The header store selector switches the entire UI to another isolated store.
 
 Background line opacity decreases with the mean number of connections per visible
 point. Indirect lines use half the saved-line opacity in both views, without dashes.
@@ -60,7 +46,7 @@ record first. Background controls are inert while the graph is expanded.
 
 Below the graph, the **Library** holds the sortable, filterable table with
 title, description, record
-kind, metadata type, aliases, owner and row actions. The Go catalogue supplies
+kind, metadata type, aliases and row actions. The Go catalogue supplies
 metadata and the exact revision used for row deletion. **Last updated** shows
 its saved update time in the browser's local time zone; newest updates sort first
 by default. Unknown timestamps remain at the bottom. **Filters** is collapsed
@@ -78,14 +64,14 @@ An undated memory linked to dated events can appear among them with **Date unkno
 and its explicit links; the view does not fill in a date. Independent relative
 sequences, unplaced memories and unusable timing remain visible in named sections.
 
-Each timeline entry shows its ID, owner, configured color, excerpt and timing
+Each timeline entry shows its ID, configured color, excerpt and timing
 links. **Edit dates** and **Edit order** open the existing record editor; adding an
 `after` link uses Connections, while missing date controls can be added with
 **Add event dates**. Changes preserve the record's ID, body and other metadata.
 Saved edits and chat/tool writes refresh the timeline through the existing event
 stream. A temporary refresh failure retains readable entries and retries.
 
-The library's search, owner and column filters still apply. Timeline adds
+The library's search and column filters still apply. Timeline adds
 **Related to** and **Timing** inside the collapsed **Filters** panel to find one
 subject, unknown dates, ranges or conflicts. The record-kind filter is reserved for List; returning to List
 restores its previous selection. The layout remains intrinsic without breakpoints.
@@ -94,16 +80,7 @@ ordering constraints, so links cannot disappear between separately fetched pages
 
 ## Chat
 
-Choose **Talking as** to set the owner for a conversation. Existing owners and
-conversation users appear in the dropdown; **Add user** accepts a new owner name.
-Shared entities and topics keep their normal Songya meaning. User selection is
-an ownership label, not authentication, and is independent of graph/list filters.
-Each user can keep multiple conversations. The history rail shows titles, recent
-message previews, dates and unfinished-work status. Search filters titles and
-previews; **New chat** starts a separate conversation. The last selection and
-separate unsent drafts for each conversation (including a new conversation) are
-remembered in the browser. A reply continues on the server when another chat is
-opened. History refreshes while conversations are working.
+Chat conversations are stored inside the selected store. Switching stores also switches chat history, uploads and recall.
 
 The history rail sits beside the conversation when its intrinsic reading and
 navigation columns fit. Otherwise **Conversations** opens the same rail as a
@@ -399,10 +376,7 @@ native color picker. Preset swatches show Mocha; the matching Latte color is use
 in light mode. Custom hex colors remain unchanged across themes.
 
 Record colors are the fallback; a configured type's color takes precedence.
-The graph and library dots use the selected classification user's choices.
-Changing colors does not edit memory files, their dates or their type assignments.
-New and existing users receive defaults; existing settings are not rewritten just
-to display them. Default entities use Green, memories Peach, topics Lavender and
+The graph and library dots use the selected store's type colors, with record-kind colors for unclassified records. Default entities use Green, memories Peach, topics Lavender and
 stories Red. The 12 default entity types receive distinct accent colors; custom
 types receive a stable default and can be changed normally.
 

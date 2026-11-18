@@ -17,36 +17,31 @@ There is no Clara dependency or integration.
 
 ```sh
 go install github.com/aristath/songya/cmd/songya-web@latest
-songya-web --store /absolute/path/to/memory-store
+songya-web --config /absolute/path/to/admin.json
 ```
 
 Open <http://127.0.0.1:8664>. Change the address with `--listen 127.0.0.1:8665`.
 The executable contains the HTML, CSS, Alpine.js and both editors. It needs no
 Node runtime, CDN, frontend service or Clara installation. Point it at the same
 store as the MCP to edit that store; engine writers coordinate across processes.
-The editor listens on loopback by default. There are no accounts or per-user
-access restrictions. Owner filters group memories and stories; entities and
-topics remain shared.
+The editor requires the password in its private JSON configuration:
 
-The front page is a full-width record table. Search content or filter by title,
-description, record type, metadata type, aliases and owner. Click a column header
-to sort in either direction. **Record type** identifies a memory, entity, topic or
-story; **Type** shows the selected user's configured classification.
-**Type settings** provides independent choices and clear definitions for each
-user and record kind. Defaults include 12 entity types; memories, topics and
-stories start without subtypes. **Types for** selects whose classifications to
-show, independently of the owner filter. The editor uses a dropdown, and chat
-receives the same definitions and allowed IDs. Shared identities can have
-different classifications for different users. Removing an in-use choice requires
-an explicit replacement or clearing its assignments.
+```json
+{"stores":{"person":"/absolute/path/to/person/store","agent":"/absolute/path/to/agent/store"},"password":"CHOOSE_A_PRIVATE_PASSWORD"}
+```
 
-**My entity**, in the same per-user settings, selects the entity representing
-that user. Saving the selection removes explicit links between that entity and
-memories owned by the user, in both directions. Ownership already connects them.
-Other users' memories can still link to the entity. Future saves omit redundant
-owner links while keeping the rest of the requested changes.
-The graph uses ownership to attract memories toward that entity for positioning
-only; this adds no visible lines, relationship paths, or weight contributions.
+Keep this file outside Git, readable only by the administrator. HTTP Basic
+ authentication accepts any username with that password. The store selector
+ switches between independent directories. All API, attachment, chat and event
+ routes are scoped to the selected store and require authentication.
+
+Search content or filter by title, description, record kind, type and aliases.
+Each store has independent type definitions, colors, and a **My entity** owner
+selection. Defaults include 12 entity types; other kinds start without subtypes.
+Removing an in-use type requires explicit replacement or clearing.
+Ownership is implicit in the store: its memories already belong to its owner,
+so redundant links to **My entity** are removed. The graph uses that entity for
+positioning without creating extra visible relationships.
 
 Click a title to inspect the record in a read-only modal, or **Edit** to open the
 editor modal. **Visual** edits formatted Markdown; **Source** edits the complete
@@ -109,7 +104,7 @@ locations; this is the common `mcpServers` shape:
   "mcpServers": {
     "songya": {
       "command": "/absolute/path/to/songya-mcp",
-      "args": ["--store", "/absolute/path/to/memory-store"]
+      "args": ["--store", "person=/absolute/path/to/person/store", "--store", "agent=/absolute/path/to/agent/store"]
     }
   }
 }
@@ -187,7 +182,7 @@ func main() {
 		log.Fatal(err)
 	}
 	saved, err := store.Create(songya.Memories,
-		map[string]any{"user": "ari", "title": "Coffee with John"}, "I had coffee with John.")
+		map[string]any{"title": "Coffee with John"}, "I had coffee with John.")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -212,9 +207,9 @@ Each folder contains `record.md` plus any photos, audio, documents, or other fil
 belonging to that record. Only `record.md` is indexed as a record; an attached
 `notes.md` stays a file. No attachment manifest or per-file metadata is required.
 The engine assigns IDs and timestamps. No duplicate ID field is needed in YAML.
-Memories and stories require a `user` field. Entities and topics are shared.
-Select a user when searching, or use `user:all` to query everyone; this is grouping,
-with no access restrictions. See [users](docs/engine.md#users).
+Each directory is an isolated store with its own records, files, indexes and
+settings. Records have no owner field; links stay inside their store. MCP and Pi
+tools require a configured `store` name on every call.
 
 Back up the **whole store**, including hidden files and directories. `.batches/`
 retains transaction journals, original accounts, and before/proposed bytes;
@@ -285,17 +280,13 @@ Tests use temporary stores and import fixtures. Project priorities are in
 
 ### Application recall
 
-`Store.RecallSemantic(ctx, queries, owners)` batches individual source-message
-queries through one catalogue/vector pass. Owners are explicit; shared entities
-remain available. It ranks memories and entities semantically, promotes connected
-accounts using the three best entity matches, and includes at most one bounded
-containing-story passage. Results retain record IDs, owners, event times and
-semantic metadata. Missing embeddings produce partial diagnostics, never lexical
-scores. Query vectors reuse the same model/endpoint/content cache as records.
+`Store.Retrieve(ctx, RecallRequest{Messages: []string{...}})` performs recall
+inside that store. Query vectors reuse the model/endpoint/content cache.
+Missing embeddings produce partial diagnostics, never invented lexical scores.
 
-`go run ./cmd/songya-query` reads one JSON request from stdin: `store`, optional
-`config`, and `command` (`configuration`, `list`, `read`, `stats` or `recall`). Recall also takes
-`owners` and `queries:[{text,limit}]`. Configuration inspection excludes credentials.
+`go run ./cmd/songya-query` reads a JSON request from stdin: a `store` directory,
+optional `config`, and `command` (`configuration`, `list`, `read`, `stats`, `recall`).
+Recall accepts `message` text through `messages`. Configuration inspection excludes credentials.
 This application boundary exposes no write commands.
 
 `OpenExisting` lets query clients inspect an existing store without creating

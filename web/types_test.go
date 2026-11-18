@@ -7,11 +7,11 @@ import (
 	"testing"
 )
 
-func TestTypeSettingsAndEditorShareUserConfiguration(t *testing.T) {
+func TestTypeSettingsAndEditorShareStoreConfiguration(t *testing.T) {
 	store, _ := songya.Open(t.TempDir())
 	app := Handler(store)
 	defer app.Close()
-	code, initial := call(t, app, "GET", "/api/types/cook", nil)
+	code, initial := call(t, app, "GET", "/api/types", nil)
 	if code != 200 {
 		t.Fatal(code, initial)
 	}
@@ -19,19 +19,15 @@ func TestTypeSettingsAndEditorShareUserConfiguration(t *testing.T) {
 	entities := kinds["entities"].([]any)
 	kinds["entities"] = append(entities, map[string]any{"id": "ingredient", "name": "Ingredient", "description": "An ingredient used for cooking."})
 	payload := map[string]any{"key": "type-http-save", "version": initial["version"], "kinds": kinds}
-	code, saved := call(t, app, "PUT", "/api/types/cook", payload)
+	code, saved := call(t, app, "PUT", "/api/types", payload)
 	if code != 200 {
 		t.Fatal(code, saved)
 	}
-	code, retry := call(t, app, "PUT", "/api/types/cook", payload)
+	code, retry := call(t, app, "PUT", "/api/types", payload)
 	if code != 200 || retry["version"] != saved["version"] {
 		t.Fatal("lost acknowledgement did not recover", code, retry)
 	}
-	code, other := call(t, app, "GET", "/api/types/life", nil)
-	if code != 200 || len(other["kinds"].(map[string]any)["entities"].([]any)) != 12 {
-		t.Fatal(other)
-	}
-	doc, err := store.Create(songya.Entities, map[string]any{"name": "Bulgur", "types": map[string]string{"cook": "ingredient", "life": "food"}}, "A food ingredient.")
+	doc, err := store.Create(songya.Entities, map[string]any{"name": "Bulgur", "type": "ingredient"}, "A food ingredient.")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,15 +45,15 @@ func TestTypeSettingsAndEditorShareUserConfiguration(t *testing.T) {
 		t.Fatal(written)
 	}
 	after, _ := store.Read(doc.ID)
-	if after.TypeFor("cook") != "object" || after.TypeFor("life") != "food" || after.Body != doc.Body {
+	if after.Record(songya.Entities).Type != "object" || after.Body != doc.Body {
 		t.Fatal(after)
 	}
 	code, listing := call(t, app, "GET", "/api/records?classification_user=life", nil)
-	if code != 200 || listing["records"].([]any)[0].(map[string]any)["type"] != "food" {
+	if code != 200 || listing["records"].([]any)[0].(map[string]any)["type"] != "object" {
 		t.Fatal(listing)
 	}
 	before := after.Revision
-	code, bad := call(t, app, "POST", "/api/records", map[string]any{"key": "cross-user", "id": doc.ID, "kind": "entities", "version": before, "source": "---\nname: Bulgur\ntypes: {cook: object, life: plant}\n---\nA food ingredient.", "classification_user": "cook"})
+	code, bad := call(t, app, "POST", "/api/records", map[string]any{"key": "cross-user", "id": doc.ID, "kind": "entities", "version": before, "source": "---\nname: Bulgur\ntype: not_configured\n---\nA food ingredient.", "classification_user": "cook"})
 	if code != 422 || bad["rejected"] != true {
 		t.Fatal(code, bad)
 	}
@@ -65,7 +61,7 @@ func TestTypeSettingsAndEditorShareUserConfiguration(t *testing.T) {
 	if unchanged.Revision != before {
 		t.Fatal("rejected write changed record")
 	}
-	cfg, _ := store.TypeConfiguration(context.Background(), "cook")
+	cfg, _ := store.TypeConfiguration(context.Background())
 	if !reflect.DeepEqual(cfg.Kinds[songya.Memories], []songya.TypeDefinition{}) {
 		t.Fatal(cfg)
 	}

@@ -13,9 +13,9 @@ import (
 
 // Key belongs to the caller's request metadata, never the model's arguments.
 type MemoryInput struct {
-	Key       string          `json:"-"`
-	ID        string          `json:"id,omitempty"`
-	User      string          `json:"user,omitempty"`
+	Key string `json:"-"`
+	ID  string `json:"id,omitempty"`
+
 	Type      *string         `json:"type,omitempty"`
 	Title     *string         `json:"title,omitempty"`
 	Text      *string         `json:"text,omitempty"`
@@ -25,12 +25,12 @@ type MemoryInput struct {
 	Relations []RelationInput `json:"relations,omitempty"`
 }
 type NamedInput struct {
-	Key         string          `json:"-"`
-	Create      bool            `json:"create,omitempty"`
-	ID          string          `json:"id,omitempty"`
-	Name        string          `json:"name,omitempty"`
-	Type        *string         `json:"type,omitempty"`
-	User        string          `json:"user,omitempty"`
+	Key    string  `json:"-"`
+	Create bool    `json:"create,omitempty"`
+	ID     string  `json:"id,omitempty"`
+	Name   string  `json:"name,omitempty"`
+	Type   *string `json:"type,omitempty"`
+
 	Time        any             `json:"time,omitempty"`
 	Aliases     []string        `json:"aliases,omitempty"`
 	Description *string         `json:"description,omitempty"`
@@ -39,9 +39,9 @@ type NamedInput struct {
 	Relations   []RelationInput `json:"relations,omitempty"`
 }
 type StoryInput struct {
-	Key       string          `json:"-"`
-	ID        string          `json:"id,omitempty"`
-	User      string          `json:"user,omitempty"`
+	Key string `json:"-"`
+	ID  string `json:"id,omitempty"`
+
 	Type      *string         `json:"type,omitempty"`
 	Title     string          `json:"title,omitempty"`
 	Text      *string         `json:"text,omitempty"`
@@ -60,17 +60,11 @@ func writeKey(key string) string {
 // SaveMemory translates the caller's concepts into one durable related write.
 // Entity lookup and creation run under that write's process-wide store lock.
 func (s *Store) SaveMemory(ctx context.Context, input MemoryInput) (Receipt, error) {
-	if TypeUser(ctx) == "" && input.User != "" {
-		ctx = WithTypeUser(ctx, input.User)
-	}
 	input.Key = writeKey(input.Key)
 	if input.ID != "" && kindOf(input.ID) != Memories {
 		return Receipt{Key: input.Key, Status: "not_accepted"}, fmt.Errorf("%s is not a memory ID", input.ID)
 	}
 	fields := copyFields(input.Metadata)
-	if input.User != "" {
-		fields["user"] = input.User
-	}
 	if input.Title != nil {
 		fields["title"] = *input.Title
 	}
@@ -80,9 +74,8 @@ func (s *Store) SaveMemory(ctx context.Context, input MemoryInput) (Receipt, err
 	intent := map[string]any{"metadata": fields, "relations": relationData(input.Relations)}
 	if input.Type != nil {
 		intent["type"] = *input.Type
-		intent["type_user"] = TypeUser(ctx)
 	}
-	request := BatchRequest{Key: input.Key, User: input.User, Changes: []Change{{ID: input.ID, Fields: intent, Body: input.Text, Append: input.Append}}}
+	request := BatchRequest{Key: input.Key, Changes: []Change{{ID: input.ID, Fields: intent, Body: input.Text, Append: input.Append}}}
 	request.prepare = func(root *os.Root) ([]Change, error) {
 		if err := validateTimeInput(fields, Memories); err != nil {
 			return nil, err
@@ -107,12 +100,7 @@ func (s *Store) SaveMemory(ctx context.Context, input MemoryInput) (Receipt, err
 				return nil, err
 			}
 		}
-		typeUser := TypeUser(ctx)
-		if typeUser == "" && typeDoc != nil {
-			typeUser = documentUser(typeDoc)
-			ctx = WithTypeUser(ctx, typeUser)
-		}
-		if err := typeFields(typeDoc, typeUser, input.Type, fields); err != nil {
+		if err := typeFields(typeDoc, input.Type, fields); err != nil {
 			return nil, err
 		}
 		memory := Change{Ref: "memory", ID: input.ID, Kind: Memories, Fields: fields, Body: input.Text, Append: input.Append, preserveUnchanged: true}
@@ -129,7 +117,6 @@ func (s *Store) SaveMemory(ctx context.Context, input MemoryInput) (Receipt, err
 func namedData(input NamedInput) map[string]any {
 	data := map[string]any{"id": input.ID, "name": input.Name, "type": stringValue(input.Type), "aliases": input.Aliases, "metadata": input.Metadata, "append": input.Append, "relations": relationData(input.Relations)}
 	if input.Type != nil {
-		data["type_user"] = input.User
 	}
 	if input.Time != nil {
 		data["time"] = input.Time
@@ -186,7 +173,7 @@ func findNamed(ctx context.Context, root *os.Root, kind Destination, input Named
 			if !sameName(name, input.Name) {
 				continue
 			}
-			storedType := doc.TypeFor(input.User)
+			storedType := documentType(doc)
 			if input.Type != nil && storedType != "" && !sameName(*input.Type, storedType) {
 				continue
 			}
@@ -220,9 +207,6 @@ func namedChange(kind Destination, input NamedInput) Change {
 	return Change{ID: input.ID, Kind: kind, Fields: fields, Body: input.Description, Append: input.Append}
 }
 func relatedRecord(ctx context.Context, root *os.Root, kind Destination, input NamedInput, changes *[]Change) (string, error) {
-	if input.User == "" {
-		input.User = TypeUser(ctx)
-	}
 	if input.Create {
 		if input.ID != "" || strings.TrimSpace(input.Name) == "" {
 			return "", fmt.Errorf("a new named target needs create:true and name, without id")
@@ -244,10 +228,7 @@ func relatedRecord(ctx context.Context, root *os.Root, kind Destination, input N
 			for _, name := range append([]string{fieldText(change.Fields["name"])}, stringsFromNode(node)...) {
 				matches = matches || sameName(name, input.Name)
 			}
-			storedType := ""
-			if types, ok := change.Fields["types"].(map[string]string); ok {
-				storedType = types[input.User]
-			}
+			storedType := fieldText(change.Fields["type"])
 			matches = matches && (input.Type == nil || storedType == "" || sameName(storedType, *input.Type))
 		}
 		if change.Kind == kind && matches {
@@ -312,12 +293,6 @@ func relatedRecord(ctx context.Context, root *os.Root, kind Destination, input N
 }
 
 func (s *Store) SaveNamed(ctx context.Context, kind Destination, input NamedInput) (Receipt, error) {
-	if input.User == "" {
-		input.User = TypeUser(ctx)
-	}
-	if TypeUser(ctx) == "" && input.User != "" {
-		ctx = WithTypeUser(ctx, input.User)
-	}
 	input.Key = writeKey(input.Key)
 	request := BatchRequest{Key: input.Key, Changes: []Change{{Kind: kind, Fields: map[string]any{"input": namedData(input)}}}}
 	request.prepare = func(root *os.Root) ([]Change, error) {
@@ -353,25 +328,18 @@ func (s *Store) SaveNamed(ctx context.Context, kind Destination, input NamedInpu
 	return s.ApplyBatch(ctx, request)
 }
 func (s *Store) SaveStory(ctx context.Context, input StoryInput) (Receipt, error) {
-	if TypeUser(ctx) == "" && input.User != "" {
-		ctx = WithTypeUser(ctx, input.User)
-	}
 	if input.ID != "" && kindOf(input.ID) != Stories {
 		return Receipt{Key: input.Key, Status: "not_accepted"}, fmt.Errorf("%s is not a story ID", input.ID)
 	}
 	fields := copyFields(input.Metadata)
-	if input.User != "" {
-		fields["user"] = input.User
-	}
 	if input.Title != "" {
 		fields["title"] = input.Title
 	}
 	intent := map[string]any{"metadata": fields, "relations": relationData(input.Relations)}
 	if input.Type != nil {
 		intent["type"] = *input.Type
-		intent["type_user"] = TypeUser(ctx)
 	}
-	request := BatchRequest{Key: writeKey(input.Key), User: input.User, Changes: []Change{{ID: input.ID, Kind: Stories, Fields: intent, Body: input.Text, Append: input.Append}}}
+	request := BatchRequest{Key: writeKey(input.Key), Changes: []Change{{ID: input.ID, Kind: Stories, Fields: intent, Body: input.Text, Append: input.Append}}}
 	request.prepare = func(root *os.Root) ([]Change, error) {
 		if err := validateTimeInput(fields, Stories); err != nil {
 			return nil, err
@@ -385,12 +353,7 @@ func (s *Store) SaveStory(ctx context.Context, input StoryInput) (Receipt, error
 				return nil, err
 			}
 		}
-		typeUser := TypeUser(ctx)
-		if typeUser == "" && typeDoc != nil {
-			typeUser = documentUser(typeDoc)
-			ctx = WithTypeUser(ctx, typeUser)
-		}
-		if err := typeFields(typeDoc, typeUser, input.Type, fields); err != nil {
+		if err := typeFields(typeDoc, input.Type, fields); err != nil {
 			return nil, err
 		}
 		change := Change{Ref: "story", ID: input.ID, Kind: Stories, Fields: fields, Body: input.Text, Append: input.Append}
@@ -491,7 +454,7 @@ func needsEnrichment(doc *Document, input NamedInput) bool {
 	if len(input.Metadata) > 0 || input.Relations != nil {
 		return true
 	}
-	if input.Type != nil && !sameName(*input.Type, doc.TypeFor(input.User)) {
+	if input.Type != nil && !sameName(*input.Type, documentType(doc)) {
 		return true
 	}
 	if input.Description != nil && !strings.Contains(doc.Body, *input.Description) {
@@ -537,7 +500,7 @@ func namedTime(input NamedInput) (any, bool) {
 	return value, present
 }
 func namedFields(doc *Document, input NamedInput, kind Destination, fields map[string]any) error {
-	if err := typeFields(doc, input.User, input.Type, fields); err != nil {
+	if err := typeFields(doc, input.Type, fields); err != nil {
 		return err
 	}
 	if value, present := namedTime(input); present {

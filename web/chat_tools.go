@@ -35,7 +35,7 @@ func malformedToolReply(m chatMessage) bool {
 func originalTurnText(c chatConversation) string {
 	receipt := c.Requests[c.TurnID]
 	for _, m := range c.Messages {
-		if m.Role == "user" && m.TurnID == c.TurnID && chatTurnFingerprint(c.User, m.Content, m.Uploads) == receipt {
+		if m.Role == "user" && m.TurnID == c.TurnID && chatTurnFingerprint(c.Store, m.Content, m.Uploads) == receipt {
 			return m.Content
 		}
 	}

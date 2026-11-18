@@ -1,7 +1,7 @@
 import { newID } from "./ids.js";
 
 export const fileURL = (id, filename, preview = false) =>
-  `/api/records/${encodeURIComponent(id)}/files/${encodeURIComponent(filename)}${preview ? "?preview=1" : ""}`;
+  `api/records/${encodeURIComponent(id)}/files/${encodeURIComponent(filename)}${preview ? "?preview=1" : ""}`;
 
 export function relativeFileURL(id, value, preview = false) {
   if (!id || !value || /^(?:[a-z][a-z\d+.-]*:|\/|#)/i.test(value)) return value;
@@ -16,15 +16,17 @@ export function relativeFileURL(id, value, preview = false) {
 const saved = {
   get(key) {
     try {
-      return JSON.parse(localStorage.getItem(key) || "null");
+      return JSON.parse(
+        localStorage.getItem(location.pathname + key) || "null",
+      );
     } catch {
       return null;
     }
   },
   set(key, value) {
     try {
-      if (value === null) localStorage.removeItem(key);
-      else localStorage.setItem(key, JSON.stringify(value));
+      if (value === null) localStorage.removeItem(location.pathname + key);
+      else localStorage.setItem(location.pathname + key, JSON.stringify(value));
     } catch {
       /* The server retains accepted uploads and operations. */
     }
@@ -32,7 +34,7 @@ const saved = {
 };
 export async function uploadFile(request, file, scope, key = newID()) {
   return request(
-    `/api/uploads/${key}?${new URLSearchParams({ scope, filename: file.name })}`,
+    `api/uploads/${key}?${new URLSearchParams({ scope, filename: file.name })}`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/octet-stream" },
@@ -49,7 +51,7 @@ export function recordFiles(request, id) {
     async init() {
       try {
         const result = await request(
-          `/api/records/${encodeURIComponent(id)}/files`,
+          `api/records/${encodeURIComponent(id)}/files`,
         );
         this.files = result.files;
         this.fileError = (result.diagnostics || [])
@@ -118,14 +120,14 @@ export function filesUI(request) {
       try {
         const [listing, uploads, portraits] = await Promise.all([
           id
-            ? request(`/api/records/${id}/files`)
+            ? request(`api/records/${id}/files`)
             : Promise.resolve({ files: [] }),
           request(
-            "/api/uploads?" +
+            "api/uploads?" +
               new URLSearchParams({ scope: this.editorFileScope() }),
           ),
           id && this.selected?.kind === "entities"
-            ? request(`/api/records/${id}/profile-pictures`).catch((error) => ({
+            ? request(`api/records/${id}/profile-pictures`).catch((error) => ({
                 pictures: [],
                 diagnostics: [error.message],
               }))
@@ -177,11 +179,11 @@ export function filesUI(request) {
         ...(filename ? { filename } : {}),
       };
       saved.set(key, attempt);
-      const listing = await request(`/api/records/${id}/files`);
+      const listing = await request(`api/records/${id}/files`);
       if (attempt.revision === null) attempt.revision = listing.revision;
       saved.set(key, attempt);
       try {
-        const receipt = await request(`/api/records/${id}/files`, {
+        const receipt = await request(`api/records/${id}/files`, {
           method: "POST",
           body: JSON.stringify(attempt),
         });

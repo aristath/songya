@@ -26,12 +26,12 @@ func TestChatEditRewindsResendsAndRetriesWithoutRepeating(t *testing.T) {
 	id := chatID()
 	upload := songya.Upload{ID: "saved-file", Filename: "photo.jpg"}
 	seed, err := app.chat.edit(context.Background(), id, func(c *chatConversation) error {
-		c.User, c.Title, c.Status, c.TurnID = "sam", "Our conversation", "done", "later"
+		c.Store, c.Title, c.Status, c.TurnID = "store", "Our conversation", "done", "later"
 		c.Messages = []chatMessage{{Role: "user", Content: "Keep this", TurnID: "first"}, {Role: "assistant", Content: "Earlier answer", TurnID: "first"}, {Role: "user", Content: "Wrong words", TurnID: "edited", Uploads: []songya.Upload{upload}}, {Role: "assistant", Content: "Discard this answer", TurnID: "edited"}, {Role: "user", Content: "Later words", TurnID: "later"}}
 		c.Queue = []chatQueuedTurn{{ID: "queued", Text: "Remove queued words"}}
 		for _, m := range c.Messages {
 			if m.Role == "user" {
-				c.Requests[m.TurnID] = chatTurnFingerprint("sam", m.Content, m.Uploads)
+				c.Requests[m.TurnID] = chatTurnFingerprint("store", m.Content, m.Uploads)
 			}
 		}
 		return nil

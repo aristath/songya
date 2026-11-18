@@ -7,7 +7,7 @@ This reference describes the stored format, public operations, and durability
 limits. For executable Go examples, see [example_test.go](../example_test.go).
 
 - [Files](#files)
-- [Users](#users)
+- [Isolated stores](#isolated-stores)
 - [Documents](#documents)
 - [Store](#store)
 - [Updates](#updates)
@@ -40,7 +40,6 @@ an `id` metadata field. A record contains YAML frontmatter and a Markdown body:
 ```markdown
 ---
 title: Example
-user: ari
 created_at: 2026-11-03T10:00:00Z
 updated_at: 2026-11-03T10:00:00Z
 relations:
@@ -58,42 +57,12 @@ are derived. Markdown files are authoritative; `.index/` is disposable.
 Entity and topic descriptions live in the Markdown body. The catalogue, search
 and UI use that body directly; there is no separate metadata description.
 
-## Users
+## Isolated stores
 
-One store contains records for every user. Memories and stories **must** have a
-nonempty `user` field identifying one user; `all` is reserved for queries. Numeric
-scalar values such as `3` normalize to the string `"3"`. Entities and topics are
-shared and do not receive an owner automatically.
-
-`Query.User` filters search and timelines. `Prepare(ctx, account, user, limit)`
-uses the same scope for candidates, duplicate suggestions, and ambiguities.
-`GraphQuery.User` selects edge sources for traversal and backlinks; shared source
-records remain available, and references still report their actual target
-availability. A specific user sees their memories/stories and shared entities and
-topics. `"all"`, or an omitted filter, selects everyone. Pagination follows this
-filtered view.
-
-This is selection, not authorization. Anyone can select another user or `all`,
-read an exact record ID, compose an explicitly selected story, or change a record's
-user. There are no administrator checks or ownership permissions.
-
-`Create` requires `fields["user"]` for memories/stories. Updates preserve the
-current user when omitted, and cannot clear it. `BatchRequest.User` supplies a
-default for newly created memories/stories; each change's explicit `fields.user`
-takes precedence. User IDs are literal values, not `$ref` record references.
-Shared entity/topic changes are unaffected. Ownership is part
-of the accepted batch intent, so changing it under an accepted key is blocked.
-
-Splits inherit the source user unless a part explicitly supplies another one.
-Merges inherit the user when every source has that user; a cross-user merge needs
-an explicit `fields.user`. `ImportRequest.User` provides the default for imported
-memories/stories; reviewed part fields can override it. Imported originals are
-preserved verbatim.
-
-Required ownership is checked before new writes are accepted. If an external edit
-or damaged file removes the field, the original remains readable with diagnostics;
-reads never invent an owner or rewrite the source. Updating it needs an explicit
-valid user. No existing records are migrated or assigned automatically.
+Open one directory per person or collection. Ownership is implicit in that
+directory; records do not have a user field. Every catalogue, graph, type list,
+attachment, journal and index belongs to that Store instance. Nothing traverses
+another store. Clients configure their allowed store paths independently.
 
 ## Documents
 
@@ -154,7 +123,7 @@ encoded once and referenced with aliases rather than expanded repeatedly.
 - `Store.Create(destination, fields, body)` saves a new record. Choose `Memories`,
   `Entities`, `Topics`, or `Stories`; fields are YAML metadata as `map[string]any`.
   The engine generates the ID and both UTC timestamps. Memories/stories require
-  `fields.user`; entities/topics are shared. A supplied `id` is ignored.
+  metadata; every record belongs to this store. A supplied `id` is ignored.
   Metadata is encoded before acquiring the write lock. A failed save returns an
   ID only when this operation has reserved it; a collision never claims another
   write's ID.
@@ -332,7 +301,7 @@ percent overlap. Dimensions follow the provider's response.
 `Search(ctx, Query{Mode: "semantic", Text: "orchestral performer"})` ranks entity
 names/descriptions and memory contents by their best chunk's cosine similarity.
 Names include aliases; memory inputs include titles, event time and semantic
-metadata. The ordinary user/kind/relationship/page filters apply.
+metadata. The ordinary kind/relationship/page filters apply.
 
 `IndexEmbeddings(ctx)` warms or repairs all active entity and memory vectors.
 Record text, endpoint and model identify cached vectors; direct file edits and
@@ -353,7 +322,7 @@ back to lexical retrieval. Stories retain narrative order and references to
 repeated records. This creates no summaries or changes to stored records.
 
 `Offset` and `Next` are byte positions in the labelled narrative. `Limit` defaults
-to the 16 KiB maximum. Follow `Next` with the same query and user while
+to the 16 KiB maximum. Follow `Next` with the same query and store while
 `Truncated` is true. Concurrent record edits can change the narrative; start again
 to read the new version. Invalid UTF-8 pages retain their bytes in `Base64`.
 
@@ -453,7 +422,7 @@ earliest `2025-07-01`, latest null, and prose preserving the uncertain starting 
 
 ## Related changes and retry safety
 
-`Prepare(ctx, account, user, limit)` searches all record types together and returns a
+`Prepare(ctx, account, limit)` searches all record types together and returns a
 fresh request key, shortlists, possible duplicate names, and identity ambiguities.
 It uses deterministic lexical matching, with no LLM calls. A shortlist is evidence
 to review, not an automatic identity assignment.
@@ -553,52 +522,16 @@ same record IDs. Changing an accepted partition requires reviewed organization,
 not importing a second active copy under the same path. Source roots remain
 separate from the active store; source files are never rewritten.
 
-## Per-user types
+## Store types
 
-Record kinds (`entities`, `memories`, `topics`, `stories`) are fixed. Each user
-configures a separate list of optional types for each kind. New users receive
-12 entity types: person, group, organization, place, animal, plant, brand, object,
-food, software, creative_work, and event. The other three lists start empty.
-A person can include a nonhuman person. Each definition has a stable ID, an
-editable display name, a plain-language description and an optional display
-`color`. Each configuration also has `kind_colors` for the four record kinds.
-Colors are named Catppuccin presets (except the three foundation colors) or hex
-colors. Hex shorthand and case normalize to `#rrggbb`; named presets adapt to the
-UI theme. Colors are scoped to the classification user, not the record owner.
-Missing colors receive display defaults without rewriting existing records or
-settings. Omitting colors in an update preserves the saved choices. An unreadable
-color does not remove an otherwise readable type; diagnostics identify the field
-while healthy settings remain usable.
-
-Assignments live in frontmatter:
-
-```yaml
-types:
-  life: plant
-  cook: ingredient
-```
-
-This classifies the same shared identity differently for each user. It does not
-change the `user` owner of a memory or story. There is no global `type` field.
-Use `Document.SetType(user, id)` to edit one assignment while preserving the
-other users' metadata. In tool inputs, omitted type keeps the assignment and an
-empty type clears only the selected user's assignment.
-
-`Store.TypeConfiguration(ctx, user)` creates that user's independent defaults
-once and returns definitions, usage counts, diagnostics and an optimistic
-version. Settings are JSON files under `.types`, named using the user's SHA-256.
-`SaveTypeConfiguration` requires that version and a stable request key. Removing
-an in-use ID also requires a replacement ID or an explicitly empty replacement.
-The configuration and affected assignments share the durable batch journal;
-interruption recovery completes the accepted operation. A completed retry cannot
-reapply old assignments over later work. Renaming a display name leaves the ID
-and assignments intact.
-
-All engine writes validate changed assignments, including source/import and
-batch writes. `WithTypeUser` restricts an operation to one user's assignments.
-Unchanged damaged metadata does not block unrelated body edits. Damaged settings
-are retained and reported; another user's settings remain usable.
-
+Each store configures optional types for entities, memories, topics and stories.
+A record has one scalar `type` field. `Document.SetType(id)` edits it;
+omitting a tool's type keeps it, and an empty string clears it.
+`Store.TypeConfiguration(ctx)` returns the definitions, colors, owner entity,
+version and usage. `SaveTypeConfiguration` keeps conflict detection, durable
+batch publication and explicit reassignment when removing in-use types.
+Defaults contain 12 entity types; other kinds start with no subtypes. Damaged
+metadata stays readable and unrelated edits remain possible.
 
 ## Entity lifetime dates
 

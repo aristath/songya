@@ -6,7 +6,6 @@ export function recallUI(request) {
     recallError: "",
     recallNotice: "",
     recallMessage: "",
-    recallOwner: "all",
     recallResult: null,
     recallJournalBlocked: false,
     recallDraftKey() {
@@ -53,7 +52,7 @@ export function recallUI(request) {
       this.$refs.recallSettingsDialog.showModal();
       this.recallBusy = true;
       try {
-        const value = await request("/api/recall/settings");
+        const value = await request("api/recall/settings");
         let saved =
           this.recallDraft && this.recallSettings
             ? { version: this.recallSettings.version, recall: this.recallDraft }
@@ -61,10 +60,10 @@ export function recallUI(request) {
         const key = "songya-recall-draft:" + value.config_file;
         this.recallJournalBlocked = false;
         try {
-          const raw = localStorage.getItem(key);
+          const raw = localStorage.getItem(location.pathname + key);
           if (reload) {
             if (raw) localStorage.setItem(key + ":recovery:" + Date.now(), raw);
-            localStorage.removeItem(key);
+            localStorage.removeItem(location.pathname + key);
             saved = null;
           } else if (raw) {
             const candidate = JSON.parse(raw);
@@ -112,7 +111,7 @@ export function recallUI(request) {
       this.recallError = "";
       this.recallNotice = "";
       try {
-        this.recallSettings = await request("/api/recall/settings", {
+        this.recallSettings = await request("api/recall/settings", {
           method: "PUT",
           body: JSON.stringify({
             version: this.recallSettings.version,
@@ -135,11 +134,10 @@ export function recallUI(request) {
       this.recallBusy = true;
       this.recallError = "";
       try {
-        const response = await request("/api/recall", {
+        const response = await request("api/recall", {
           method: "POST",
           body: JSON.stringify({
             message: this.recallMessage,
-            owners: [this.recallOwner],
           }),
         });
         this.recallResult = response.results[0];

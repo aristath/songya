@@ -64,7 +64,7 @@ export function storyUI(request) {
       try {
         do {
           const page = await request(
-            "/api/stories/" +
+            "api/stories/" +
               encodeURIComponent(id) +
               "/compose?offset=" +
               this.storyNext,

@@ -47,7 +47,7 @@ func TestFolderConversionPreservesBytesMetadataHistoryAndResumes(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Preserve old accepted receipt JSON exactly, including checksum-protected Source.
-	request := BatchRequest{Key: "old-accepted", User: "john", Changes: []Change{{Kind: Memories, Body: pointer("A saved account")}}}
+	request := BatchRequest{Key: "old-accepted", Changes: []Change{{Kind: Memories, Body: pointer("A saved account")}}}
 	revision, _ := requestRevision(ctx, request)
 	journal, err := prepareBatch(ctx, root, request, revision)
 	if err != nil {
@@ -385,7 +385,7 @@ func TestConversionKeepsAcceptedOldUncommittedBatchAndPendingUpdate(t *testing.T
 	s, _ := Open(t.TempDir())
 	root, _ := os.OpenRoot(s.path)
 	defer root.Close()
-	request := BatchRequest{Key: "old-interrupted-batch", User: "john", Changes: []Change{{Ref: "one", Kind: Memories, Body: pointer("John's accepted account")}, {Ref: "two", Kind: Memories, Body: pointer("Mary's accepted account")}}}
+	request := BatchRequest{Key: "old-interrupted-batch", Changes: []Change{{Ref: "one", Kind: Memories, Body: pointer("John's accepted account")}, {Ref: "two", Kind: Memories, Body: pointer("Mary's accepted account")}}}
 	digest, _ := requestRevision(ctx, request)
 	journal, err := prepareBatch(ctx, root, request, digest)
 	if err != nil {

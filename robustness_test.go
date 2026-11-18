@@ -33,7 +33,7 @@ func testRawYAMLRecovery(t *testing.T, path string) {
 		"scalar children": {Kind: yaml.ScalarNode, Tag: "!!str", Value: "Keep value", Content: []*yaml.Node{yamlValue("Keep child")}},
 		"documents":       {Kind: yaml.DocumentNode, Content: []*yaml.Node{yamlValue("Keep value"), yamlValue("Keep child")}},
 	} {
-		doc, err := store.Create(Memories, testUserFields(Memories, map[string]any{"title": "Healthy", "payload": node}), "Original body")
+		doc, err := store.Create(Memories, map[string]any{"title": "Healthy", "payload": node}, "Original body")
 		if err != nil {
 			t.Fatalf("%s prevented saving healthy content: %v", name, err)
 		}
@@ -63,7 +63,7 @@ func testRawYAMLRecovery(t *testing.T, path string) {
 		if (name == "scalar children" || name == "documents") && !bytes.Contains(data, []byte("Keep child")) {
 			t.Fatalf("%s discarded its children", name)
 		}
-		if _, err := store.Create(Topics, testUserFields(Topics, nil), "Other work continues"); err != nil {
+		if _, err := store.Create(Topics, nil, "Other work continues"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -121,7 +121,7 @@ func testSharedGoData(t *testing.T, store *Store) {
 	for range depth {
 		value = map[string]any{"a": value, "b": value}
 	}
-	doc, err := store.Create(Topics, testUserFields(Topics, map[string]any{"title": "Healthy", "payload": value}), "Keep body")
+	doc, err := store.Create(Topics, map[string]any{"title": "Healthy", "payload": value}, "Keep body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestRawMapAliasesKeepSuppliedIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := store.Create(Memories, testUserFields(Memories, map[string]any{"payload": nodes}), "Body")
+	doc, err := store.Create(Memories, map[string]any{"payload": nodes}, "Body")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +296,7 @@ func TestInitializationRetriesAfterUnknownOrObstructedLock(t *testing.T) {
 			if err := store.Recover(); err != nil || len(store.Diagnostics()) != 0 {
 				t.Fatalf("original handle remained blocked: %v, %v", err, store.Diagnostics())
 			}
-			if _, err := store.Create(Memories, testUserFields(Memories, nil), "Recovered"); err != nil {
+			if _, err := store.Create(Memories, nil, "Recovered"); err != nil {
 				t.Fatal(err)
 			}
 		})
@@ -364,7 +364,7 @@ func TestEditsKeepIncomingCommentsAndClearResolvedObstructions(t *testing.T) {
 	if err := os.Remove(filepath.Join(path, "memories")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Create(Memories, testUserFields(Memories, nil), "Healthy"); err != nil || len(store.Diagnostics()) != 0 {
+	if _, err := store.Create(Memories, nil, "Healthy"); err != nil || len(store.Diagnostics()) != 0 {
 		t.Fatalf("resolved obstruction stayed reported: %v, %v", err, store.Diagnostics())
 	}
 }
@@ -387,7 +387,7 @@ func testFailedCollision(t *testing.T, path string) {
 	previous := rand.Reader
 	rand.Reader = bytes.NewReader(make([]byte, IDSuffixLength))
 	defer func() { rand.Reader = previous }()
-	doc, err := store.Create(Memories, testUserFields(Memories, nil), "Unsaved body")
+	doc, err := store.Create(Memories, nil, "Unsaved body")
 	if err == nil || doc.ID != "" || doc.Pending || doc.Body != "Unsaved body" {
 		t.Fatalf("failed save identified foreign work: %+v, %v", doc, err)
 	}

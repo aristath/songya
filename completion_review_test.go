@@ -14,7 +14,7 @@ import (
 )
 
 func TestBatchFingerprintIsStableForCompoundMetadataKeys(t *testing.T) {
-	request := BatchRequest{User: "test", Key: "compound-keys", Changes: []Change{{Fields: map[string]any{"values": map[[1]int]string{{1}: "One", {2}: "Two", {3}: "Three"}}}}}
+	request := BatchRequest{Key: "compound-keys", Changes: []Change{{Fields: map[string]any{"values": map[[1]int]string{{1}: "One", {2}: "Two", {3}: "Three"}}}}}
 	first, err := requestRevision(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +40,7 @@ func TestImportRetrySurvivesRemovalOfSourceDirectory(t *testing.T) {
 	if err := fixtureWriteFile(filepath.Join(source, "old.md"), original, 0600); err != nil {
 		t.Fatal(err)
 	}
-	request := ImportRequest{User: "test", Path: "old.md", Revision: dataRevision(original)}
+	request := ImportRequest{Path: "old.md", Revision: dataRevision(original)}
 	first, err := store.Import(context.Background(), source, request)
 	if err != nil {
 		t.Fatal(err)
@@ -89,7 +89,7 @@ func TestHistoricalWithdrawalDoesNotBlockAnIndependentExactEdit(t *testing.T) {
 		t.Fatal(err)
 	}
 	doc := createRecord(t, store, Memories, nil, "Original")
-	request := BatchRequest{User: "test", Key: "historical-withdrawal", Changes: []Change{{ID: doc.ID, Revision: doc.Revision, Body: textPointer("Later user account")}}}
+	request := BatchRequest{Key: "historical-withdrawal", Changes: []Change{{ID: doc.ID, Revision: doc.Revision, Body: textPointer("Later user account")}}}
 	root, err := os.OpenRoot(store.path)
 	if err != nil {
 		t.Fatal(err)
@@ -207,7 +207,7 @@ func TestDamagedBatchJournalLeavesAnExplicitlyUnconfirmedReadableSnapshot(t *tes
 	}
 	healthy := createRecord(t, store, Memories, nil, "Healthy committed account")
 	changed := createRecord(t, store, Memories, nil, "Original account")
-	request := BatchRequest{User: "test", Key: "damaged-journal", Changes: []Change{{ID: changed.ID, Revision: changed.Revision, Body: textPointer("Retained proposal"), Fields: map[string]any{"redirects": []string{healthy.ID}, "time": map[string]any{"earliest": "2090-01-01", "latest": "2090-01-01"}, "relations": []Relation{{Type: "after", Target: healthy.ID}}}}}}
+	request := BatchRequest{Key: "damaged-journal", Changes: []Change{{ID: changed.ID, Revision: changed.Revision, Body: textPointer("Retained proposal"), Fields: map[string]any{"redirects": []string{healthy.ID}, "time": map[string]any{"earliest": "2090-01-01", "latest": "2090-01-01"}, "relations": []Relation{{Type: "after", Target: healthy.ID}}}}}}
 	root, err := os.OpenRoot(store.path)
 	if err != nil {
 		t.Fatal(err)
@@ -275,7 +275,7 @@ func TestCancelledBatchDoesNotStartPreparationOrPublish(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	receipt, err := store.ApplyBatch(ctx, BatchRequest{User: "test", Key: "cancelled-before-preparation", Changes: []Change{{Body: textPointer("Do not publish")}}})
+	receipt, err := store.ApplyBatch(ctx, BatchRequest{Key: "cancelled-before-preparation", Changes: []Change{{Body: textPointer("Do not publish")}}})
 	if err != context.Canceled || receipt.Status != "not_accepted" {
 		t.Fatalf("cancelled request entered preparation: %+v %v", receipt, err)
 	}

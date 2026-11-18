@@ -21,7 +21,7 @@ func TestImportPreservesOriginalCoverageAndRetryIdentity(t *testing.T) {
 	if err != nil || len(preview.Files) != 1 {
 		t.Fatal(err)
 	}
-	request := ImportRequest{User: "test", Path: "old.md", Revision: preview.Files[0].Revision, Parts: []ImportPart{{Start: 0, End: 14}, {Start: 16, End: len(source)}}}
+	request := ImportRequest{Path: "old.md", Revision: preview.Files[0].Revision, Parts: []ImportPart{{Start: 0, End: 14}, {Start: 16, End: len(source)}}}
 	imported, err := store.Import(context.Background(), sourceRoot, request)
 	if err != nil || !imported.CoverageComplete || len(imported.Parts) != 2 {
 		t.Fatalf("import failed: %+v, %v", imported, err)
@@ -56,7 +56,7 @@ func TestPartialImportReportsUncoveredSource(t *testing.T) {
 	if err := fixtureWriteFile(filepath.Join(sourceRoot, "old.md"), source, 0600); err != nil {
 		t.Fatal(err)
 	}
-	mapping, err := store.Import(context.Background(), sourceRoot, ImportRequest{User: "test", Path: "old.md", Revision: dataRevision(source), Parts: []ImportPart{{Start: 0, End: 9}}})
+	mapping, err := store.Import(context.Background(), sourceRoot, ImportRequest{Path: "old.md", Revision: dataRevision(source), Parts: []ImportPart{{Start: 0, End: 9}}})
 	if err != nil || mapping.CoverageComplete || len(mapping.Uncovered) == 0 || len(mapping.Diagnostics) == 0 {
 		t.Fatal("coverage loss was hidden")
 	}

@@ -52,12 +52,12 @@ func ExampleStore_ApplyBatch() {
 		panic(err)
 	}
 	ctx := context.Background()
-	prepared, err := store.Prepare(ctx, "I met John for coffee.", "ari", 5)
+	prepared, err := store.Prepare(ctx, "I met John for coffee.", 5)
 	if err != nil {
 		panic(err)
 	}
 	body := "I met John for coffee."
-	receipt, err := store.ApplyBatch(ctx, songya.BatchRequest{User: "ari", Key: prepared.Key, Account: body, Changes: []songya.Change{
+	receipt, err := store.ApplyBatch(ctx, songya.BatchRequest{Key: prepared.Key, Account: body, Changes: []songya.Change{
 		{Ref: "john", Kind: songya.Entities, Fields: map[string]any{"name": "John"}},
 		{Ref: "episode", Fields: map[string]any{"relations": []songya.Relation{{Type: "with", Target: "$john"}}}, Body: &body},
 	}})

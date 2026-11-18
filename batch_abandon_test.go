@@ -17,7 +17,7 @@ func TestAbandonBatchRestoresOwnBytesAndKeepsExternalEditsAndProposals(t *testin
 	ctx := context.Background()
 	a := createRecord(t, store, Memories, nil, "Old A")
 	b := createRecord(t, store, Memories, nil, "Old B")
-	request := BatchRequest{User: "test", Key: "withdraw", Account: "Preserve this original account", Changes: []Change{
+	request := BatchRequest{Key: "withdraw", Account: "Preserve this original account", Changes: []Change{
 		{ID: a.ID, Revision: a.Revision, Body: textPointer("New A")},
 		{ID: b.ID, Revision: b.Revision, Body: textPointer("New B")},
 		{Ref: "new", Kind: Topics, Body: textPointer("New topic")},
@@ -106,7 +106,7 @@ func TestInterruptedWithdrawalRecoversWithoutPublishing(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := createRecord(t, store, Memories, nil, "Original")
-	request := BatchRequest{User: "test", Key: "interrupted-withdrawal", Changes: []Change{{ID: original.ID, Revision: original.Revision, Body: textPointer("Proposal")}}}
+	request := BatchRequest{Key: "interrupted-withdrawal", Changes: []Change{{ID: original.ID, Revision: original.Revision, Body: textPointer("Proposal")}}}
 	digest, _ := requestRevision(context.Background(), request)
 	root, err := os.OpenRoot(store.path)
 	if err != nil {
@@ -151,7 +151,7 @@ func TestCommittedBatchCannotBeWithdrawn(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	receipt, err := store.ApplyBatch(ctx, BatchRequest{User: "test", Key: "committed", Changes: []Change{{Ref: "memory", Body: textPointer("Keep")}}})
+	receipt, err := store.ApplyBatch(ctx, BatchRequest{Key: "committed", Changes: []Change{{Ref: "memory", Body: textPointer("Keep")}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestConcurrentReadCannotExposeWithdrawnPublication(t *testing.T) {
 	}
 	ctx := context.Background()
 	original := createRecord(t, store, Memories, nil, "Original")
-	request := BatchRequest{User: "test", Key: "withdrawn-read", Changes: []Change{{ID: original.ID, Revision: original.Revision, Body: textPointer("Never committed")}}}
+	request := BatchRequest{Key: "withdrawn-read", Changes: []Change{{ID: original.ID, Revision: original.Revision, Body: textPointer("Never committed")}}}
 	digest, _ := requestRevision(context.Background(), request)
 	root, err := os.OpenRoot(store.path)
 	if err != nil {

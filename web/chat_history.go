@@ -39,7 +39,7 @@ func (a *chatApp) sessionAction(next http.HandlerFunc) http.HandlerFunc {
 // leaves the conversation paused and intact, ready to resume.
 func (a *chatApp) stopChat(ctx context.Context, id string) (*flock.Flock, error) {
 	_, err := a.edit(ctx, id, func(c *chatConversation) error {
-		if c.User == "" {
+		if c.Store == "" {
 			return fs.ErrNotExist
 		}
 		c.Status = "paused"

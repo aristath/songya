@@ -28,29 +28,32 @@ which claim needs correcting. An explicit correction follows the correction
 rules. Uncertainty must not be silently replaced with a guessed date or age.
 
 ```json
-{"name":"prepare_memory","arguments":{"text":"Alex and Sam enjoy the soup at Cedar Café.","user":"example_user"}}
-{"name":"save_memory","arguments":{"text":"Alex and Sam enjoy the soup at Cedar Café.","user":"example_user","relations":[{"type":"related_to","target":"Alex"},{"type":"related_to","target":"Sam"},{"type":"related_to","target":{"kind":"entities","name":"Cedar Café","type":"place"}}]}}
+{"name":"prepare_memory","arguments":{"text":"Alex and Sam enjoy the soup at Cedar Café.","store":"person"}}
+{"name":"save_memory","arguments":{"text":"Alex and Sam enjoy the soup at Cedar Café.","store":"person","relations":[{"type":"related_to","target":"Alex"},{"type":"related_to","target":"Sam"},{"type":"related_to","target":{"kind":"entities","name":"Cedar Café","type":"place"}}]}}
 ```
 
 A target is an existing record ID, an entity name, or a named object with `kind` (`entities` or `topics`), `name`, and optional `type`, `description`, `aliases`. Unique exact names/aliases reuse existing identities; matching is case-insensitive. New IDs are assigned by the engine. Ambiguous or unusable connections remain in `unresolved_connections` with diagnostics; healthy connections and prose still save.
 
-Memories and stories require an owning `user`; Clara supplies the current user automatically. Use the selected collection's user ID for its accounts. Ownership selects a collection; entity connections identify participants. Reflecting on another person's experience does not make the writer a participant. Entities and topics are shared. Selection is unrestricted; `user:"all"` selects everyone. Updating without a user preserves ownership.
+Every tool requires `store`, one configured name. Stores are separate directories;
+entities/topics and links are never shared across them. Configure the MCP with
+`--store person=/path/to/store --store agent=/path/to/agent-store`. There are no
+record owner arguments.
 
 ## Writes and connections
 
 | Tool | Main arguments |
 | --- | --- |
-| `save_memory` | `text`, optional `title`, `time`, `user`, `metadata`, `relations` |
-| `type_configuration` | `user`; optional app flag `schemas`; reads allowed IDs and definitions |
+| `save_memory` | `text`, optional `title`, `time`, `metadata`, `relations` |
+| `type_configuration` | `store`; optional app flag `schemas`; reads allowed IDs and definitions |
 | `save_entity` | `create:true` and `name` for creation; `id` for updates; optional `type`, `aliases`, `description`, `metadata`, `relations` |
 | `save_topic` | `create:true` and `name` for creation; `id` for updates; optional `aliases`, `description`, `metadata`, `relations` |
-| `save_story` | `title`, optional `text`, `user`, `metadata`, ordered `relations` |
+| `save_story` | `title`, optional `text`, `metadata`, ordered `relations` |
 
 All four accept an existing `id` to update, and `append` to enrich prose. For `save_memory`:
 
-- **Create:** omit `id`, supply standalone prose in `text` and an owner (or let the integration supply it). Empty content cannot create a memory. Equivalent content supplied through `append` is retained rather than rejected.
+- **Create:** omit `id`, supply standalone prose in `text` and select a store. Empty content cannot create a memory. Equivalent content supplied through `append` is retained rather than rejected.
 - **Append:** supply `id` and `append`. This literally adds a blank line and the new prose, preserving existing content.
-- **Update:** supply `id` and the fields to change. `text` replaces the full prose, including an empty string to clear it. When both `text` and `append` are supplied, replacement happens first, then append. Date-only, connection-only, title-only, ownership-only and metadata-only updates are supported.
+- **Update:** supply `id` and the fields to change. `text` replaces the full prose, including an empty string to clear it. When both `text` and `append` are supplied, replacement happens first, then append. Date-only, connection-only, title-only, metadata-only updates are supported.
 
 Preserve the account's meaning, attribution and meaningful quotations; prose must stand on its own without inventing facts. Omitted fields preserve existing information. `title:""` clears the memory title. Custom metadata patches supplied top-level keys, including explicit null values; omitted keys and `metadata:{}` preserve existing values. Supplied relations replace the list; with nonempty `append`, they add connections. `[]` always clears the list. For a connection-only addition, read the old connections and supply every connection to keep plus the new one. Inline identity enrichment preserves existing connections.
 
@@ -86,7 +89,7 @@ All authoritative connections use `relations: [{type, target}]`. Store one conne
 A story's `related_to` links to memories/stories define reading order. Other links associate identities or subjects. Story prose is introductory text; narrative order does not assert chronology.
 
 ```json
-{"name":"save_story","arguments":{"title":"Visits with Sam","user":"example_user","relations":[{"type":"related_to","target":"FIRST_MEMORY_ID"},{"type":"related_to","target":"SECOND_MEMORY_ID"}]}}
+{"name":"save_story","arguments":{"title":"Visits with Sam","store":"person","relations":[{"type":"related_to","target":"FIRST_MEMORY_ID"},{"type":"related_to","target":"SECOND_MEMORY_ID"}]}}
 {"name":"save_memory","arguments":{"id":"MEMORY_ID","append":"They also enjoy the salad."}}
 ```
 
@@ -111,7 +114,7 @@ Keep separately dated events in separate, connected memories. For example:
 
 ```json
 {"name":"save_entity","arguments":{"id":"JOHN_ENTITY_ID","time":{"start":"1990-04-22"}}}
-{"name":"save_memory","arguments":{"title":"John moved to Lakeside","text":"John moved to Lakeside in May 2024. The exact day is unknown.","user":"example_user","time":{"date":null,"earliest":"2024-05-01","latest":"2024-05-31"},"relations":[{"type":"related_to","target":"JOHN_ENTITY_ID"}]}}
+{"name":"save_memory","arguments":{"title":"John moved to Lakeside","text":"John moved to Lakeside in May 2024. The exact day is unknown.","store":"person","time":{"date":null,"earliest":"2024-05-01","latest":"2024-05-31"},"relations":[{"type":"related_to","target":"JOHN_ENTITY_ID"}]}}
 {"name":"save_memory","arguments":{"id":"MEMORY_ID","time":{"latest":"2024-05-20"}}}
 ```
 
@@ -138,26 +141,26 @@ Read back the source when the result omits needed values or truncates words.
 An ID-only call or an update supplying identical values returns `unchanged`, an empty `changed_fields`, and actionable guidance; it does not rewrite the memory or advance its timestamp. Compare the returned content and time with the facts intended for saving. Do not claim new facts were saved or repeat the same unchanged call. Previews are bounded; read the record for full content. Retrying an accepted request key returns the original saved snapshot and outcome, even after later edits, without replaying the write.
 
 ```json
-{"name":"recall_memory","arguments":{"text":"Sam","user":"example_user"}}
+{"name":"recall_memory","arguments":{"text":"Sam","store":"person"}}
 {"name":"search_memory","arguments":{"text":"Sam","kind":"entities"}}
 {"name":"search_memory","arguments":{"kind":"topics"}}
 {"name":"search_memory","arguments":{"kind":"memories","related_to":"ENTITY_ID"}}
 {"name":"search_memory","arguments":{"mode":"semantic","text":"orchestral performer"}}
 {"name":"read_memory","arguments":{"id":"RECORD_ID","view":"source"}}
 {"name":"explore_memory","arguments":{"id":"RECORD_ID","direction":"both"}}
-{"name":"memory_timeline","arguments":{"user":"example_user"}}
+{"name":"memory_timeline","arguments":{"store":"person"}}
 {"name":"compose_story","arguments":{"id":"STORY_ID"}}
 ```
 
 Recall returns connected accounts and story context. Semantic recall adds a bounded story introduction and neighboring events. Direct edits refresh automatically. Search without text lists records. Configure embeddings in the store's `config.json`; saving never waits for embeddings. `memory_maintenance(action="embed")` refreshes missing vectors.
 
-Follow `next` as `offset` with the same query/user when `truncated` is true. Recall/text/source/story offsets count bytes; search/graph/timeline offsets count items. Numeric strings work. Recall caps at 16 KiB; MCP reads/composition default to 8 KiB and cap at 12 KiB. Missing data produces diagnostics while healthy work continues.
+Follow `next` as `offset` with the same query/store when `truncated` is true. Recall/text/source/story offsets count bytes; search/graph/timeline offsets count items. Numeric strings work. Recall caps at 16 KiB; MCP reads/composition default to 8 KiB and cap at 12 KiB. Missing data produces diagnostics while healthy work continues.
 
 ## Organization, imports and recovery
 
-`organize_memory(action="merge", sources=[...])` combines reviewed records; `action="split"` takes a source and reviewed parts. Retired records remain readable and redirects preserve references. Splits inherit ownership; merges inherit a common owner, or require explicit `metadata.user` across owners.
+`organize_memory(action="merge", sources=[...])` combines reviewed records; `action="split"` takes a source and reviewed parts. Retired records remain readable and redirects preserve references. Organization operates entirely within the selected store.
 
-Configure import roots with `--import-root notes=/absolute/path`. `import_memories(action="preview", root="notes")` lists sources; `action="apply"` takes a path and user. Optional reviewed parts use exact byte ranges (`start` inclusive, `end` exclusive), kind and metadata. Originals are retained with a checksum and coverage mapping.
+Configure import roots with `--import-root notes=/absolute/path`. `import_memories(action="preview", root="notes")` lists sources; `action="apply"` takes a path in the selected store. Optional reviewed parts use exact byte ranges (`start` inclusive, `end` exclusive), kind and metadata. Originals are retained with a checksum and coverage mapping.
 
 Clients can attach a stable `songya/request-key` in MCP `_meta` to writes. Retry identical arguments with that key. Clara supplies its durable invocation ID. Without client metadata, Songya assigns an independent operation ID. Identical prose in separate operations can describe separate memories.
 
@@ -172,25 +175,14 @@ account. Model tools cannot replace `original_accounts` through metadata.
 Retries keep the source captured by the accepted write and still reject different
 record changes under the same request key.
 
-## User-specific type choices
+## Store type choices
 
-Call `type_configuration` with `user` before assigning types, unless the app
-already supplied the current choices. Its reply contains the allowed IDs,
-definitions, and short instructions for all four record kinds. The tool is
-read-only: a model cannot change these settings. Only use configured IDs. Omit
-`type` when none fits; an empty string clears this user's assignment.
-
-The four save tools accept `type` and `type_user`. The latter selects whose
-classification changes, independently of the `user` record owner. Clients should
-supply the selected person rather than ask the model to guess. Trusted client
-metadata `songya/user` takes precedence over model arguments. Another user's
-assignments are preserved, including on updates that omit owner.
-
-Clients can request `type_configuration({user, schemas:true})` to receive
-`write_schemas`, keyed by save tool name. Use these authoritative schemas in
-model-facing definitions; they include allowed enums and definitions. The CLI's
-`--user` option also scopes discovery. Engine validation always uses current
-settings, even when a client's previously discovered schema is stale.
+Call `type_configuration` with `store` before assigning types unless the app
+already supplied that store's choices. Use configured IDs; omit type when none
+fits. An empty type clears the classification. Settings are changed in the UI.
+Clients may request `schemas:true` to receive authoritative write schemas for
+that store. All tools still require a configured `store` name. Engine validation
+uses current settings even if a client has an older schema.
 
 
 ## Entity start and end dates

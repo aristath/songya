@@ -188,14 +188,9 @@ export function timelineUI(request) {
       clearTimeout(retryTimer);
       this.timelineBusy = true;
       try {
-        const value = await request(
-          "/api/timeline?" +
-            new URLSearchParams({
-              user: this.owner,
-              classification_user: this.classificationUser,
-            }),
-          { signal: controller.signal },
-        );
+        const value = await request("api/timeline?" + new URLSearchParams({}), {
+          signal: controller.signal,
+        });
         if (ticket !== generation) return true;
         this.timelineRecords = arrangeTimeline(
           value.records,

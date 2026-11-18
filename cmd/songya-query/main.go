@@ -24,7 +24,6 @@ func run() error {
 		Store    string             `json:"store"`
 		Config   string             `json:"config"`
 		Command  string             `json:"command"`
-		Owners   []string           `json:"owners"`
 		Messages []string           `json:"messages"`
 		Source   string             `json:"source"`
 		ID       string             `json:"id"`
@@ -60,7 +59,7 @@ func run() error {
 	var result any
 	switch input.Command {
 	case "recall":
-		result, err = store.Retrieve(ctx, songya.RecallRequest{Messages: input.Messages, Owners: input.Owners})
+		result, err = store.Retrieve(ctx, songya.RecallRequest{Messages: input.Messages})
 	case "list", "read", "stats":
 		var catalog songya.Catalog
 		catalog, err = store.Scan(ctx)
@@ -78,7 +77,6 @@ func run() error {
 			result = map[string]any{"record": record, "diagnostics": catalog.Diagnostics}
 			break
 		}
-		catalog = catalog.ForUsers(input.Owners)
 		if input.Kind == "all" {
 			input.Kind = ""
 		}
@@ -103,7 +101,7 @@ func run() error {
 			if len(preview) > 1500 {
 				preview = preview[:1500]
 			}
-			summaries = append(summaries, map[string]any{"id": r.ID, "source": r.Source, "kind": r.Kind, "user": r.User, "title": r.Title, "preview": string(preview), "pending": r.Pending, "unconfirmed": r.Unconfirmed})
+			summaries = append(summaries, map[string]any{"id": r.ID, "source": r.Source, "kind": r.Kind, "title": r.Title, "preview": string(preview), "pending": r.Pending, "unconfirmed": r.Unconfirmed})
 		}
 		result = map[string]any{"engine": "songya", "items": summaries, "total": len(records), "diagnostics": catalog.Diagnostics}
 	default:

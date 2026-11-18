@@ -1,32 +1,49 @@
 <!doctype html>
+
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta content="width=device-width, initial-scale=1" name="viewport" />
+    <meta name="songya-store" content="{{.Selected}}" />
     <title>Sōngyā · Records</title>
     <script src="/assets/theme.js"></script>
-    <link rel="stylesheet" href="/assets/editors.css" />
-    <link rel="stylesheet" href="/assets/palette.css" />
-    <link rel="stylesheet" href="/assets/app.css" />
-    <link rel="stylesheet" href="/assets/chat.css" />
-    <script defer src="/assets/app.js"></script>
+    <link href="/assets/editors.css" rel="stylesheet" />
+    <link href="/assets/palette.css" rel="stylesheet" />
+    <link href="/assets/app.css" rel="stylesheet" />
+    <link href="/assets/chat.css" rel="stylesheet" />
+    <script defer="" src="/assets/app.js"></script>
   </head>
   <body
-    x-data="songya"
     :class="{'graph-expanded':graphExpanded,'chat-expanded':chatExpanded}"
-    @keydown.escape.window="if(!$event.defaultPrevented&&!document.querySelector('dialog:modal')){if(chatExpanded)toggleChatExpanded();else if(graphExpanded)toggleGraphExpanded()}"
+    @keydown.escape.window="if(!$event.defaultPrevented&amp;&amp;!document.querySelector('dialog:modal')){if(chatExpanded)toggleChatExpanded();else if(graphExpanded)toggleGraphExpanded()}"
+    x-data="songya"
   >
-    <header class="masthead" :inert="graphExpanded||chatExpanded">
-      <a class="brand" href="/" @click.prevent="back()">Sōngyā</a>
+    <header :inert="graphExpanded||chatExpanded" class="masthead">
+      <a @click.prevent="back()" class="brand" href="/">Sōngyā</a>
       <div class="header-actions">
-        <button class="primary" @click="create()" :disabled="busy||loading">
+        <label
+          >Store
+          <select
+            aria-label="Store"
+            onchange="
+              location.href = '/stores/' + encodeURIComponent(this.value) + '/'
+            "
+          >
+            {{range .Stores}}
+            <option value="{{.}}" {{if eq . $.Selected}}selected{{end}}>
+              {{.}}
+            </option>
+            {{end}}
+          </select></label
+        >
+        <button :disabled="busy||loading" @click="create()" class="primary">
           New record</button
         ><label class="theme-control"
           ><span class="sr-only">Color theme</span
           ><select
+            @change="setTheme()"
             aria-label="Color theme"
             x-model="theme"
-            @change="setTheme()"
           >
             <option value="system">Device</option>
             <option value="light">Light</option>
@@ -36,67 +53,67 @@
       </div>
     </header>
     <div
-      x-show="!dialogOpen&&(notice||failure)"
       :inert="graphExpanded||chatExpanded"
+      x-show="!dialogOpen&amp;&amp;(notice||failure)"
     >
-      <div class="messages" aria-live="polite">
-        <p class="success" x-show="notice" x-text="notice" x-cloak></p>
+      <div aria-live="polite" class="messages">
+        <p class="success" x-cloak="" x-show="notice" x-text="notice"></p>
         <p
           class="error"
           role="alert"
+          x-cloak=""
           x-show="failure"
           x-text="failure"
-          x-cloak
         ></p>
       </div>
     </div>
     <main class="workspace">
       <section
-        id="chat-panel"
-        class="chat-view"
         :class="{expanded:chatExpanded}"
-        aria-labelledby="chat-heading"
         :inert="graphExpanded"
+        aria-labelledby="chat-heading"
+        class="chat-view"
+        id="chat-panel"
       >
         <div
+          :class="{'history-drawer':chatCompact}"
           class="chat-workspace"
           x-ref="chatWorkspace"
-          :class="{'history-drawer':chatCompact}"
         >
-          <div class="chat-fit" x-ref="chatFit" aria-hidden="true" inert>
+          <div aria-hidden="true" class="chat-fit" inert="" x-ref="chatFit">
             <i></i><i></i>
           </div>
           <dialog
-            class="chat-sidebar"
-            x-ref="chatSidebar"
             :class="{drawer:chatCompact}"
             :role="chatCompact?'dialog':'navigation'"
-            aria-labelledby="chat-history-heading"
             @click.self="closeChatSidebar()"
+            aria-labelledby="chat-history-heading"
+            class="chat-sidebar"
+            x-ref="chatSidebar"
           >
             <div class="chat-sidebar-heading">
               <h2 id="chat-history-heading">Conversations</h2>
               <button
-                x-show="chatCompact"
-                aria-label="Close conversations"
                 @click="closeChatSidebar()"
+                aria-label="Close conversations"
+                x-show="chatCompact"
               >
                 ✕
               </button>
             </div>
             <input
-              class="chat-search"
-              x-ref="chatSearch"
-              type="search"
               aria-label="Search conversations"
+              class="chat-search"
               placeholder="Search conversations…"
               title="Search titles and recent messages"
+              type="search"
               x-model="chatSearch"
+              x-ref="chatSearch"
             />
             <div
+              aria-label="Conversation view"
               class="chat-history-views"
               role="group"
-              aria-label="Conversation view"
             >
               <button :aria-pressed="!chatArchived" @click="chatArchived=false">
                 Recent</button
@@ -111,16 +128,16 @@
                 x-text="chatSearch?'No matching conversations.':chatArchived?'No archived conversations.':'Your conversations will appear here.'"
               ></p>
               <template
-                x-for="conversation in chatHistory()"
                 :key="conversation.id"
+                x-for="conversation in chatHistory()"
               >
                 <button
-                  class="chat-session"
                   :aria-current="conversation.id===chatSessionID?'page':null"
                   :aria-label="'Open conversation: '+conversation.title"
+                  :disabled="chatNavigationBusy()"
                   :title="conversation.title"
                   @click="openChat(conversation.id)"
-                  :disabled="chatNavigationBusy()"
+                  class="chat-session"
                 >
                   <span
                     class="chat-session-title"
@@ -161,38 +178,38 @@
               <div class="chat-heading-actions">
                 <button
                   @click="openChatSidebar()"
-                  x-show="chatCompact"
                   aria-controls="chat-history-heading"
                   title="Find a conversation"
+                  x-show="chatCompact"
                 >
                   Conversations
                 </button>
-                <button @click="newChat()" :disabled="chatNavigationBusy()">
+                <button :disabled="chatNavigationBusy()" @click="newChat()">
                   New chat
                 </button>
                 <button
-                  class="chat-icon"
-                  x-ref="chatExpand"
-                  @click="toggleChatExpanded()"
                   :aria-label="chatExpanded?'Exit expanded chat':'Expand chat'"
                   :aria-pressed="chatExpanded"
                   :title="chatExpanded?'Exit expanded chat':'Focus on the conversation'"
+                  @click="toggleChatExpanded()"
+                  class="chat-icon"
+                  x-ref="chatExpand"
                 >
                   ⛶
                 </button>
                 <button
-                  class="chat-icon"
                   @click="openChatSettings()"
                   aria-label="Chat settings"
+                  class="chat-icon"
                   title="Chat settings"
                 >
                   ⚙
                 </button>
                 <details
+                  @click.outside="$el.removeAttribute('open')"
                   class="chat-actions"
                   x-ref="chatActions"
                   x-show="chatState"
-                  @click.outside="$el.removeAttribute('open')"
                 >
                   <summary
                     aria-label="Conversation actions"
@@ -202,30 +219,30 @@
                   </summary>
                   <div class="chat-action-menu">
                     <button
-                      @click="openChatRename()"
                       :disabled="chatNavigationBusy()"
+                      @click="openChatRename()"
                     >
                       Rename conversation
                     </button>
                     <button
-                      x-show="!chatState?.archived"
-                      @click="updateChatSession({archived:true})"
                       :disabled="chatNavigationBusy()||chatState?.status!=='done'"
+                      @click="updateChatSession({archived:true})"
                       title="Finish the saved turn before archiving"
+                      x-show="!chatState?.archived"
                     >
                       Archive conversation
                     </button>
                     <button
-                      x-show="chatState?.archived"
-                      @click="updateChatSession({archived:false})"
                       :disabled="chatNavigationBusy()"
+                      @click="updateChatSession({archived:false})"
+                      x-show="chatState?.archived"
                     >
                       Restore conversation
                     </button>
                     <button
-                      class="danger"
-                      @click="deleteChat()"
                       :disabled="chatNavigationBusy()"
+                      @click="deleteChat()"
+                      class="danger"
                     >
                       Delete conversation
                     </button>
@@ -233,48 +250,12 @@
                 </details>
               </div>
             </div>
-            <div class="chat-person">
-              <label
-                >Talking as<select
-                  aria-label="Talking as"
-                  x-model="chatUser"
-                  @change="changeChatUser()"
-                  :disabled="chatNavigationBusy()"
-                >
-                  <option value="">Choose a user</option>
-                  <template x-for="user in chatUsers()" :key="user"
-                    ><option
-                      :value="user"
-                      :selected="user===chatUser"
-                      x-text="user"
-                    ></option
-                  ></template></select></label
-              ><button
-                class="text-button"
-                @click="chatAddingUser=!chatAddingUser"
-                :disabled="chatNavigationBusy()"
-              >
-                Add user
-              </button>
-            </div>
-            <form
-              class="chat-add-user"
-              x-show="chatAddingUser"
-              x-cloak
-              @submit.prevent="addChatUser()"
-            >
-              <label
-                >User name<input
-                  aria-label="New chat user"
-                  x-model="chatNewUser"
-                  autocomplete="off" /></label
-              ><button type="submit">Use this user</button>
-            </form>
+
             <div class="chat-setup" x-show="!chatSettings.configured">
               <p>Connect a model to start chatting.</p>
               <button @click="openChatSettings()">Configure connection</button>
             </div>
-            <details class="chat-recall" x-show="chatState?.recall" x-cloak>
+            <details class="chat-recall" x-cloak="" x-show="chatState?.recall">
               <summary>
                 Memory context ·
                 <span
@@ -283,8 +264,8 @@
                 records
               </summary>
               <template
-                x-for="item in chatState?.recall?.results?.[0]?.items||[]"
                 :key="item.id"
+                x-for="item in chatState?.recall?.results?.[0]?.items||[]"
                 ><div class="chat-recalled-record">
                   <strong x-text="item.title"></strong>
                   <p x-text="item.content"></p></div
@@ -299,12 +280,12 @@
             </details>
             <div class="chat-conversation">
               <div
-                class="chat-log"
-                x-ref="chatLog"
-                role="log"
+                @scroll="chatFollow=$el.scrollHeight-$el.scrollTop-$el.clientHeight&lt;64"
                 aria-label="Chat messages"
                 aria-live="off"
-                @scroll="chatFollow=$el.scrollHeight-$el.scrollTop-$el.clientHeight<64"
+                class="chat-log"
+                role="log"
+                x-ref="chatLog"
               >
                 <div class="chat-empty" x-show="!chatMessages().length">
                   <h2>A place for your memories</h2>
@@ -317,72 +298,72 @@
                   </p>
                 </div>
                 <template
-                  x-for="(message,index) in chatMessages()"
                   :key="index"
+                  x-for="(message,index) in chatMessages()"
                 >
-                  <article class="chat-message" :class="message.role">
+                  <article :class="message.role" class="chat-message">
                     <p class="chat-speaker">
                       <span
-                        x-text="message.role==='user' ? (chatState?.user||chatUser) : 'Songya'"
+                        x-text="message.role==='user' ? (chatState?.store||chatStore) : 'Songya'"
                       ></span>
                       <span
                         x-show="message.status"
                         x-text="' · '+message.status"
                       ></span>
                       <button
-                        class="text-button"
-                        x-show="message.role==='user'&&message.turn_id&&!chatState?.archived"
-                        @click="editChatMessage(message)"
                         :disabled="chatNavigationBusy()"
+                        @click="editChatMessage(message)"
                         aria-label="Edit message"
+                        class="text-button"
+                        x-show="message.role==='user'&amp;&amp;message.turn_id&amp;&amp;!chatState?.archived"
                       >
                         Edit
                       </button>
                     </p>
                     <details
                       class="chat-reasoning"
-                      x-show="message.reasoning"
                       x-data="{ wasThinking: false }"
                       x-effect="if(!!message.thinking!==wasThinking){$el.open=!!message.thinking;wasThinking=!!message.thinking}"
+                      x-show="message.reasoning"
                     >
                       <summary
                         x-text="message.thinking ? 'Thinking…' : 'Reasoning'"
                       ></summary>
                       <pre
+                        x-effect="if(message.thinking){$nextTick(()=&gt;{$el.scrollTop=$el.scrollHeight})}"
                         x-text="message.reasoning"
-                        x-effect="if(message.thinking){$nextTick(()=>{$el.scrollTop=$el.scrollHeight})}"
                       ></pre>
                     </details>
                     <div
                       class="chat-prose"
-                      x-show="message.content"
                       x-html="chatMarkdown(message.content)"
+                      x-show="message.content"
                     ></div>
                     <template
-                      x-for="upload in message.uploads||[]"
                       :key="upload.key||upload.upload"
+                      x-for="upload in message.uploads||[]"
                       ><p class="upload-ready">
                         <span x-text="upload.filename"></span
                         ><span x-text="chatUploadLabel(upload)"></span>
                         <button
-                          type="button"
-                          x-show="upload.key&&upload.status==='error'&&hasChatAttachmentFile(upload)"
                           @click="retryChatAttachment(upload)"
+                          type="button"
+                          x-show="upload.key&amp;&amp;upload.status==='error'&amp;&amp;hasChatAttachmentFile(upload)"
                         >
                           Retry upload
                         </button>
                         <label
                           class="file-picker"
-                          x-show="upload.key&&upload.status==='error'&&!hasChatAttachmentFile(upload)"
+                          x-show="upload.key&amp;&amp;upload.status==='error'&amp;&amp;!hasChatAttachmentFile(upload)"
                           >Choose file again<input
-                            type="file"
                             :aria-label="'Choose '+upload.filename+' again'"
                             @change="retryChatAttachment(upload,$event.target.files[0]);$event.target.value=''"
+                            type="file"
                         /></label></p
                     ></template>
                     <template
-                      x-for="call in message.tool_calls||[]"
                       :key="call.id||call.function.name"
+                      x-for="call in message.tool_calls||[]"
                     >
                       <details class="chat-tool">
                         <summary
@@ -390,13 +371,13 @@
                         ></summary>
                         <pre x-text="chatToolResult(call.id)"></pre>
                         <template
-                          x-for="(image,index) in chatToolImages(call.id)"
                           :key="index"
+                          x-for="(image,index) in chatToolImages(call.id)"
                         >
                           <img
-                            class="chat-tool-image"
-                            :src="'data:'+image.mime_type+';base64,'+image.data"
                             :alt="'Image returned by '+call.function.name"
+                            :src="'data:'+image.mime_type+';base64,'+image.data"
+                            class="chat-tool-image"
                           />
                         </template>
                       </details>
@@ -404,7 +385,7 @@
                   </article>
                 </template>
               </div>
-              <div class="chat-progress" aria-live="polite">
+              <div aria-live="polite" class="chat-progress">
                 <span
                   x-show="chatBusy()"
                   x-text="chatConnection||chatProgressLabel()"
@@ -413,47 +394,47 @@
                   >Paused. Your conversation and completed work are saved.</span
                 >
                 <span x-show="chatState?.status==='done'">Reply complete.</span>
-                <button x-show="!chatFollow" @click="followChat()">
+                <button @click="followChat()" x-show="!chatFollow">
                   Jump to latest
                 </button>
-                <button x-show="chatBusy()" @click="pauseChat()">Pause</button>
+                <button @click="pauseChat()" x-show="chatBusy()">Pause</button>
               </div>
               <div
                 class="chat-error"
                 role="alert"
+                x-cloak=""
                 x-show="chatError||chatState?.error"
-                x-cloak
               >
                 <p x-text="chatError||chatState?.error"></p>
                 <button
-                  x-show="chatPending&&!chatSending"
                   @click="flushChatPending()"
+                  x-show="chatPending&amp;&amp;!chatSending"
                 >
                   Retry pending messages
                 </button>
               </div>
               <button
+                @click="retryChat()"
                 class="chat-continue"
                 x-show="['error','paused'].includes(chatState?.status)"
-                @click="retryChat()"
               >
                 Continue saved turn
               </button>
               <form
-                class="chat-composer"
-                @submit.prevent="sendChat()"
-                @dragover.prevent
+                @dragover.prevent=""
                 @drop.prevent="uploadChatFiles([...$event.dataTransfer.files])"
+                @submit.prevent="sendChat()"
+                class="chat-composer"
               >
                 <div
-                  class="chat-attachments"
-                  x-show="chatAttachments.length"
                   aria-label="Message attachments"
+                  class="chat-attachments"
                   role="list"
+                  x-show="chatAttachments.length"
                 >
                   <template
-                    x-for="attachment in chatAttachments"
                     :key="attachment.key"
+                    x-for="attachment in chatAttachments"
                   >
                     <div class="chat-attachment" role="listitem">
                       <span x-text="attachment.filename"></span>
@@ -464,29 +445,29 @@
                       >
                       <span
                         class="error"
+                        role="alert"
                         x-show="attachment.status==='error'"
                         x-text="attachment.error"
-                        role="alert"
                       ></span>
                       <button
-                        type="button"
-                        x-show="attachment.status==='error'&&hasChatAttachmentFile(attachment)"
                         @click="retryChatAttachment(attachment)"
+                        type="button"
+                        x-show="attachment.status==='error'&amp;&amp;hasChatAttachmentFile(attachment)"
                       >
                         Retry upload
                       </button>
                       <label
                         class="file-picker"
-                        x-show="attachment.status==='error'&&!hasChatAttachmentFile(attachment)"
+                        x-show="attachment.status==='error'&amp;&amp;!hasChatAttachmentFile(attachment)"
                         >Choose file again<input
-                          type="file"
                           :aria-label="'Choose '+attachment.filename+' again'"
                           @change="retryChatAttachment(attachment,$event.target.files[0]);$event.target.value=''"
+                          type="file"
                       /></label>
                       <button
-                        type="button"
                         :aria-label="'Remove '+attachment.filename"
                         @click="removeChatAttachment(attachment.key)"
+                        type="button"
                       >
                         ×
                       </button>
@@ -497,83 +478,55 @@
                   >Message Songya</label
                 >
                 <textarea
-                  id="chat-message-input"
-                  x-ref="chatInput"
-                  aria-label="Message Songya"
-                  rows="3"
-                  :placeholder="chatState?.archived ? 'Restore this conversation to continue…' : 'Tell me what you remember…'"
-                  x-model="chatInput"
-                  @input="keepChatDraft()"
-                  @keydown.enter="if(!$event.shiftKey&&!$event.isComposing){$event.preventDefault();sendChat()}"
                   :disabled="!chatSettings.configured||!!chatState?.archived"
+                  :placeholder="chatState?.archived ? 'Restore this conversation to continue…' : 'Tell me what you remember…'"
+                  @input="keepChatDraft()"
+                  @keydown.enter="if(!$event.shiftKey&amp;&amp;!$event.isComposing){$event.preventDefault();sendChat()}"
+                  aria-label="Message Songya"
+                  id="chat-message-input"
+                  rows="3"
+                  x-model="chatInput"
+                  x-ref="chatInput"
                 ></textarea>
                 <div class="chat-compose-actions">
                   <label class="chat-attach"
                     >Attach files<input
-                      class="sr-only"
-                      aria-label="Attach files"
-                      type="file"
-                      multiple
-                      :disabled="!chatUser||!!chatState?.archived"
+                      :disabled="!chatStore||!!chatState?.archived"
                       @change="uploadChatFiles([...$event.target.files]);$event.target.value=''"
+                      aria-label="Attach files"
+                      class="sr-only"
+                      multiple=""
+                      type="file"
                   /></label>
                   <button
+                    :disabled="!chatStore||(!chatInput.trim()&amp;&amp;!chatPending&amp;&amp;!chatAttachments.length)||!chatSettings.configured||!!chatState?.archived"
                     class="primary"
                     type="submit"
-                    :disabled="!chatUser||(!chatInput.trim()&&!chatPending&&!chatAttachments.length)||!chatSettings.configured||!!chatState?.archived"
                     x-text="(chatInput.trim()||chatAttachments.length) ? (chatBusy()||chatPending ? 'Queue message' : 'Send') : chatPending ? (chatSending ? 'Sending…' : 'Retry send') : 'Send'"
                   ></button>
                 </div>
                 <p
                   class="error"
+                  role="alert"
                   x-show="chatFilesError"
                   x-text="chatFilesError"
-                  role="alert"
                 ></p>
               </form>
             </div>
           </div>
         </div>
       </section>
-
-      <div class="record-browser" :inert="chatExpanded">
+      <div :inert="chatExpanded" class="record-browser">
         <div class="graph-slot">
           <section
-            class="memory-graph"
             :class="{expanded:graphExpanded}"
             aria-label="Memory graph"
+            class="memory-graph"
           >
             <div class="graph-canvas" x-ref="graph"></div>
             <div class="graph-toolbar">
               <div class="graph-tools">
-                <select
-                  aria-label="Graph memory owner"
-                  title="Whose memories to show"
-                  x-model="graphOwner"
-                  @change="renderGraph(true)"
-                >
-                  <option value="">Any</option>
-                  <template x-for="user in graphOwners" :key="user">
-                    <option :value="user" x-text="user"></option>
-                  </template>
-                </select>
-                <select
-                  class="graph-color-user"
-                  aria-label="Graph colors for"
-                  title="Whose type colors to use"
-                  x-model="classificationUser"
-                  @change="changeClassificationUser()"
-                >
-                  <option value="">Default colors</option>
-                  <template x-for="user in classificationUsers()" :key="user"
-                    ><option
-                      :selected="user===classificationUser"
-                      :value="user"
-                      x-text="'Colors: '+user"
-                    ></option
-                  ></template>
-                </select>
-                <div class="graph-view" role="group" aria-label="Graph view">
+                <div aria-label="Graph view" class="graph-view" role="group">
                   <button
                     :aria-pressed="graphMode==='2d'"
                     @click="switchGraph('2d')"
@@ -588,65 +541,65 @@
                   </button>
                 </div>
                 <button
+                  :aria-label="graphExpanded ? 'Exit full-screen graph' : 'Expand graph to full screen'"
+                  :aria-pressed="graphExpanded"
+                  :title="graphExpanded ? 'Exit full-screen graph (Escape)' : 'Expand graph to full screen'"
+                  @click="toggleGraphExpanded()"
                   class="graph-expand"
                   x-ref="graphExpand"
-                  @click="toggleGraphExpanded()"
-                  :aria-pressed="graphExpanded"
-                  :aria-label="graphExpanded ? 'Exit full-screen graph' : 'Expand graph to full screen'"
-                  :title="graphExpanded ? 'Exit full-screen graph (Escape)' : 'Expand graph to full screen'"
                 >
                   <svg
-                    x-show="!graphExpanded"
                     aria-hidden="true"
-                    viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
                     stroke-width="1.7"
+                    viewbox="0 0 24 24"
+                    x-show="!graphExpanded"
                   >
-                    <path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6" />
+                    <path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"></path>
                   </svg>
                   <svg
-                    x-show="graphExpanded"
-                    x-cloak
                     aria-hidden="true"
-                    viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
                     stroke-width="1.7"
+                    viewbox="0 0 24 24"
+                    x-cloak=""
+                    x-show="graphExpanded"
                   >
-                    <path d="M3 9h6V3m6 0v6h6M9 21v-6H3m18 0h-6v6" />
+                    <path d="M3 9h6V3m6 0v6h6M9 21v-6H3m18 0h-6v6"></path>
                   </svg>
                 </button>
               </div>
               <div
+                @click.outside="graphSearchOpen=false"
+                aria-label="Search graph"
                 class="graph-search"
                 role="search"
-                aria-label="Search graph"
-                @click.outside="graphSearchOpen=false"
               >
                 <input
-                  type="search"
-                  aria-label="Search graph"
-                  aria-controls="graph-matches"
-                  placeholder="Find a name, title or alias…"
-                  x-model="graphQuery"
-                  @input="searchGraph()"
+                  :disabled="!!graphStatus"
                   @focus="graphSearchOpen=true"
+                  @input="searchGraph()"
                   @keydown.enter.prevent="focusGraph(graphMatches[0]?.id)"
                   @keydown.escape.prevent.stop="graphQuery=''; searchGraph()"
-                  :disabled="!!graphStatus"
+                  aria-controls="graph-matches"
+                  aria-label="Search graph"
+                  placeholder="Find a name, title or alias…"
+                  type="search"
+                  x-model="graphQuery"
                 />
                 <div
                   id="graph-matches"
-                  x-show="graphQuery.trim()&&graphSearchOpen"
-                  x-cloak
+                  x-cloak=""
+                  x-show="graphQuery.trim()&amp;&amp;graphSearchOpen"
                 >
                   <p
                     aria-live="polite"
                     x-text="graphMatches.length ? graphMatches.length+' matches · select to locate' : 'No matches'"
                   ></p>
                   <div class="graph-results">
-                    <template x-for="record in graphMatches" :key="record.id">
+                    <template :key="record.id" x-for="record in graphMatches">
                       <button @click="focusGraph(record.id)">
                         <span x-text="record.title||record.id"></span>
                         <small x-text="record.kind"></small>
@@ -662,65 +615,65 @@
               x-text="graphStatus"
             ></p>
             <div
-              class="graph-legend"
+              :title="'Default record colors; type colors take precedence.'"
               aria-label="Graph colors"
-              :title="'Default record colors; type colors take precedence. Colors for '+(classificationUser||'no selected user')"
+              class="graph-legend"
             >
               <label
                 ><input
-                  type="checkbox"
-                  aria-label="Show entities in graph"
-                  x-model="graphKinds.entities"
                   @change="renderGraph(true)"
+                  aria-label="Show entities in graph"
+                  type="checkbox"
+                  x-model="graphKinds.entities"
                 /><i
+                  :style="{backgroundColor:colorCSS(graphKindColors.entities)}"
                   class="entity-dot"
                   data-kind="entities"
-                  :style="{backgroundColor:colorCSS(graphKindColors.entities)}"
                 ></i
                 >Entities</label
               >
               <label
                 ><input
-                  type="checkbox"
-                  aria-label="Show memories in graph"
-                  x-model="graphKinds.memories"
                   @change="renderGraph(true)"
+                  aria-label="Show memories in graph"
+                  type="checkbox"
+                  x-model="graphKinds.memories"
                 /><i
+                  :style="{backgroundColor:colorCSS(graphKindColors.memories)}"
                   class="memory-dot"
                   data-kind="memories"
-                  :style="{backgroundColor:colorCSS(graphKindColors.memories)}"
                 ></i
                 >Memories</label
               >
               <label
                 ><input
-                  type="checkbox"
-                  aria-label="Show topics in graph"
-                  x-model="graphKinds.topics"
                   @change="renderGraph(true)"
+                  aria-label="Show topics in graph"
+                  type="checkbox"
+                  x-model="graphKinds.topics"
                 /><i
+                  :style="{backgroundColor:colorCSS(graphKindColors.topics)}"
                   class="topic-dot"
                   data-kind="topics"
-                  :style="{backgroundColor:colorCSS(graphKindColors.topics)}"
                 ></i
                 >Topics</label
               >
               <label
                 ><input
-                  type="checkbox"
-                  aria-label="Show stories in graph"
-                  x-model="graphKinds.stories"
                   @change="renderGraph(true)"
+                  aria-label="Show stories in graph"
+                  type="checkbox"
+                  x-model="graphKinds.stories"
                 /><i
+                  :style="{backgroundColor:colorCSS(graphKindColors.stories)}"
                   class="story-dot"
                   data-kind="stories"
-                  :style="{backgroundColor:colorCSS(graphKindColors.stories)}"
                 ></i
                 >Stories</label
               >
               <span
-                class="graph-weight-status"
                 aria-live="off"
+                class="graph-weight-status"
                 title="Point sizes use weighted connections and memory dates."
                 x-text="graphWeightStatus || 'Weighted sizes'"
               ></span>
@@ -728,29 +681,29 @@
           </section>
         </div>
         <section
-          id="list-panel"
-          class="library"
-          aria-label="Record library"
           :inert="graphExpanded"
+          aria-label="Record library"
+          class="library"
+          id="list-panel"
         >
           <div class="library-heading">
             <h2>Library</h2>
-            <div class="library-view" role="tablist" aria-label="Library view">
+            <div aria-label="Library view" class="library-view" role="tablist">
               <button
-                id="library-list-tab"
-                role="tab"
-                aria-controls="library-list"
                 :aria-selected="libraryView==='list'"
                 @click="setLibraryView('list')"
+                aria-controls="library-list"
+                id="library-list-tab"
+                role="tab"
               >
                 List
               </button>
               <button
-                id="library-timeline-tab"
-                role="tab"
-                aria-controls="library-timeline"
                 :aria-selected="libraryView==='timeline'"
                 @click="setLibraryView('timeline')"
+                aria-controls="library-timeline"
+                id="library-timeline-tab"
+                role="tab"
               >
                 Timeline
               </button>
@@ -768,11 +721,11 @@
             <div class="filters">
               <label class="global-search"
                 >Search<input
-                  aria-label="Search records"
-                  type="search"
-                  placeholder="Search all record content"
-                  x-model="q"
                   @input.debounce.200ms="refresh()"
+                  aria-label="Search records"
+                  placeholder="Search all record content"
+                  type="search"
+                  x-model="q"
               /></label>
               <label
                 >Title<input
@@ -788,9 +741,9 @@
               /></label>
               <label x-show="libraryView==='list'"
                 >Record type<select
+                  @change="refresh()"
                   aria-label="Record type filter"
                   x-model="kind"
-                  @change="refresh()"
                 >
                   <option value="">All records</option>
                   <option value="memories">Memories</option>
@@ -799,21 +752,7 @@
                   <option value="stories">Stories</option>
                 </select></label
               >
-              <label
-                >Types for<select
-                  aria-label="Types for"
-                  x-model="classificationUser"
-                  @change="changeClassificationUser()"
-                >
-                  <option value="">Choose a user</option>
-                  <template x-for="user in classificationUsers()" :key="user"
-                    ><option
-                      :selected="user===classificationUser"
-                      :value="user"
-                      x-text="user"
-                    ></option
-                  ></template></select
-              ></label>
+
               <label
                 >Type<select
                   aria-label="Metadata type filter"
@@ -821,8 +760,8 @@
                 >
                   <option value="">All types</option>
                   <template
-                    x-for="type in Object.keys(types).sort()"
                     :key="type"
+                    x-for="type in Object.keys(types).sort()"
                     ><option :value="type" x-text="type"></option
                   ></template></select
               ></label>
@@ -832,23 +771,7 @@
                   type="search"
                   x-model="filters.aliases"
               /></label>
-              <label
-                >Owner<select
-                  aria-label="Owner"
-                  x-model="owner"
-                  @change="refresh()"
-                >
-                  <option value="">Everyone</option>
-                  <template
-                    x-for="user in Object.keys(owners).sort()"
-                    :key="user"
-                    ><option
-                      :selected="user===owner"
-                      :value="user"
-                      x-text="user"
-                    ></option
-                  ></template></select
-              ></label>
+
               <div class="timeline-controls" x-show="libraryView==='timeline'">
                 <label
                   >Related to<select
@@ -857,8 +780,8 @@
                   >
                     <option value="">Any person, place or topic</option>
                     <template
-                      x-for="subject in timelineSubjects"
                       :key="subject.id"
+                      x-for="subject in timelineSubjects"
                       ><option
                         :value="subject.id"
                         x-text="(subject.title||subject.id)+' ('+subject.id+')'"
@@ -882,22 +805,22 @@
           </details>
           <details x-show="diagnostics.length">
             <summary>Sources needing attention</summary>
-            <template x-for="(issue,index) in diagnostics" :key="index"
+            <template :key="index" x-for="(issue,index) in diagnostics"
               ><p x-text="issue.path+': '+issue.message"></p
             ></template>
           </details>
           <div
-            id="library-list"
-            x-show="libraryView==='list'"
-            class="library-list-panel"
-            role="tabpanel"
             aria-labelledby="library-list-tab"
+            class="library-list-panel"
+            id="library-list"
+            role="tabpanel"
+            x-show="libraryView==='list'"
           >
             <div
-              class="table-scroll"
-              tabindex="0"
-              role="region"
               aria-label="Records table"
+              class="table-scroll"
+              role="region"
+              tabindex="0"
             >
               <table>
                 <colgroup>
@@ -913,12 +836,12 @@
                 <thead>
                   <tr>
                     <template
-                      x-for="column in [{key:'title',label:'Title'},{key:'updated_at',label:'Last updated'},{key:'description',label:'Description'},{key:'kind',label:'Record type'},{key:'type',label:'Type'},{key:'aliases',label:'Aliases'},{key:'user',label:'Owner'}]"
                       :key="column.key"
-                      ><th scope="col" :aria-sort="sortOrder(column.key)">
+                      x-for="column in [{key:'title',label:'Title'},{key:'updated_at',label:'Last updated'},{key:'description',label:'Description'},{key:'kind',label:'Record type'},{key:'type',label:'Type'},{key:'aliases',label:'Aliases'}]"
+                      ><th :aria-sort="sortOrder(column.key)" scope="col">
                         <button
-                          @click="sort(column.key)"
                           :aria-label="'Sort by '+column.label"
+                          @click="sort(column.key)"
                         >
                           <span x-text="column.label"></span
                           ><span
@@ -931,18 +854,18 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <template x-for="record in rows()" :key="record.source"
+                  <template :key="record.source" x-for="record in rows()"
                     ><tr class="record">
                       <td class="title-cell">
                         <i
-                          class="color-dot"
-                          aria-hidden="true"
                           :style="{backgroundColor:colorCSS(record.color||graphKindColors[record.kind])}"
+                          aria-hidden="true"
+                          class="color-dot"
                         ></i>
                         <button
-                          class="text-button"
-                          @click="open(record.id, false, true)"
                           :disabled="!record.id||busy||loading"
+                          @click="open(record.id, false, true)"
+                          class="text-button"
                           x-text="label(record)"
                         ></button
                         ><small x-text="record.id||record.source"></small>
@@ -964,19 +887,19 @@
                         class="aliases-cell"
                         x-text="(record.aliases||[]).join(', ')||'—'"
                       ></td>
-                      <td x-text="record.user||'Shared'"></td>
+
                       <td class="row-actions">
                         <button
-                          @click="open(record.id)"
                           :aria-label="'Edit '+label(record)"
                           :disabled="!record.id||busy||loading"
+                          @click="open(record.id)"
                         >
                           Edit</button
                         ><button
-                          class="danger"
-                          @click="remove(record)"
                           :aria-label="'Delete '+label(record)"
                           :disabled="!record.id||record.pending||busy||loading"
+                          @click="remove(record)"
+                          class="danger"
                         >
                           Delete
                         </button>
@@ -989,13 +912,13 @@
             </div>
           </div>
           <div
-            id="library-timeline"
-            class="timeline"
-            role="tabpanel"
-            aria-labelledby="library-timeline-tab"
-            x-show="libraryView==='timeline'"
-            x-cloak
             :aria-busy="timelineBusy"
+            aria-labelledby="library-timeline-tab"
+            class="timeline"
+            id="library-timeline"
+            role="tabpanel"
+            x-cloak=""
+            x-show="libraryView==='timeline'"
           >
             <details class="timeline-explanation">
               <summary>How dates and order are shown</summary>
@@ -1010,12 +933,12 @@
             </p>
             <div class="error" role="alert" x-show="timelineError">
               <p x-text="'Could not update the timeline. '+timelineError"></p>
-              <button @click="refreshTimeline()" :disabled="timelineBusy">
+              <button :disabled="timelineBusy" @click="refreshTimeline()">
                 Retry timeline
               </button>
             </div>
-            <template x-for="section in timelineSections()" :key="section.id">
-              <section class="timeline-section" :aria-label="section.title">
+            <template :key="section.id" x-for="section in timelineSections()">
+              <section :aria-label="section.title" class="timeline-section">
                 <h3 x-text="section.title"></h3>
                 <p
                   class="muted"
@@ -1023,14 +946,14 @@
                   x-text="section.note"
                 ></p>
                 <div class="timeline-entries">
-                  <template x-for="entry in section.entries" :key="entry.id">
+                  <template :key="entry.id" x-for="entry in section.entries">
                     <article
-                      class="timeline-entry"
                       :data-memory-id="entry.id"
                       :style="{'--entry-color':colorCSS(entry.color)}"
+                      class="timeline-entry"
                     >
                       <div class="timeline-date">
-                        <span class="timeline-dot" aria-hidden="true"></span
+                        <span aria-hidden="true" class="timeline-dot"></span
                         ><strong x-text="entry.dateLabel"></strong
                         ><small
                           x-show="entry.timing!=='unknown'"
@@ -1039,14 +962,13 @@
                       </div>
                       <div class="timeline-account">
                         <button
-                          class="text-button timeline-title"
-                          @click="open(entry.id,false,true)"
                           :disabled="busy||loading"
+                          @click="open(entry.id,false,true)"
+                          class="text-button timeline-title"
                           x-text="entry.title"
                         ></button>
                         <div class="timeline-identity">
-                          <code x-text="entry.id"></code
-                          ><span x-text="entry.user"></span>
+                          <code x-text="entry.id"></code>
                         </div>
                         <p
                           class="timeline-placement"
@@ -1059,21 +981,21 @@
                         <p class="record-warning" x-show="entry.pending">
                           This record has unfinished changes.
                         </p>
-                        <template x-for="issue in entry.issues" :key="issue"
+                        <template :key="issue" x-for="issue in entry.issues"
                           ><p class="timeline-issue" x-text="issue"></p
                         ></template>
                         <div class="timeline-links" x-show="entry.links.length">
                           <template
-                            x-for="link in entry.links"
                             :key="link.relation+link.id"
+                            x-for="link in entry.links"
                             ><div
                               :class="{'timeline-issue':link.usable===false}"
                             >
                               <span x-text="link.relation+' '"></span
                               ><button
-                                class="text-button"
-                                @click="open(link.id,false,true)"
                                 :disabled="busy||loading||link.missing"
+                                @click="open(link.id,false,true)"
+                                class="text-button"
                                 x-text="link.title||link.id"
                               ></button
                               ><small x-show="link.usable===false">
@@ -1087,15 +1009,15 @@
                         </div>
                         <div class="timeline-actions">
                           <button
-                            @click="editTimelineDates(entry.id)"
                             :aria-label="'Edit dates '+entry.title"
                             :disabled="busy||loading"
+                            @click="editTimelineDates(entry.id)"
                           >
                             Edit dates</button
                           ><button
-                            @click="editTimelineOrder(entry.id)"
                             :aria-label="'Edit order '+entry.title"
                             :disabled="busy||loading"
+                            @click="editTimelineOrder(entry.id)"
                           >
                             Edit order
                           </button>
@@ -1108,15 +1030,15 @@
             </template>
             <p
               class="empty"
-              x-show="!timelineBusy&&!timelineEntries().length&&!timelineError"
+              x-show="!timelineBusy&amp;&amp;!timelineEntries().length&amp;&amp;!timelineError"
             >
               No memories match these filters.
             </p>
             <details x-show="timelineDiagnostics.length">
               <summary>Timeline details needing attention</summary>
               <template
-                x-for="(issue,index) in timelineDiagnostics"
                 :key="index"
+                x-for="(issue,index) in timelineDiagnostics"
                 ><p x-text="issue.path+': '+issue.message"></p
               ></template>
             </details>
@@ -1125,36 +1047,36 @@
       </div>
     </main>
     <dialog
-      x-ref="editorDialog"
-      aria-labelledby="record-heading"
       @cancel.prevent="back()"
-      @keydown.escape.capture.prevent.stop="back()"
       @click.self="back()"
+      @keydown.escape.capture.prevent.stop="back()"
+      aria-labelledby="record-heading"
+      x-ref="editorDialog"
     >
-      <div class="messages" aria-live="polite">
-        <p class="success" x-show="notice" x-text="notice" x-cloak></p>
+      <div aria-live="polite" class="messages">
+        <p class="success" x-cloak="" x-show="notice" x-text="notice"></p>
         <p
           class="error"
           role="alert"
+          x-cloak=""
           x-show="failure"
           x-text="failure"
-          x-cloak
         ></p>
       </div>
       <div class="editor-shell">
         <div class="editor-heading">
           <canvas
+            aria-label="Entity profile picture"
             class="entity-portrait"
             role="img"
-            aria-label="Entity profile picture"
             x-effect="drawEntityPicture($el, entityPicture(), selected?.id, selected?.version)"
             x-show="entityPicture()"
           ></canvas>
           <button
-            class="back"
-            @click="back()"
             :disabled="busy||loading"
+            @click="back()"
             aria-label="Close record"
+            class="back"
           >
             Close
           </button>
@@ -1162,20 +1084,20 @@
             <span class="muted" x-text="selected?.id||'New record'"></span>
             <h2 id="record-heading" x-text="title()"></h2>
           </div>
-          <button x-show="inspecting" @click="edit()">Edit</button
+          <button @click="edit()" x-show="inspecting">Edit</button
           ><span class="unsaved" x-show="dirty">Unsaved</span
           ><button
+            :disabled="busy||loading||!dirty"
+            @click="save()"
             class="primary"
             x-show="!inspecting"
-            @click="save()"
-            :disabled="busy||loading||!dirty"
             x-text="busy?'Working…':'Save'"
           ></button>
         </div>
         <button
-          class="reload"
-          x-show="conflict && selected?.id"
           @click="reload()"
+          class="reload"
+          x-show="conflict &amp;&amp; selected?.id"
         >
           Load saved version
         </button>
@@ -1184,8 +1106,11 @@
           x-show="recordIssues.length"
           x-text="recordIssues.join('; ')"
         ></p>
-        <dl class="inspection-metadata" x-show="inspecting && !readingStory()">
-          <template x-for="(field,index) in fields" :key="index"
+        <dl
+          class="inspection-metadata"
+          x-show="inspecting &amp;&amp; !readingStory()"
+        >
+          <template :key="index" x-for="(field,index) in fields"
             ><div>
               <dt x-text="field.key"></dt>
               <dd
@@ -1194,26 +1119,26 @@
           ></template>
         </dl>
         <div class="editor-tools">
-          <div class="mode-switch" role="tablist" aria-label="Editor mode">
+          <div aria-label="Editor mode" class="mode-switch" role="tablist">
             <button
-              role="tab"
               :aria-selected="mode==='visual'"
               @click="switchMode('visual')"
+              role="tab"
               x-text="readingStory()?'Story':'Visual'"
             >
               Visual</button
             ><button
-              role="tab"
               :aria-selected="mode==='source'"
               @click="switchMode('source')"
+              role="tab"
             >
               Source
             </button>
           </div>
           <button
-            x-show="!inspecting"
             :aria-expanded="showMetadata"
             @click="panel('showMetadata')"
+            x-show="!inspecting"
           >
             Metadata</button
           ><button
@@ -1226,28 +1151,28 @@
         <fieldset
           :disabled="busy||loading"
           class="record-details"
-          x-show="!inspecting && showMetadata && mode==='visual'"
+          x-show="!inspecting &amp;&amp; showMetadata &amp;&amp; mode==='visual'"
         >
           <legend class="sr-only">Record metadata</legend>
           <button
-            type="button"
-            x-show="selected?.kind==='entities'&&!fields.some(field=>field.key==='time')"
             @click="addLifetimeDates()"
+            type="button"
+            x-show="selected?.kind==='entities'&amp;&amp;!fields.some(field=&gt;field.key==='time')"
           >
             Add lifetime dates
           </button>
           <button
-            type="button"
-            x-show="selected?.kind!=='entities'&&!fields.some(field=>field.key==='time')"
             @click="addEventDates()"
+            type="button"
+            x-show="selected?.kind!=='entities'&amp;&amp;!fields.some(field=&gt;field.key==='time')"
           >
             Add event dates
           </button>
           <label x-show="!selected?.id"
             >Record type<select
-              aria-label="Record type"
               :value="selected?.kind||'memories'"
               @change="setKind($event.target.value)"
+              aria-label="Record type"
             >
               <option value="memories">Memory</option>
               <option value="entities">Entity</option>
@@ -1257,39 +1182,24 @@
           >
           <div class="classification-fields">
             <label
-              >Classifying for<select
-                aria-label="Classification user"
-                x-model="classificationUser"
-                @change="changeClassificationUser()"
-              >
-                <option value="">Choose a user</option>
-                <template x-for="user in classificationUsers()" :key="user"
-                  ><option :value="user" x-text="user"></option
-                ></template></select
-            ></label>
-            <label
               >Type<select
-                aria-label="Record classification"
+                :disabled="classificationBusy"
                 :value="recordType()"
                 @change="changeRecordType($event.target.value)"
-                :disabled="!classificationUser||classificationBusy"
+                aria-label="Record classification"
               >
                 <option value="">No type</option>
                 <template
-                  x-for="type in typeChoices(selected?.kind)"
                   :key="type.id"
+                  x-for="type in typeChoices(selected?.kind)"
                   ><option
-                    :value="type.id"
                     :selected="recordType()===type.id"
+                    :value="type.id"
                     x-text="type.name"
                   ></option
                 ></template></select
             ></label>
-            <button
-              type="button"
-              @click="openTypeSettings(classificationUser)"
-              :disabled="!classificationUser"
-            >
+            <button @click="openTypeSettings()" type="button">
               Manage types
             </button>
           </div>
@@ -1302,25 +1212,25 @@
             Lists and nested fields use YAML values. Creation and update times
             are automatic.
           </p>
-          <template x-for="(field,index) in fields" :key="index"
+          <template :key="index" x-for="(field,index) in fields"
             ><div
               class="metadata-field"
-              x-show="field.key!=='types' && field.type!=='profile_picture'"
+              x-show="field.key!=='type' &amp;&amp; field.type!=='profile_picture'"
             >
               <input
-                list="metadata-keys"
-                aria-label="Metadata name"
-                x-model="field.key"
                 :readonly="field.system"
                 @input="metadataChanged()"
+                aria-label="Metadata name"
+                list="metadata-keys"
+                x-model="field.key"
               />
               <div class="field-value">
                 <select
-                  class="value-type"
-                  x-show="!field.system"
                   :aria-label="'Value type '+field.key"
-                  x-model="field.type"
                   @change="changeFieldType(field)"
+                  class="value-type"
+                  x-model="field.type"
+                  x-show="!field.system"
                 >
                   <option value="text">Text</option>
                   <option value="number">Number</option>
@@ -1331,27 +1241,27 @@
                     x-show="field.type==='time'"
                     x-text="selected?.kind==='entities'?'Entity lifetime':'Event time'"
                   ></option></select
-                ><template x-if="!field.system && field.type==='time'"
+                ><template x-if="!field.system &amp;&amp; field.type==='time'"
                   ><div class="event-time">
                     <template x-if="selected?.kind==='entities'"
                       ><div class="entity-lifetime">
                         <label
                           >Start<input
-                            type="text"
+                            @change="if($el.checkValidity())timeChanged(field,false)"
+                            @input="field.value=JSON.stringify(field.time);metadataChanged()"
                             aria-label="Entity start date"
+                            type="text"
                             x-iso-date="field.time.start"
                             x-model="field.time.start"
-                            @input="field.value=JSON.stringify(field.time);metadataChanged()"
-                            @change="if($el.checkValidity())timeChanged(field,false)"
                         /></label>
                         <label
                           >End<input
-                            type="text"
+                            @change="if($el.checkValidity())timeChanged(field,false)"
+                            @input="field.value=JSON.stringify(field.time);metadataChanged()"
                             aria-label="Entity end date"
+                            type="text"
                             x-iso-date="field.time.end"
                             x-model="field.time.end"
-                            @input="field.value=JSON.stringify(field.time);metadataChanged()"
-                            @change="if($el.checkValidity())timeChanged(field,false)"
                         /></label>
                         <small
                           >The start and end dates of the entity's existence.
@@ -1367,30 +1277,30 @@
                       ><div class="event-dates">
                         <label
                           >Exact date<input
-                            type="text"
                             :aria-label="'Exact event date'"
+                            @change="if($el.checkValidity())timeChanged(field,true)"
+                            @input="field.value=JSON.stringify(field.time);metadataChanged()"
+                            type="text"
                             x-iso-date="field.time.date"
                             x-model="field.time.date"
-                            @input="field.value=JSON.stringify(field.time);metadataChanged()"
-                            @change="if($el.checkValidity())timeChanged(field,true)"
                         /></label>
                         <label
                           >Earliest<input
-                            type="text"
+                            @change="if($el.checkValidity())timeChanged(field,false)"
+                            @input="field.value=JSON.stringify(field.time);metadataChanged()"
                             aria-label="Earliest event date"
+                            type="text"
                             x-iso-date="field.time.earliest"
                             x-model="field.time.earliest"
-                            @input="field.value=JSON.stringify(field.time);metadataChanged()"
-                            @change="if($el.checkValidity())timeChanged(field,false)"
                         /></label>
                         <label
                           >Latest<input
-                            type="text"
+                            @change="if($el.checkValidity())timeChanged(field,false)"
+                            @input="field.value=JSON.stringify(field.time);metadataChanged()"
                             aria-label="Latest event date"
+                            type="text"
                             x-iso-date="field.time.latest"
                             x-model="field.time.latest"
-                            @input="field.value=JSON.stringify(field.time);metadataChanged()"
-                            @change="if($el.checkValidity())timeChanged(field,false)"
                         /></label>
                         <small
                           >Leave unknown dates blank. Use an exact date or range
@@ -1400,43 +1310,43 @@
                     >
                   </div></template
                 ><input
-                  x-show="!field.system && (field.type==='text'||field.type==='number')"
                   :aria-label="'Metadata '+field.key"
-                  x-model="field.text"
                   @input="fieldChanged(field)"
-                /><select
-                  x-show="!field.system && field.type==='boolean'"
-                  :aria-label="'Metadata '+field.key"
                   x-model="field.text"
+                  x-show="!field.system &amp;&amp; (field.type==='text'||field.type==='number')"
+                /><select
+                  :aria-label="'Metadata '+field.key"
                   @change="fieldChanged(field)"
+                  x-model="field.text"
+                  x-show="!field.system &amp;&amp; field.type==='boolean'"
                 >
                   <option value="true">True</option>
                   <option value="false">False</option></select
                 ><textarea
-                  x-show="field.system||field.type==='yaml'"
                   :aria-label="'Metadata '+field.key"
-                  x-model="field.value"
                   :readonly="field.system"
                   @input="metadataChanged()"
                   rows="2"
                   spellcheck="false"
+                  x-model="field.value"
+                  x-show="field.system||field.type==='yaml'"
                 ></textarea
-                ><small x-show="field.type==='yaml'&&!field.system"
+                ><small x-show="field.type==='yaml'&amp;&amp;!field.system"
                   >YAML value</small
                 >
               </div>
               <button
-                x-show="!field.system"
-                @click="removeField(index)"
                 :aria-label="'Remove '+field.key"
+                @click="removeField(index)"
+                x-show="!field.system"
               >
                 Remove</button
-              ><span x-show="field.system" class="muted">Automatic</span>
+              ><span class="muted" x-show="field.system">Automatic</span>
             </div></template
           >
           <datalist id="metadata-keys">
             <option value="title"></option>
-            <option value="user"></option>
+
             <option value="name"></option>
             <option value="description"></option>
             <option value="time"></option>
@@ -1448,7 +1358,7 @@
         <div
           :inert="busy||loading"
           class="connections"
-          x-show="showConnections && mode==='visual'"
+          x-show="showConnections &amp;&amp; mode==='visual'"
         >
           <h3>Connections</h3>
           <div x-show="!inspecting">
@@ -1457,26 +1367,24 @@
             </p>
             <label
               >Find a record<input
-                type="search"
-                x-model="targetQuery"
                 @input.debounce.150ms="searchTargets()"
                 placeholder="Name, title or text"
+                type="search"
+                x-model="targetQuery"
             /></label>
             <div class="target-results" x-show="!target">
-              <template x-for="record in targets" :key="record.source"
+              <template :key="record.source" x-for="record in targets"
                 ><button @click="target=record">
                   <strong x-text="label(record)"></strong
-                  ><small
-                    x-text="record.kind+' / '+(record.user||'Shared')+' / '+record.id"
-                  ></small></button
+                  ><small x-text="record.kind+' / '+record.id"></small></button
               ></template>
             </div>
             <div class="add-connection" x-show="target">
               <span x-text="target?.title||target?.id"></span
               ><label
                 >Relationship<select
-                  x-model="relation"
                   aria-label="Relationship"
+                  x-model="relation"
                 >
                   <option value="related_to">related_to</option>
                   <option value="after">after</option>
@@ -1484,13 +1392,13 @@
                   <option value="part_of">part_of</option>
                   <option value="possibly_same_as">possibly_same_as</option>
                 </select></label
-              ><button @click="addConnection()" :disabled="busy||loading">
+              ><button :disabled="busy||loading" @click="addConnection()">
                 Add connection</button
               ><button @click="target=null">Cancel</button>
             </div>
           </div>
           <h4>Links from this record</h4>
-          <template x-for="(edge,index) in outgoing()" :key="index"
+          <template :key="index" x-for="(edge,index) in outgoing()"
             ><div class="edge">
               <span x-text="edge.type"></span
               ><button
@@ -1498,25 +1406,25 @@
                 x-text="edge.target_title||edge.target"
               ></button
               ><button
-                x-show="!inspecting && selected?.kind==='stories'"
-                @click="moveConnection(edge,-1)"
                 :disabled="busy||loading"
+                @click="moveConnection(edge,-1)"
                 aria-label="Move connection up"
+                x-show="!inspecting &amp;&amp; selected?.kind==='stories'"
               >
                 ↑
               </button>
               <button
-                x-show="!inspecting && selected?.kind==='stories'"
-                @click="moveConnection(edge,1)"
                 :disabled="busy||loading"
+                @click="moveConnection(edge,1)"
                 aria-label="Move connection down"
+                x-show="!inspecting &amp;&amp; selected?.kind==='stories'"
               >
                 ↓</button
               ><button
-                x-show="!inspecting"
-                @click="connection('remove',edge)"
-                :disabled="busy||loading"
                 :aria-label="'Remove connection '+edge.target"
+                :disabled="busy||loading"
+                @click="connection('remove',edge)"
+                x-show="!inspecting"
               >
                 Remove
               </button>
@@ -1526,7 +1434,7 @@
             No outgoing connections.
           </p>
           <h4>Linked from</h4>
-          <template x-for="(edge,index) in incoming()" :key="index"
+          <template :key="index" x-for="(edge,index) in incoming()"
             ><div class="edge">
               <span x-text="edge.reverse_type||edge.type"></span
               ><button
@@ -1537,15 +1445,15 @@
           <p class="muted" x-show="!incoming().length">No incoming links.</p>
         </div>
         <article
-          class="story-reader"
-          aria-label="Composed story"
           :aria-busy="storyBusy"
-          x-show="readingStory() && mode==='visual'"
+          aria-label="Composed story"
+          class="story-reader"
+          x-show="readingStory() &amp;&amp; mode==='visual'"
         >
-          <template x-for="part in storyParts" :key="part.id+':'+part.start">
+          <template :key="part.id+':'+part.start" x-for="part in storyParts">
             <section
-              class="story-part"
               :class="{'story-intro':part.kind==='stories'}"
+              class="story-part"
             >
               <code
                 class="story-memory-id"
@@ -1554,7 +1462,7 @@
               ></code>
               <div class="story-part-body">
                 <h3
-                  x-show="part.title && part.id!==selected?.id"
+                  x-show="part.title &amp;&amp; part.id!==selected?.id"
                   x-text="part.title"
                 ></h3>
                 <div x-html="storyHTML(part.text, part.id)"></div>
@@ -1562,19 +1470,19 @@
                   <p class="error" x-show="fileError" x-text="fileError"></p>
                   <div class="photo-masonry">
                     <template
-                      x-for="file in files.filter(file=>file.preview==='image')"
                       :key="file.filename"
+                      x-for="file in files.filter(file=&gt;file.preview==='image')"
                     >
                       <figure class="photo-tile">
                         <button
-                          class="photo-open"
-                          @click="showPhoto({...file,record:part.id,title:part.title})"
                           :aria-label="'Open photo '+file.filename"
+                          @click="showPhoto({...file,record:part.id,title:part.title})"
+                          class="photo-open"
                         >
                           <img
-                            loading="lazy"
-                            :src="fileURL(part.id,file.filename,true)+'&thumbnail=1'"
                             :alt="file.filename"
+                            :src="fileURL(part.id,file.filename,true)+'&amp;thumbnail=1'"
+                            loading="lazy"
                           />
                         </button>
                       </figure>
@@ -1582,21 +1490,21 @@
                   </div>
                   <div class="file-grid">
                     <template
-                      x-for="file in files.filter(file=>file.preview!=='image')"
                       :key="file.filename"
+                      x-for="file in files.filter(file=&gt;file.preview!=='image')"
                       ><figure class="file-card">
                         <template x-if="file.preview==='audio'"
                           ><audio
-                            controls
-                            preload="none"
                             :src="fileURL(part.id,file.filename,true)"
+                            controls=""
+                            preload="none"
                           ></audio
                         ></template>
                         <template x-if="file.preview==='video'"
                           ><video
-                            controls
-                            preload="metadata"
                             :src="fileURL(part.id,file.filename,true)"
+                            controls=""
+                            preload="metadata"
                           ></video
                         ></template>
                         <template x-if="file.preview==='text'"
@@ -1612,8 +1520,8 @@
                         <figcaption>
                           <a
                             :href="fileURL(part.id,file.filename)"
+                            download=""
                             x-text="file.filename"
-                            download
                           ></a
                           ><span
                             class="muted"
@@ -1629,13 +1537,13 @@
           <p class="muted" role="status" x-show="storyBusy">Loading story…</p>
           <p
             class="muted"
-            x-show="storyComplete && storyParts.length<=1 && storyParts.every(part=>!part.text.trim()) && !recordFiles.length"
+            x-show="storyComplete &amp;&amp; storyParts.length&lt;=1 &amp;&amp; storyParts.every(part=&gt;!part.text.trim()) &amp;&amp; !recordFiles.length"
           >
             This story has no text or linked memories yet.
           </p>
           <div class="error" role="alert" x-show="storyError">
             <p x-text="'Could not finish loading the story. '+storyError"></p>
-            <button @click="loadStory()" :disabled="storyBusy">
+            <button :disabled="storyBusy" @click="loadStory()">
               Retry loading story
             </button>
           </div>
@@ -1645,7 +1553,7 @@
           </p>
           <details x-show="storyDiagnostics.length">
             <summary>Story details needing attention</summary>
-            <template x-for="message in storyDiagnostics" :key="message"
+            <template :key="message" x-for="message in storyDiagnostics"
               ><p x-text="message"></p
             ></template>
           </details>
@@ -1653,22 +1561,24 @@
         <div
           :inert="busy||loading"
           class="prose-wrap"
-          x-show="mode==='visual' && !readingStory()"
+          x-show="mode==='visual' &amp;&amp; !readingStory()"
         >
           <p class="error" x-show="visualIssue" x-text="visualIssue"></p>
-          <div x-ref="visual" class="visual-editor"><div x-ignore></div></div>
+          <div class="visual-editor" x-ref="visual">
+            <div x-ignore=""></div>
+          </div>
         </div>
         <div
           :inert="busy||loading"
           class="source-editor"
           x-show="mode==='source'"
         >
-          <div x-ref="source"><div x-ignore></div></div>
+          <div x-ref="source"><div x-ignore=""></div></div>
         </div>
         <section
-          class="portrait-editor"
-          x-show="selected?.kind==='entities' && entityPicture() && !inspecting && mode==='visual'"
           aria-label="Profile picture editor"
+          class="portrait-editor"
+          x-show="selected?.kind==='entities' &amp;&amp; entityPicture() &amp;&amp; !inspecting &amp;&amp; mode==='visual'"
         >
           <h3>Profile picture</h3>
           <p>
@@ -1677,53 +1587,53 @@
           </p>
           <fieldset :disabled="busy||loading||filesBusy">
             <canvas
+              aria-label="Profile picture crop preview"
               class="portrait-preview"
               role="img"
-              aria-label="Profile picture crop preview"
               x-effect="drawEntityPicture($el, entityPicture(), selected?.id, selected?.version)"
             ></canvas>
             <div class="portrait-focus" x-show="entityPicture()">
               <img
-                :src="entityPicture() && selected?.id ? portraitURL(selected.id,entityPicture(),profileRevision(selected.version)) : ''"
-                alt="Choose the profile picture focus point"
+                :src="entityPicture() &amp;&amp; selected?.id ? portraitURL(selected.id,entityPicture(),profileRevision(selected.version)) : ''"
                 @click="pictureFocus($event)"
+                alt="Choose the profile picture focus point"
               />
               <span
-                class="portrait-crosshair"
                 :style="'left:'+(entityPicture()?.x*100)+'%;top:'+(entityPicture()?.y*100)+'%'"
                 aria-hidden="true"
+                class="portrait-crosshair"
                 >+</span
               >
             </div>
             <label
               >Horizontal focus<input
-                aria-label="Horizontal focus"
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
                 :value="entityPicture()?.x"
                 @input="changePicture({x:Number($event.target.value)})"
+                aria-label="Horizontal focus"
+                max="1"
+                min="0"
+                step="0.01"
+                type="range"
             /></label>
             <label
               >Vertical focus<input
-                aria-label="Vertical focus"
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
                 :value="entityPicture()?.y"
                 @input="changePicture({y:Number($event.target.value)})"
+                aria-label="Vertical focus"
+                max="1"
+                min="0"
+                step="0.01"
+                type="range"
             /></label>
             <label
               >Zoom<input
-                aria-label="Profile picture zoom"
-                type="range"
-                min="1"
-                max="5"
-                step="0.05"
                 :value="entityPicture()?.zoom"
                 @input="changePicture({zoom:Number($event.target.value)})"
+                aria-label="Profile picture zoom"
+                max="5"
+                min="1"
+                step="0.05"
+                type="range"
             /></label>
             <button @click="changePicture({x:0.5,y:0.5,zoom:1})">
               Reset framing
@@ -1733,66 +1643,66 @@
         </section>
         <p
           class="error"
-          x-show="selected?.kind==='entities' && pictureError"
-          x-text="pictureError"
           role="alert"
+          x-show="selected?.kind==='entities' &amp;&amp; pictureError"
+          x-text="pictureError"
         ></p>
         <section
-          class="record-files"
-          aria-label="Record files"
-          x-show="!readingStory() || mode==='source'"
-          @dragover.prevent
+          @dragover.prevent=""
           @drop.prevent="if(!inspecting) uploadEditorFiles([...$event.dataTransfer.files])"
+          aria-label="Record files"
+          class="record-files"
+          x-show="!readingStory() || mode==='source'"
         >
           <div class="file-heading">
             <h3>Files</h3>
             <label class="file-picker" x-show="!inspecting"
               >Add files<input
-                type="file"
-                multiple
                 :disabled="filesBusy||busy||loading"
                 @change="uploadEditorFiles([...$event.target.files]);$event.target.value=''"
+                multiple=""
+                type="file"
             /></label>
           </div>
           <p class="muted" x-show="!inspecting">
             Choose files or drop them here. Files uploaded while editing will be
             attached after you save.
           </p>
-          <p class="muted" x-show="filesBusy" role="status">Saving files…</p>
+          <p class="muted" role="status" x-show="filesBusy">Saving files…</p>
           <p
             class="error"
+            role="alert"
             x-show="filesError"
             x-text="filesError"
-            role="alert"
           ></p>
-          <template x-for="upload in editorUploads" :key="upload.upload"
+          <template :key="upload.upload" x-for="upload in editorUploads"
             ><div class="upload-ready">
               <span x-text="upload.filename"></span
               ><span>Uploaded · attachment not confirmed</span>
             </div></template
           >
           <button
-            x-show="editorUploads.length && selected?.id && !dirty"
             :disabled="filesBusy"
             @click="attachEditorUploads()"
+            x-show="editorUploads.length &amp;&amp; selected?.id &amp;&amp; !dirty"
           >
             Attach uploaded files / retry
           </button>
-          <div class="photo-masonry" aria-label="Attached photos">
+          <div aria-label="Attached photos" class="photo-masonry">
             <template
-              x-for="file in recordFiles.filter(file=>file.preview==='image')"
               :key="file.filename"
+              x-for="file in recordFiles.filter(file=&gt;file.preview==='image')"
             >
               <figure class="photo-tile">
                 <button
-                  class="photo-open"
-                  @click="showPhoto(file)"
                   :aria-label="'Open photo '+file.filename"
+                  @click="showPhoto(file)"
+                  class="photo-open"
                 >
                   <img
-                    loading="lazy"
-                    :src="fileURL(selected?.id,file.filename,true)+'&thumbnail=1'"
                     :alt="file.filename"
+                    :src="fileURL(selected?.id,file.filename,true)+'&amp;thumbnail=1'"
+                    loading="lazy"
                   />
                 </button>
               </figure>
@@ -1800,21 +1710,21 @@
           </div>
           <div class="file-grid">
             <template
-              x-for="file in recordFiles.filter(file=>file.preview!=='image')"
               :key="file.filename"
+              x-for="file in recordFiles.filter(file=&gt;file.preview!=='image')"
               ><figure class="file-card">
                 <template x-if="file.preview==='audio'"
                   ><audio
-                    controls
-                    preload="none"
                     :src="fileURL(selected?.id,file.filename,true)"
+                    controls=""
+                    preload="none"
                   ></audio
                 ></template>
                 <template x-if="file.preview==='video'"
                   ><video
-                    controls
-                    preload="metadata"
                     :src="fileURL(selected?.id,file.filename,true)"
+                    controls=""
+                    preload="metadata"
                   ></video
                 ></template>
                 <template x-if="file.preview==='text'"
@@ -1828,8 +1738,8 @@
                 <figcaption>
                   <a
                     :href="fileURL(selected?.id,file.filename)"
+                    download=""
                     x-text="file.filename"
-                    download
                   ></a
                   ><span
                     class="muted"
@@ -1839,14 +1749,14 @@
                 <div class="file-actions" x-show="!inspecting">
                   <label class="file-picker"
                     >Replace<input
-                      type="file"
                       :disabled="dirty||filesBusy||busy"
                       @change="replaceRecordFile(file,$event.target.files[0]);$event.target.value=''"
+                      type="file"
                   /></label>
                   <button
-                    class="danger"
                     :disabled="dirty||filesBusy||busy"
                     @click="removeRecordFile(file)"
+                    class="danger"
                   >
                     Remove permanently
                   </button>
@@ -1856,15 +1766,15 @@
           </div>
           <p
             class="muted"
-            x-show="!recordFiles.length && !editorUploads.length"
+            x-show="!recordFiles.length &amp;&amp; !editorUploads.length"
           >
             No files attached.
           </p>
         </section>
         <section
-          class="record-files"
           aria-label="Photos from memories"
-          x-show="selected?.kind==='entities' && (profilePictures.length || profilePicturesError)"
+          class="record-files"
+          x-show="selected?.kind==='entities' &amp;&amp; (profilePictures.length || profilePicturesError)"
         >
           <h3>Photos from linked memories</h3>
           <p
@@ -1875,25 +1785,25 @@
           ></p>
           <div class="photo-masonry">
             <template
-              x-for="file in profilePictures"
               :key="file.record+':'+file.filename"
+              x-for="file in profilePictures"
             >
               <figure class="photo-tile">
                 <button
-                  class="photo-open"
-                  @click="showPhoto(file)"
                   :aria-label="'Open photo '+file.filename"
+                  @click="showPhoto(file)"
+                  class="photo-open"
                 >
                   <img
-                    loading="lazy"
-                    :src="portraitURL(file.record,file,file.revision)"
                     :alt="file.filename"
+                    :src="portraitURL(file.record,file,file.revision)"
+                    loading="lazy"
                   />
                 </button>
                 <figcaption>
                   <a
-                    href="#"
                     @click.prevent="open(file.record,false,true)"
+                    href="#"
                     x-text="file.title"
                   ></a>
                 </figcaption>
@@ -1904,16 +1814,16 @@
         <div class="editor-footer" x-show="!inspecting">
           <span class="muted">Changes stay in your draft until you save.</span
           ><button
-            x-show="dirty && !conflict"
             :disabled="busy||loading"
             @click="discard()"
+            x-show="dirty &amp;&amp; !conflict"
             x-text="selected?.id?'Discard changes':'Discard draft'"
           ></button>
           <button
-            class="danger"
-            x-show="selected?.id"
             :disabled="busy||selected?.pending"
             @click="remove()"
+            class="danger"
+            x-show="selected?.id"
           >
             Delete permanently
           </button>
@@ -1923,10 +1833,10 @@
           <p>
             Open each record and remove its connection before deleting this one.
           </p>
-          <template x-for="record in blockers" :key="record.source"
+          <template :key="record.source" x-for="record in blockers"
             ><button
-              @click="open(record.id)"
               :disabled="!record.id || record.pending"
+              @click="open(record.id)"
             >
               <strong x-text="label(record)"></strong
               ><small
@@ -1936,19 +1846,19 @@
         </div>
         <details x-show="diagnostics.length">
           <summary>Sources needing attention</summary>
-          <template x-for="(issue,index) in diagnostics" :key="index"
+          <template :key="index" x-for="(issue,index) in diagnostics"
             ><p x-text="issue.path ? issue.path+': '+issue.message : issue"></p
           ></template>
         </details>
       </div>
     </dialog>
     <dialog
-      x-ref="photoDialog"
-      class="photo-dialog"
-      aria-label="Photo details"
       @cancel.prevent="closePhoto()"
       @click.self="closePhoto()"
       @close="activePhoto=null"
+      aria-label="Photo details"
+      class="photo-dialog"
+      x-ref="photoDialog"
     >
       <template x-if="activePhoto">
         <div class="photo-detail">
@@ -1959,11 +1869,11 @@
             </button>
           </div>
           <img
-            class="photo-full"
-            @load="photoError=''"
-            :src="fileURL(activePhoto.record,activePhoto.filename,true)+'&v='+encodeURIComponent(activePhoto.record===selected?.id?selected.version:activePhoto.revision||'')"
             :alt="activePhoto.filename"
+            :src="fileURL(activePhoto.record,activePhoto.filename,true)+'&amp;v='+encodeURIComponent(activePhoto.record===selected?.id?selected.version:activePhoto.revision||'')"
             @error="photoError='This photo could not be displayed. You can still download the original file.'"
+            @load="photoError=''"
+            class="photo-full"
           />
           <p
             class="error"
@@ -1979,33 +1889,37 @@
           <p x-show="activePhoto.record!==selected?.id">
             Memory:
             <a
-              href="#"
               @click.prevent="const id=activePhoto.record;closePhoto();open(id,false,true)"
+              href="#"
               x-text="activePhoto.title"
             ></a>
           </p>
           <div class="file-actions">
-            <a :href="fileURL(activePhoto.record,activePhoto.filename)" download
+            <a
+              :href="fileURL(activePhoto.record,activePhoto.filename)"
+              download=""
               >Download original</a
             >
             <button
-              x-show="!inspecting && selected?.kind==='entities'"
               :disabled="busy||loading||filesBusy"
               @click="const file=activePhoto;closePhoto();choosePicture(file)"
+              x-show="!inspecting &amp;&amp; selected?.kind==='entities'"
               x-text="isProfilePicture(activePhoto)?'Edit profile picture':'Use as profile picture'"
             ></button>
-            <template x-if="!inspecting && activePhoto.record===selected?.id">
+            <template
+              x-if="!inspecting &amp;&amp; activePhoto.record===selected?.id"
+            >
               <div class="file-actions">
                 <label class="file-picker"
                   >Replace<input
-                    type="file"
                     :disabled="dirty||filesBusy||busy"
                     @change="replaceRecordFile(activePhoto,$event.target.files[0]);$event.target.value=''"
+                    type="file"
                 /></label>
                 <button
-                  class="danger"
                   :disabled="dirty||filesBusy||busy"
-                  @click="const file=activePhoto;await removeRecordFile(file);if(!recordFiles.some(item=>item.filename===file.filename)) closePhoto()"
+                  @click="const file=activePhoto;await removeRecordFile(file);if(!recordFiles.some(item=&gt;item.filename===file.filename)) closePhoto()"
+                  class="danger"
                 >
                   Remove permanently
                 </button>
@@ -2022,51 +1936,37 @@
       </template>
     </dialog>
     <dialog
+      @click.self="$el.close()"
+      aria-labelledby="type-settings-heading"
       class="type-settings-dialog"
       x-ref="typeSettingsDialog"
-      aria-labelledby="type-settings-heading"
-      @click.self="$el.close()"
     >
       <form @submit.prevent="saveTypeSettings()" class="type-settings-content">
         <div class="chat-heading">
           <h2 id="type-settings-heading">Type settings</h2>
           <button
-            type="button"
-            aria-label="Close type settings"
             @click="$refs.typeSettingsDialog.close()"
+            aria-label="Close type settings"
+            type="button"
           >
             Close
           </button>
         </div>
-        <p>
-          Each user has their own choices and definitions. Changes here affect
-          that user's classifications and identity selection.
-        </p>
-        <fieldset :disabled="typeSettingsBusy" class="type-user-picker">
-          <label
-            >User<input
-              list="type-settings-users"
-              aria-label="Type settings user"
-              x-model="typeSettingsUser" /></label
-          ><datalist id="type-settings-users">
-            <template x-for="user in classificationUsers()" :key="user"
-              ><option :value="user"></option
-            ></template></datalist
-          ><button type="button" @click="loadTypeSettings()">Load user</button>
-        </fieldset>
-        <div role="alert" class="error" x-show="typeSettingsError">
+        <p>Each store has its own types and owner entity.</p>
+
+        <div class="error" role="alert" x-show="typeSettingsError">
           <p x-text="typeSettingsError"></p>
           <button
-            type="button"
-            @click="loadTypeSettings(true)"
             :disabled="typeSettingsBusy"
+            @click="loadTypeSettings(true)"
+            type="button"
           >
             Reload saved types
           </button>
         </div>
         <p
-          role="status"
           class="success"
+          role="status"
           x-show="typeSettingsNotice"
           x-text="typeSettingsNotice"
         ></p>
@@ -2074,12 +1974,12 @@
           <label
             >My entity
             <select
+              @change="keepTypeDraft()"
               aria-label="My entity"
               x-model="typeMyEntity"
-              @change="keepTypeDraft()"
             >
               <option value="">None selected</option>
-              <template x-for="entity in typeEntityChoices()" :key="entity.id">
+              <template :key="entity.id" x-for="entity in typeEntityChoices()">
                 <option
                   :value="entity.id"
                   x-text="entity.title || entity.id"
@@ -2088,28 +1988,28 @@
             </select>
           </label>
           <p class="muted">
-            Choose the entity that represents this user. Saving removes links
-            between it and this user's memories. Ownership already connects
-            them. Other users' memories may still link to this entity.
+            Choose the entity that represents this store's owner. Ownership
+            already connects its memories; redundant links are removed when
+            saving.
           </p>
           <div class="record-colors">
             <h3>Record colors</h3>
             <p class="muted">Used when a record has no type color.</p>
-            <template x-for="kind in typeKinds" :key="kind"
+            <template :key="kind" x-for="kind in typeKinds"
               ><label
                 ><span x-text="kind"></span
                 ><span class="color-picker">
                   <span
-                    class="color-preview"
-                    aria-hidden="true"
                     :style="{backgroundColor:mochaColor(typeKindColors?.[kind])}"
+                    aria-hidden="true"
+                    class="color-preview"
                   ></span>
                   <select
                     :aria-label="'Color for '+kind"
                     :value="colorMode(typeKindColors?.[kind])"
                     @change="setKindColor(kind,$event.target.value)"
                   >
-                    <template x-for="color in colorPresets" :key="color.id"
+                    <template :key="color.id" x-for="color in colorPresets"
                       ><option
                         :selected="color.id===colorMode(typeKindColors?.[kind])"
                         :value="color.id"
@@ -2124,11 +2024,11 @@
                     </option>
                   </select>
                   <input
-                    type="color"
-                    x-show="colorMode(typeKindColors?.[kind])==='custom'"
                     :aria-label="'Custom '+('Color for '+kind).toLowerCase()"
                     :value="mochaColor(typeKindColors?.[kind])"
                     @input="typeKindColors[kind]=$event.target.value;keepTypeDraft()"
+                    type="color"
+                    x-show="colorMode(typeKindColors?.[kind])==='custom'"
                   /> </span></label
             ></template>
           </div>
@@ -2137,16 +2037,16 @@
             colors in light mode. Custom colors stay the same in both themes.
           </p>
           <div
+            aria-label="Types by record kind"
             class="type-kind-tabs"
             role="tablist"
-            aria-label="Types by record kind"
           >
-            <template x-for="kind in typeKinds" :key="kind"
+            <template :key="kind" x-for="kind in typeKinds"
               ><button
-                type="button"
-                role="tab"
                 :aria-selected="typeSettingsKind===kind"
                 @click="typeSettingsKind=kind"
+                role="tab"
+                type="button"
                 x-text="kind"
               ></button
             ></template>
@@ -2156,36 +2056,36 @@
             Use a short, clear sentence.
           </p>
           <template
-            x-for="(type,index) in typeDraft?.[typeSettingsKind]||[]"
             :key="index"
+            x-for="(type,index) in typeDraft?.[typeSettingsKind]||[]"
             ><div class="type-definition">
               <label
                 >Name<input
                   :aria-label="'Type name '+type.id"
-                  x-model="type.name"
                   @input="typeNameChanged(type)"
-                  required /></label
+                  required=""
+                  x-model="type.name" /></label
               ><label
                 >Definition<textarea
                   :aria-label="'Type definition '+type.id"
-                  x-model="type.description"
                   @input="keepTypeDraft()"
+                  required=""
                   rows="2"
-                  required
+                  x-model="type.description"
                 ></textarea></label
               ><label class="type-color"
                 >Color<span class="color-picker">
                   <span
-                    class="color-preview"
-                    aria-hidden="true"
                     :style="{backgroundColor:mochaColor(type.color)}"
+                    aria-hidden="true"
+                    class="color-preview"
                   ></span>
                   <select
                     :aria-label="'Color for type '+(type.name||type.id)"
                     :value="colorMode(type.color)"
                     @change="setTypeColor(type,$event.target.value)"
                   >
-                    <template x-for="color in colorPresets" :key="color.id"
+                    <template :key="color.id" x-for="color in colorPresets"
                       ><option
                         :selected="color.id===colorMode(type.color)"
                         :value="color.id"
@@ -2200,16 +2100,16 @@
                     </option>
                   </select>
                   <input
-                    type="color"
-                    x-show="colorMode(type.color)==='custom'"
                     :aria-label="'Custom '+('Color for type '+(type.name||type.id)).toLowerCase()"
                     :value="mochaColor(type.color)"
                     @input="type.color=$event.target.value;keepTypeDraft()"
+                    type="color"
+                    x-show="colorMode(type.color)==='custom'"
                   /> </span></label
               ><button
-                type="button"
-                @click="removeType(type.id)"
                 :aria-label="'Remove type '+type.name"
+                @click="removeType(type.id)"
+                type="button"
               >
                 Remove
               </button>
@@ -2219,10 +2119,10 @@
             No types configured for this record kind. Records can be saved
             without a type.
           </p>
-          <button type="button" @click="addType()">Add type</button>
+          <button @click="addType()" type="button">Add type</button>
           <template
-            x-for="removed in removedUsedTypes()"
             :key="removed.kind+removed.id"
+            x-for="removed in removedUsedTypes()"
             ><div class="type-reassignment">
               <label
                 ><span
@@ -2232,15 +2132,15 @@
                   :aria-label="'Replace removed type '+removed.name"
                   :value="typeReplacements[removed.kind]?.[removed.id]??'__choose__'"
                   @change="setTypeReplacement(removed.kind,removed.id,$event.target.value)"
-                  required
+                  required=""
                 >
-                  <option value="__choose__" disabled>
+                  <option disabled="" value="__choose__">
                     Choose a replacement
                   </option>
-                  <option value="">Clear this user's assignments</option>
+                  <option value="">Clear assignments</option>
                   <template
-                    x-for="replacement in typeDraft?.[removed.kind]||[]"
                     :key="replacement.id"
+                    x-for="replacement in typeDraft?.[removed.kind]||[]"
                     ><option
                       :value="replacement.id"
                       x-text="replacement.name"
@@ -2249,33 +2149,33 @@
               ></label></div
           ></template>
           <div class="chat-settings-actions">
-            <button type="button" @click="$refs.typeSettingsDialog.close()">
+            <button @click="$refs.typeSettingsDialog.close()" type="button">
               Close</button
             ><button
-              type="submit"
-              class="primary"
               :disabled="!typeSettings||typeSettingsBusy"
+              class="primary"
+              type="submit"
               x-text="typePending?'Retry saved request':'Save types'"
             ></button>
           </div>
         </fieldset>
-        <p x-show="typeSettingsBusy" role="status">Saving or loading types…</p>
+        <p role="status" x-show="typeSettingsBusy">Saving or loading types…</p>
       </form>
     </dialog>
     <dialog
+      @close="chatEditing=null"
+      aria-labelledby="chat-edit-title"
       class="chat-rename-dialog"
       x-ref="chatEditDialog"
-      aria-labelledby="chat-edit-title"
-      @close="chatEditing=null"
     >
       <form @submit.prevent="resendChatEdit()">
         <h2 id="chat-edit-title">Edit message</h2>
         <label
           >Message<textarea
-            x-ref="chatEditInput"
-            x-model="chatEditText"
-            rows="7"
             aria-label="Corrected message"
+            rows="7"
+            x-model="chatEditText"
+            x-ref="chatEditInput"
           ></textarea>
         </label>
         <p>
@@ -2290,12 +2190,12 @@
           x-text="chatEditError"
         ></p>
         <div class="actions">
-          <button type="button" @click="$refs.chatEditDialog.close()">
+          <button @click="$refs.chatEditDialog.close()" type="button">
             Cancel</button
           ><button
-            type="submit"
-            class="primary"
             :disabled="chatNavigationBusy()"
+            class="primary"
+            type="submit"
           >
             Save and resend
           </button>
@@ -2303,28 +2203,28 @@
       </form>
     </dialog>
     <dialog
+      @click.self="$el.close()"
+      aria-labelledby="chat-rename-heading"
       class="chat-rename-dialog"
       x-ref="chatRenameDialog"
-      aria-labelledby="chat-rename-heading"
-      @click.self="$el.close()"
     >
       <form @submit.prevent="updateChatSession({title:chatRename})">
         <h2 id="chat-rename-heading">Rename conversation</h2>
         <label
           >Name<input
-            x-ref="chatRenameInput"
             aria-label="Conversation name"
+            required=""
             x-model="chatRename"
-            required
+            x-ref="chatRenameInput"
         /></label>
         <p class="error" role="alert" x-show="chatError" x-text="chatError"></p>
         <div class="chat-settings-actions">
-          <button type="button" @click="$refs.chatRenameDialog.close()">
+          <button @click="$refs.chatRenameDialog.close()" type="button">
             Cancel</button
           ><button
-            type="submit"
-            class="primary"
             :disabled="chatManaging||!chatRename.trim()"
+            class="primary"
+            type="submit"
           >
             Save name
           </button>
@@ -2332,19 +2232,19 @@
       </form>
     </dialog>
     <dialog
-      class="chat-settings-dialog"
-      x-ref="chatSettingsDialog"
-      aria-labelledby="chat-settings-heading"
       @cancel.prevent="closeChatSettings()"
       @click.self="closeChatSettings()"
+      aria-labelledby="chat-settings-heading"
+      class="chat-settings-dialog"
+      x-ref="chatSettingsDialog"
     >
       <form @submit.prevent="saveChatSettings()">
         <div class="chat-heading">
           <h2 id="chat-settings-heading">Chat settings</h2>
           <button
-            type="button"
             @click="closeChatSettings()"
             aria-label="Close chat settings"
+            type="button"
           >
             Close
           </button>
@@ -2352,18 +2252,18 @@
         <fieldset :disabled="chatSettingsBusy">
           <label
             >API base URL<input
-              type="url"
-              required
-              x-model="chatSettingsDraft.base_url"
-              placeholder="http://localhost:8080/v1"
               autocomplete="off"
+              placeholder="http://localhost:8080/v1"
+              required=""
+              type="url"
+              x-model="chatSettingsDraft.base_url"
           /></label>
           <label
             >API key<input
-              type="password"
-              x-model="chatSettingsDraft.api_key"
               :placeholder="chatSettings.has_api_key ? 'Saved · leave blank to keep' : 'Optional for local servers'"
               autocomplete="new-password"
+              type="password"
+              x-model="chatSettingsDraft.api_key"
           /></label>
           <label class="chat-key-clear"
             ><input type="checkbox" x-model="chatSettingsDraft.clear_key" />
@@ -2371,32 +2271,32 @@
           >
           <label
             >Model<input
-              required
-              x-model="chatSettingsDraft.model"
+              autocomplete="off"
               list="chat-models"
               placeholder="Model name or alias"
-              autocomplete="off"
+              required=""
+              x-model="chatSettingsDraft.model"
           /></label>
           <datalist id="chat-models">
-            <template x-for="model in chatModels" :key="model"
+            <template :key="model" x-for="model in chatModels"
               ><option :value="model"></option
             ></template>
           </datalist>
           <label
             >Temperature<input
-              type="number"
-              min="0"
-              max="2"
-              step="0.01"
-              required
-              x-model.number="chatSettingsDraft.temperature"
               aria-describedby="chat-temperature-help"
+              max="2"
+              min="0"
+              required=""
+              step="0.01"
+              type="number"
+              x-model.number="chatSettingsDraft.temperature"
           /></label>
           <p class="muted" id="chat-temperature-help">
             Use 0.15 for memory work. Lower values make replies less varied.
             They do not guarantee correct facts or tool calls.
           </p>
-          <button type="button" @click="loadChatModels()">
+          <button @click="loadChatModels()" type="button">
             Test connection and load models
           </button>
           <p class="muted">
@@ -2417,20 +2317,20 @@
             x-text="chatSettingsNotice"
           ></p>
           <div class="chat-settings-actions">
-            <button type="button" @click="closeChatSettings()">Cancel</button
+            <button @click="closeChatSettings()" type="button">Cancel</button
             ><button class="primary" type="submit">Save connection</button>
           </div>
         </fieldset>
-        <p x-show="chatSettingsBusy" role="status">
+        <p role="status" x-show="chatSettingsBusy">
           Saving and checking the connection…
         </p>
       </form>
     </dialog>
     <dialog
-      class="recall-settings-dialog"
-      x-ref="recallSettingsDialog"
       @click="if($event.target===$el)$el.close()"
       aria-labelledby="recall-settings-heading"
+      class="recall-settings-dialog"
+      x-ref="recallSettingsDialog"
     >
       <div class="recall-settings-content">
         <div class="chat-heading">
@@ -2446,7 +2346,7 @@
           One retrieval policy for Clara, Songya Chat, and other connected
           applications.
         </p>
-        <p x-show="recallBusy" role="status">Working…</p>
+        <p role="status" x-show="recallBusy">Working…</p>
         <p
           class="error"
           role="alert"
@@ -2467,30 +2367,30 @@
                 <div class="recall-numbers">
                   <label
                     >Maximum direct matches<input
-                      type="number"
-                      min="0"
                       max="1000"
+                      min="0"
+                      required=""
                       step="1"
-                      required
+                      type="number"
                       x-model.number="recallDraft.direct_limit"
                   /></label>
                   <label
                     >Minimum similarity<input
-                      type="number"
-                      min="-1"
                       max="1"
+                      min="-1"
+                      required=""
                       step="0.01"
-                      required
+                      type="number"
                       x-model.number="recallDraft.min_score"
                   /></label>
                 </div>
                 <fieldset class="recall-choices">
                   <legend>Search record types</legend>
-                  <template x-for="kind in recallKinds" :key="kind"
+                  <template :key="kind" x-for="kind in recallKinds"
                     ><label
                       ><input
-                        type="checkbox"
                         :value="kind"
+                        type="checkbox"
                         x-model="recallDraft.search_kinds" /><span
                         x-text="kind"
                       ></span></label
@@ -2498,11 +2398,11 @@
                 </fieldset>
                 <fieldset class="recall-choices">
                   <legend>Return record types</legend>
-                  <template x-for="kind in recallKinds" :key="kind"
+                  <template :key="kind" x-for="kind in recallKinds"
                     ><label
                       ><input
-                        type="checkbox"
                         :value="kind"
+                        type="checkbox"
                         x-model="recallDraft.return_kinds" /><span
                         x-text="kind"
                       ></span></label
@@ -2513,37 +2413,37 @@
                   <p class="muted">
                     Connected records can be below the similarity threshold.
                     Depth 0 disables expansion. Relationships are followed in
-                    both directions, within the requested owners.
+                    both directions, within this store.
                   </p>
                   <div class="recall-numbers">
                     <label
                       >Maximum connection depth<input
-                        type="number"
-                        min="0"
                         max="50"
+                        min="0"
+                        required=""
                         step="1"
-                        required
+                        type="number"
                         x-model.number="recallDraft.connection_depth"
                     /></label>
                     <label
                       >Maximum connected records<input
-                        type="number"
-                        min="0"
                         max="1000"
+                        min="0"
+                        required=""
                         step="1"
-                        required
+                        type="number"
                         x-model.number="recallDraft.connected_limit"
                     /></label>
                   </div>
                   <fieldset class="recall-choices">
                     <legend>Relationships to follow</legend>
                     <template
-                      x-for="relation in recallRelations"
                       :key="relation"
+                      x-for="relation in recallRelations"
                       ><label
                         ><input
-                          type="checkbox"
                           :value="relation"
+                          type="checkbox"
                           x-model="recallDraft.relation_types" /><span
                           x-text="relation"
                         ></span></label
@@ -2551,7 +2451,7 @@
                   </fieldset>
                 </fieldset>
                 <div class="chat-settings-actions">
-                  <button type="button" @click="openRecallSettings(true)">
+                  <button @click="openRecallSettings(true)" type="button">
                     Reload saved policy
                   </button>
                   <button class="primary" type="submit">
@@ -2566,36 +2466,25 @@
               <span x-text="recallSettings.embeddings.base_url"></span>. Stored
               in <code>config.json</code>.
             </p>
-            <form class="recall-test" @submit.prevent="testRecall()">
+            <form @submit.prevent="testRecall()" class="recall-test">
               <h3>Try the saved policy</h3>
               <label
                 >Retrieval message<textarea
-                  x-model="recallMessage"
-                  required
+                  required=""
                   rows="2"
+                  x-model="recallMessage"
                 ></textarea>
               </label>
-              <label
-                >Retrieval owner<select
-                  x-model="recallOwner"
-                  aria-label="Retrieval owner"
-                >
-                  <option value="all">Any</option>
-                  <template
-                    x-for="user in Object.keys(owners).sort()"
-                    :key="user"
-                    ><option :value="user" x-text="user"></option
-                  ></template></select
-              ></label>
+
               <button
-                type="submit"
                 :disabled="recallBusy||!recallMessage.trim()"
+                type="submit"
               >
                 Find related memories
               </button>
             </form>
             <template x-if="recallResult"
-              ><div class="recall-results" aria-live="polite">
+              ><div aria-live="polite" class="recall-results">
                 <p>
                   <span x-text="recallResult.status"></span> ·
                   <span x-text="recallResult.items.length"></span> results<span
@@ -2605,14 +2494,14 @@
                   >
                 </p>
                 <p
-                  x-show="recallResult.status==='ready'&&!recallResult.items.length"
+                  x-show="recallResult.status==='ready'&amp;&amp;!recallResult.items.length"
                 >
                   No matching records under the saved policy.
                 </p>
                 <template x-for="issue in recallResult.diagnostics||[]"
                   ><p class="error" x-text="issue.path+': '+issue.message"></p
                 ></template>
-                <template x-for="item in recallResult.items" :key="item.id"
+                <template :key="item.id" x-for="item in recallResult.items"
                   ><details>
                     <summary>
                       <span x-text="item.title||item.id"></span> ·

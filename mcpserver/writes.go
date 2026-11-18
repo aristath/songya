@@ -83,8 +83,7 @@ func savedWrite(ctx context.Context, store *songya.Store, receipt songya.Receipt
 	}
 	if record, ok := records[id]; ok {
 		value["kind"] = record.Kind
-		value["type"] = record.Types[songya.TypeUser(ctx)]
-		value["type_user"] = songya.TypeUser(ctx)
+		value["type"] = record.Type
 		if record.Kind == songya.Entities {
 			value["time"] = record.Time
 		}
@@ -93,9 +92,6 @@ func savedWrite(ctx context.Context, store *songya.Store, receipt songya.Receipt
 			value["description_truncated"] = len(record.Body) > 2048
 		} else {
 			value["text"], value["title"], value["text_truncated"] = clipText(record.Body, 2048), record.Title, len(record.Body) > 2048
-			if record.User != "" {
-				value["user"] = record.User
-			}
 			if record.Kind == songya.Memories {
 				value["time"] = record.Time
 			}
@@ -141,7 +137,6 @@ func memorySchema() map[string]any {
 	timing["description"] = "When the event happened. Omit to keep old dates. Send only the parts to change. null clears a part; time:null clears all dates. Send date:null when replacing an exact day with bounds. For ongoing states, earliest is the start bound and latest is null until an end is known. Use real YYYY-MM-DD dates or null only. Explain uncertainty in text."
 	value := schema(map[string]any{
 		"id":     str("ID of the memory to change. Omit id for a new memory"),
-		"user":   str("Owner of a new memory, unless the app supplies it. Omit when changing an existing memory to keep its owner"),
 		"title":  str("Short name for the event or fact. Always send for a NEW memory. Omit on UPDATE to keep the old title"),
 		"text":   str("All words for the memory. With id, this replaces ALL old words. Change only the wrong claims. Do not change other wording, details, or quotes. Omit to keep old words. An empty string clears them. Do not put original_accounts here or in metadata"),
 		"append": str("Words to add after the old words. Send id too. Do not send text unless you also want to replace the old words"),
@@ -150,8 +145,8 @@ func memorySchema() map[string]any {
 	// Creation, append and field-only updates share these fields. Describe the
 	// modes plainly and enforce them in the handler instead of conditional schemas.
 	value["examples"] = []any{
-		map[string]any{"title": "John and Mary celebrated a birthday", "text": "John and Mary celebrated Mary's birthday at a restaurant on April 22, 2024.", "user": "example_user", "time": map[string]any{"date": "2024-04-22"}},
-		map[string]any{"title": "John moved to Lakeside", "text": "John moved to Lakeside in May 1990. The exact day is unknown.", "user": "example_user", "time": map[string]any{"date": nil, "earliest": "1990-05-01", "latest": "1990-05-31"}, "relations": []any{map[string]any{"type": "related_to", "target": "JOHN_ENTITY_ID"}}},
+		map[string]any{"title": "John and Mary celebrated a birthday", "text": "John and Mary celebrated Mary's birthday at a restaurant on April 22, 2024.", "time": map[string]any{"date": "2024-04-22"}},
+		map[string]any{"title": "John moved to Lakeside", "text": "John moved to Lakeside in May 1990. The exact day is unknown.", "time": map[string]any{"date": nil, "earliest": "1990-05-01", "latest": "1990-05-31"}, "relations": []any{map[string]any{"type": "related_to", "target": "JOHN_ENTITY_ID"}}},
 		map[string]any{"id": "EXISTING_DINNER_ID", "append": "At that same dinner, Jamie also gave Sam a book about trains."},
 		map[string]any{"id": "EXISTING_DINNER_ID", "text": "On April 2, 2025, Sam had dinner with Jamie in Lyon. Jamie gave Sam a book about trains."},
 		map[string]any{"id": "EXISTING_MEMORY_ID", "time": map[string]any{"date": nil, "earliest": "1990-05-01", "latest": "1990-12-31"}},
@@ -161,7 +156,7 @@ func memorySchema() map[string]any {
 }
 
 const memoryDescription = `Save a new memory or change an existing memory. First use prepare_memory and read the record you will change.
-NEW: omit id; always send a short title and text. Send the selected user unless the app supplies user.
+NEW: omit id; always send a short title and text. Select the target store.
 CHANGE: send id and the fields to change. Omitted fields stay the same.
 text replaces ALL body words, not the source header. For a correction, change only the wrong claims. Copy all other wording, details, and quotes exactly. append adds details of the SAME event after the old words; a different dated event needs a new memory.
 DATE ONLY: send id and time. Omit text to keep the words. Null clears a date part.
@@ -172,7 +167,7 @@ Read outcome and changed_fields. unchanged means nothing changed. Fix missing or
 func namedSchema(entity bool) map[string]any {
 	fields := map[string]any{"create": map[string]any{"type": "boolean", "description": "Set true to create a separate new record, even if its name already exists. Do not supply id with create:true"}, "id": str("Existing record ID required for an update. A name is not an update selector"), "name": str("Name, e.g. Alex Morgan or Cedar Café"), "aliases": array(str("Other known name")), "description": str("Short text saying who or what this is. This replaces ALL old description words. Put events and experiences in linked memories"), "append": str("Words to add after the old description"), "metadata": object(), "relations": relationsSchema()}
 	if entity {
-		fields["type"] = str("Type from the selected user's configured choices")
+		fields["type"] = str("Type from the selected store's configured choices")
 		timing := schema(map[string]any{"start": nullableDate("The start date of the entity's existence"), "end": nullableDate("The end date of the entity's existence. null means no date is recorded; it does not prove continued existence")})
 		timing["type"] = []string{"object", "null"}
 		timing["description"] = "The start and end dates of the entity's existence. These could represent birth and death for a person, founding and closure for an organization, and so on. Apply this meaning to any user-configured entity type. Omit to keep old dates; supplied parts patch only those parts. null clears a part; time:null clears both. Do not use creation timestamps, first mention, or uncertainty bounds as lifetime dates."

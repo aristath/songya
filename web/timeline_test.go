@@ -12,7 +12,8 @@ func TestTimelineHTTPShowsUnknownDatesAndConflictsWithoutChangingRecords(t *test
 	store, _ := songya.Open(t.TempDir())
 	first, _ := store.Create(songya.Memories, map[string]any{"user": "reader", "title": "Mary's walk", "time": map[string]any{"date": "2000-01-01"}}, "A walk by the lake.")
 	second, _ := store.Create(songya.Memories, map[string]any{"user": "reader", "title": "John's visit", "relations": []songya.Relation{{Type: "after", Target: first.ID}}}, "A later visit.")
-	other, _ := store.Create(songya.Memories, map[string]any{"user": "other", "title": "Another account"}, "A separate collection.")
+	otherStore, _ := songya.Open(t.TempDir())
+	other, _ := otherStore.Create(songya.Memories, map[string]any{"user": "other", "title": "Another account"}, "A separate collection.")
 	path := filepath.Join(store.Directory(), "memories", second.ID+"/record.md")
 	// A direct edit leaves an unreadable date, but the intact account stays usable.
 	if err := second.Set("time", map[string]any{"earliest": "sometimes"}); err != nil {

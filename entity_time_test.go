@@ -12,7 +12,7 @@ import (
 func TestEntityLifetimeWritesPatchClearAndKeepRecordContent(t *testing.T) {
 	s, _ := Open(t.TempDir())
 	ctx := context.Background()
-	doc, err := s.Create(Entities, map[string]any{"name": "John", "types": map[string]string{"reader": "person"}, "time": map[string]any{"start": "1990-04-22", "end": nil}}, "A short identification.")
+	doc, err := s.Create(Entities, map[string]any{"name": "John", "type": "person", "time": map[string]any{"start": "1990-04-22", "end": nil}}, "A short identification.")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestEntityLifetimeWritesPatchClearAndKeepRecordContent(t *testing.T) {
 	}
 	after, _ := s.Read(doc.ID)
 	time := after.Record(Entities).Time
-	if dateValue(time.Start) != "1990-04-22" || dateValue(time.End) != "2070-06-01" || after.Body != doc.Body || after.Metadata().CreatedAt != before.CreatedAt || !reflect.DeepEqual(after.Types(), doc.Types()) {
+	if dateValue(time.Start) != "1990-04-22" || dateValue(time.End) != "2070-06-01" || after.Body != doc.Body || after.Metadata().CreatedAt != before.CreatedAt || !reflect.DeepEqual(documentType(after), documentType(doc)) {
 		t.Fatal(after, time)
 	}
 	_, err = s.SaveNamed(ctx, Entities, NamedInput{ID: doc.ID, Time: map[string]any{"end": nil}})
@@ -78,7 +78,7 @@ func TestEntityTimeRejectsInvalidValuesAcrossEveryWriteBoundary(t *testing.T) {
 		}
 	}
 	s, _ := Open(t.TempDir())
-	if _, err := s.SaveMemory(ctx, MemoryInput{User: "reader", Text: textValue("A narrated event."), Time: map[string]any{"start": "1990-04-22"}}); err == nil {
+	if _, err := s.SaveMemory(ctx, MemoryInput{Text: textValue("A narrated event."), Time: map[string]any{"start": "1990-04-22"}}); err == nil {
 		t.Fatal("memory accepted entity lifetime keys")
 	}
 }
@@ -164,7 +164,7 @@ func TestEntityLifetimeComponentsMergeWithinOneCapture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.SaveMemory(ctx, MemoryInput{User: "reader", Text: textValue("John discussed the project."), Relations: []RelationInput{
+	_, err = s.SaveMemory(ctx, MemoryInput{Text: textValue("John discussed the project."), Relations: []RelationInput{
 		{Type: "related_to", Target: map[string]any{"id": doc.ID, "time": map[string]any{"start": "1990-04-22"}}},
 		{Type: "related_to", Target: map[string]any{"id": doc.ID, "metadata": map[string]any{"time": map[string]any{"end": "2070-06-01"}}}},
 	}})

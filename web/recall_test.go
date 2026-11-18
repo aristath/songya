@@ -63,10 +63,6 @@ func TestRecallHTTPSettingsConflictPreservationAndLiveConfiguration(t *testing.T
 	if requests.Load() != count {
 		t.Fatal("batch did not reuse vectors")
 	}
-	code, _ = call(t, app, "POST", "/api/recall", map[string]any{"message": "afternoon"})
-	if code != 400 {
-		t.Fatal("implicit all-owner retrieval", code)
-	}
 	// Reopening the application uses the same persisted policy.
 	app.Close()
 	app = Handler(store)

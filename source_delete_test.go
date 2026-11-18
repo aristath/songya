@@ -69,7 +69,7 @@ func TestDeleteChecksAllIncomingFormsAndDoesNotRecoverDeletedRecord(t *testing.T
 	ctx := context.Background()
 	for _, kind := range destinations {
 		t.Run(string(kind), func(t *testing.T) {
-			target, _ := s.Create(kind, testUserFields(kind, map[string]any{"title": "Target"}), "Target body")
+			target, _ := s.Create(kind, map[string]any{"title": "Target"}, "Target body")
 			fields := map[string]any{"user": "ari", "relations": []Relation{{Type: "caused_by", Target: target.ID}}}
 			incoming, _ := s.Create(Memories, fields, "A memory [["+target.ID+"]]")
 			story, _ := s.Create(Stories, map[string]any{"user": "ari", "relations": []Relation{{"related_to", target.ID}}}, "A narrative")
@@ -142,7 +142,7 @@ func TestDeleteWaitsForConcurrentWriterAndSeesItsIncomingLink(t *testing.T) {
 		writer <- s.lockedContext(ctx, func(root *os.Root) error {
 			close(locked)
 			<-release
-			doc, _ := NewDocument(Metadata{User: "ari", CreatedAt: time.Now(), UpdatedAt: time.Now(), Relations: []Relation{{"related_to", target.ID}}}, "Concurrent [["+target.ID+"]]")
+			doc, _ := NewDocument(Metadata{CreatedAt: time.Now(), UpdatedAt: time.Now(), Relations: []Relation{{"related_to", target.ID}}}, "Concurrent [["+target.ID+"]]")
 			data, _ := doc.Marshal()
 			if err := fixtureRootWriteFile(root, "memories/m_000000000001/record.md", data, 0600); err != nil {
 				return err
@@ -213,7 +213,7 @@ func TestDeletionChecksUnpublishedProposalsAndRetainsPendingWork(t *testing.T) {
 	separate, _ := Open(t.TempDir())
 	other, _ := separate.Create(Entities, nil, "")
 	body := "Unpublished [[" + other.ID + "]]"
-	request := BatchRequest{Key: "unpublished", User: "ari", Changes: []Change{{Kind: Memories, Body: &body, Fields: map[string]any{"relations": []Relation{{"related_to", other.ID}}}}}}
+	request := BatchRequest{Key: "unpublished", Changes: []Change{{Kind: Memories, Body: &body, Fields: map[string]any{"relations": []Relation{{"related_to", other.ID}}}}}}
 	if err := separate.lockedContext(ctx, func(root *os.Root) error {
 		digest, _ := requestRevision(ctx, request)
 		journal, err := prepareBatch(ctx, root, request, digest)

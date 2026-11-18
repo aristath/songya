@@ -23,7 +23,6 @@ type ImportPart struct {
 	Fields map[string]any `json:"fields,omitempty"`
 }
 type ImportRequest struct {
-	User     string       `json:"user,omitempty"`
 	Path     string       `json:"path"`
 	Revision string       `json:"-"`
 	Parts    []ImportPart `json:"parts,omitempty"`
@@ -255,7 +254,7 @@ func (s *Store) Import(ctx context.Context, sourceRoot string, request ImportReq
 	if err := syncPath(root, ".imports"); err != nil {
 		return ImportMapping{}, err
 	}
-	receipt, err := s.ApplyBatch(ctx, BatchRequest{User: request.User, Key: key, Changes: changes})
+	receipt, err := s.ApplyBatch(ctx, BatchRequest{Key: key, Changes: changes})
 	mapping := ImportMapping{Source: request.Path, Revision: revision, Archive: revision, BatchKey: key, Status: receipt.Status, Parts: []ImportedPart{}, Uncovered: sourceCoverage(data, request.Parts), Diagnostics: receipt.Diagnostics}
 	mapping.CoverageComplete = len(mapping.Uncovered) == 0
 	for i, part := range request.Parts {

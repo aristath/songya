@@ -86,7 +86,7 @@ func testCyclicMetadata(t *testing.T, path string) {
 	failed := failingMap{}
 	failed["self"] = failed
 	for _, value := range []any{cycle, slice, pointer, embedded, customMap, failed} {
-		doc, err := store.Create(Memories, testUserFields(Memories, map[string]any{"title": 3, "cyclic": value}), "Healthy body")
+		doc, err := store.Create(Memories, map[string]any{"title": 3, "cyclic": value}, "Healthy body")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -102,10 +102,10 @@ func testCyclicMetadata(t *testing.T, path string) {
 	shared := map[string]any{"value": "Keep"}
 	slices := []any{"Keep", nil}
 	slices[1] = slices[:1]
-	doc, err := store.Create(Topics, testUserFields(Topics, map[string]any{
+	doc, err := store.Create(Topics, map[string]any{
 		"shared": []any{shared, shared}, "slices": slices,
 		"scalars": []any{scalarEncoder(3), selfReturning(3)},
-	}), "Still working")
+	}, "Still working")
 	if err != nil || len(doc.Diagnostics()) != 0 {
 		t.Fatalf("ordinary shared values were rejected: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestGoConversionStaysOutsideCore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := store.Create(Memories, testUserFields(Memories, map[string]any{"payload": value, "fact": "Keep"}), "Healthy body")
+	raw, err := store.Create(Memories, map[string]any{"payload": value, "fact": "Keep"}, "Healthy body")
 	if err != nil || len(raw.Diagnostics()) == 0 || optional.Calls != 0 || custom.Calls != 0 {
 		t.Fatalf("core invoked Go callbacks or hid an unsupported object: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestGoConversionStaysOutsideCore(t *testing.T) {
 	if err := converted.Encode(value); err != nil {
 		t.Fatal(err)
 	}
-	doc, err := store.Create(Memories, testUserFields(Memories, map[string]any{"payload": converted}), "Healthy body")
+	doc, err := store.Create(Memories, map[string]any{"payload": converted}, "Healthy body")
 	if err != nil || len(doc.Diagnostics()) != 0 {
 		t.Fatalf("YAML's omitted field disabled healthy metadata: %v, %v", err, doc.Diagnostics())
 	}
@@ -192,7 +192,7 @@ func testOrphanCollision(t *testing.T, path string) {
 	previous := rand.Reader
 	rand.Reader = bytes.NewReader(append(make([]byte, 24), bytes.Repeat([]byte{1}, 512)...))
 	defer func() { rand.Reader = previous }()
-	doc, err := store.Create(Memories, testUserFields(Memories, nil), "New body")
+	doc, err := store.Create(Memories, nil, "New body")
 	if err != nil || doc.ID == id {
 		t.Fatalf("new save reused interrupted memory %s: %v", id, err)
 	}
