@@ -202,6 +202,15 @@ its own event timing. An entity start/end date alone does not need a separate
 memory record.
 
 
+## Deleting records
+
+`delete_memory(store, id, revision)` permanently deletes one record and its
+attachments when requested. Read the record with `read_memory` first and use
+the returned revision. A stale revision is rejected. Incoming links block
+deletion; `blocked_by` lists the source record IDs. No links are removed
+automatically. Success returns `status: committed` and `outcome: deleted`.
+Retry an uncertain deletion with the same ID and revision.
+
 ## Files
 
 - `read_memory(id)` includes up to eight current attachments on the first page, with a total count. Use `list_files` to continue. For an entity it also reports its selected `profile_picture`, with the actual owning `record` ID and `filename`, including pictures saved on linked memories.

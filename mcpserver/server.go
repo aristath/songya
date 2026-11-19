@@ -149,6 +149,7 @@ type pageInput struct {
 }
 type recordPage struct {
 	ID              string                 `json:"id,omitempty"`
+	Revision        string                 `json:"revision,omitempty"`
 	Source          string                 `json:"source,omitempty"`
 	Pending         bool                   `json:"pending,omitempty"`
 	Unconfirmed     bool                   `json:"unconfirmed,omitempty"`
@@ -525,6 +526,7 @@ func (a *App) read(ctx context.Context, input pageInput) (any, error) {
 	var err error
 	pending := false
 	unconfirmed := false
+	revision := ""
 	var diagnostics []string
 	if input.Key != "" {
 		view := input.View
@@ -558,6 +560,7 @@ func (a *App) read(ctx context.Context, input pageInput) (any, error) {
 			}
 		}
 		pending = doc.Pending
+		revision = doc.Revision
 		unconfirmed = doc.Unconfirmed
 		diagnostics = doc.Diagnostics()
 		if input.View == "source" {
@@ -573,6 +576,7 @@ func (a *App) read(ctx context.Context, input pageInput) (any, error) {
 		return nil, err
 	}
 	page := bytePage(data, input.Offset, input.Limit)
+	page.Revision = revision
 	page.ProfilePicture = profile
 	page.ID, page.Source, page.Pending, page.Unconfirmed = input.ID, input.Source, pending, unconfirmed
 	for _, warning := range diagnostics {
@@ -692,6 +696,23 @@ func New(lifetime context.Context, stores map[string]*songya.Store, roots map[st
 		return app.store(ctx).Search(ctx, input)
 	})
 	tool(app, server, "read_memory", "Read a record by id. Use view=source to read all fields and words before editing. If next is present, send it as offset with the same id and view to read more.", schema(map[string]any{"id": str("Record ID"), "source": str("Relative source path"), "root": str("Configured import root name; omitted for the store"), "key": str("Saved request key for proposed, before or original_text views"), "archive": str("Preserved import archive checksum"), "view": str("body (default) or source; with key use proposed, before or original_text"), "offset": count(), "limit": count()}), true, app.read)
+	tool(app, server, "delete_memory", "Permanently delete one record and its attachments only when requested. Read the record first; send its id and revision from read_memory. Incoming links block deletion and are reported in blocked_by; they are not removed automatically.", schema(map[string]any{"id": str("Record ID"), "revision": str("Current revision returned by read_memory")}, "id", "revision"), false, func(ctx context.Context, input struct{ ID, Revision string }) (any, error) {
+		out := map[string]any{"id": input.ID}
+		err := app.store(ctx).Delete(ctx, input.ID, input.Revision)
+		var blocked *songya.DeleteBlocked
+		if errors.As(err, &blocked) {
+			ids := []string{}
+			for _, record := range blocked.Records {
+				ids = append(ids, record.ID)
+			}
+			out["status"], out["blocked_by"], out["diagnostics"] = "not_accepted", ids, blocked.Diagnostics
+		} else if errors.Is(err, songya.ErrConflict) {
+			out["status"] = "not_accepted"
+		} else if err == nil {
+			out["status"], out["outcome"] = "committed", "deleted"
+		}
+		return out, err
+	})
 	tool(app, server, "explore_memory", "Read links from or to a record. direction is outgoing, incoming, or both. depth is how many links to follow. If a record was split, check all replacements; do not guess one.", schema(map[string]any{"id": str("Starting ID; omit for paged edges"), "direction": str("incoming, outgoing or both"), "type": str("Optional edge type"), "depth": count(), "offset": count(), "limit": count()}), true, func(ctx context.Context, input songya.GraphQuery) (any, error) {
 		input.Limit = limit(input.Limit, 20, 10)
 		return app.store(ctx).Graph(ctx, input)
