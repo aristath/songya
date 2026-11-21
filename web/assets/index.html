@@ -6,12 +6,12 @@
     <meta content="width=device-width, initial-scale=1" name="viewport" />
     <meta name="songya-store" content="{{.Selected}}" />
     <title>Sōngyā · Records</title>
-    <script src="/assets/theme.js"></script>
+    <script data-cfasync="false" src="/assets/theme.js"></script>
     <link href="/assets/editors.css" rel="stylesheet" />
     <link href="/assets/palette.css" rel="stylesheet" />
     <link href="/assets/app.css" rel="stylesheet" />
     <link href="/assets/chat.css" rel="stylesheet" />
-    <script defer="" src="/assets/app.js"></script>
+    <script data-cfasync="false" defer="" src="/assets/app.js"></script>
   </head>
   <body
     :class="{'graph-expanded':graphExpanded,'chat-expanded':chatExpanded}"
@@ -36,6 +36,11 @@
             {{end}}
           </select></label
         >
+        {{if .Selected}}
+        <button @click="openMobile()" type="button">Connect phone</button>
+        {{if .Mobile}}<button @click="logoutMobile()" type="button">
+          Log out</button
+        >{{end}} {{end}}
         <button :disabled="busy||loading" @click="create()" class="primary">
           New record</button
         ><label class="theme-control"
@@ -67,6 +72,70 @@
         ></p>
       </div>
     </div>
+    <dialog
+      x-ref="mobileDialog"
+      class="mobile-dialog"
+      @cancel.prevent="closeMobile()"
+      @click.self="closeMobile()"
+      aria-labelledby="mobile-heading"
+    >
+      <div class="mobile-content">
+        <div class="mobile-heading">
+          <h2 id="mobile-heading">Songya on Android</h2>
+          <button
+            type="button"
+            @click="closeMobile()"
+            aria-label="Close phone connection"
+          >
+            Close
+          </button>
+        </div>
+        <p>
+          Connect a phone to the <strong>{{.Selected}}</strong> memory store.
+          The app works away from home using the public HTTPS address.
+        </p>
+        <p x-show="mobileStatus.apk_available">
+          <a href="/android.apk" download="Songya.apk">Download Android app</a>
+        </p>
+        <p
+          class="error"
+          role="alert"
+          x-show="mobileError"
+          x-text="mobileError"
+        ></p>
+        <button
+          type="button"
+          @click="pairMobile()"
+          :disabled="mobileBusy || !mobileStatus.public_url"
+          x-text="mobileBusy ? 'Creating code…' : 'Create pairing code'"
+        ></button>
+        <div x-show="mobilePairing" x-cloak>
+          <img
+            class="mobile-qr"
+            :src="mobilePairing?.qr || ''"
+            alt="One-use Songya pairing code"
+          />
+          <p>
+            Scan this code in Songya for Android. It expires in five minutes and
+            can be used once.
+          </p>
+          <a :href="mobilePairing?.uri || '#'">Open in Songya on this phone</a>
+        </div>
+        <h3 x-show="mobileStatus.devices.length">Paired phones</h3>
+        <template x-for="device in mobileStatus.devices" :key="device.id"
+          ><div class="mobile-device">
+            <span
+              ><strong x-text="device.label"></strong><br /><small
+                x-text="'Last connected: ' + new Date(device.lastUsedAt).toLocaleString()"
+              ></small></span
+            ><button type="button" @click="revokeMobile(device.id)">
+              Revoke access
+            </button>
+          </div></template
+        >
+        <button type="button" @click="openMobile()">Refresh phones</button>
+      </div>
+    </dialog>
     <main class="workspace">
       <section
         :class="{expanded:chatExpanded}"

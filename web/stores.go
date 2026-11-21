@@ -16,11 +16,13 @@ type storeNavigationKey struct{}
 type storeNavigation struct {
 	Selected string
 	Stores   []string
+	Mobile   bool
 }
 
 type StoreApplication struct {
 	http.Handler
 	applications map[string]*Application
+	mobile       *mobileServer
 }
 
 func (a *StoreApplication) Close() error {
@@ -32,7 +34,7 @@ func (a *StoreApplication) Close() error {
 }
 
 func HandlerForStores(config songya.ApplicationConfiguration) *StoreApplication {
-	application := &StoreApplication{applications: map[string]*Application{}}
+	application := &StoreApplication{applications: map[string]*Application{}, mobile: newMobileServer(config)}
 	issues := map[string]error{}
 	names := []string{}
 	for name, directory := range config.Stores {
@@ -47,16 +49,45 @@ func HandlerForStores(config songya.ApplicationConfiguration) *StoreApplication 
 	slices.Sort(names)
 	password := sha256.Sum256([]byte(config.Password))
 	application.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Referrer-Policy", "same-origin")
+		if application.mobile.public(w, r) {
+			return
+		}
 		_, supplied, ok := r.BasicAuth()
 		candidate := sha256.Sum256([]byte(supplied))
-		if !ok || config.Password == "" || subtle.ConstantTimeCompare(password[:], candidate[:]) != 1 {
-			w.Header().Set("WWW-Authenticate", `Basic realm="Songya", charset="UTF-8"`)
-			http.Error(w, "Administrator authentication is required.", http.StatusUnauthorized)
+		admin := ok && config.Password != "" && subtle.ConstantTimeCompare(password[:], candidate[:]) == 1
+		access := mobileAccess{}
+		if !admin {
+			var err error
+			access, err = application.mobile.authenticate(r)
+			if err != nil {
+				w.Header().Set("WWW-Authenticate", `Basic realm="Songya", charset="UTF-8"`)
+				http.Error(w, "Administrator authentication or a paired device is required.", http.StatusUnauthorized)
+				return
+			}
+		}
+		visible := names
+		if !admin {
+			visible = []string{access.Store}
+		}
+		if r.URL.Path == "/api/mobile" || strings.HasPrefix(r.URL.Path, "/api/mobile/") || r.URL.Path == "/api/logout" {
+			application.mobile.serve(w, r, access, admin)
+			return
+		}
+		if r.URL.Path == "/android.apk" {
+			if config.AndroidAPK == "" {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "application/vnd.android.package-archive")
+			w.Header().Set("Content-Disposition", `attachment; filename="Songya.apk"`)
+			http.ServeFile(w, r, config.AndroidAPK)
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		if r.URL.Path == "/" {
-			http.Redirect(w, r, "/stores/"+names[0]+"/", http.StatusSeeOther)
+			http.Redirect(w, r, "/stores/"+visible[0]+"/", http.StatusSeeOther)
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/assets/") {
@@ -69,6 +100,10 @@ func HandlerForStores(config songya.ApplicationConfiguration) *StoreApplication 
 		}
 		path, found := strings.CutPrefix(r.URL.Path, "/stores/")
 		name, suffix, _ := strings.Cut(path, "/")
+		if !admin && name != access.Store {
+			http.NotFound(w, r)
+			return
+		}
 		if !found {
 			http.NotFound(w, r)
 			return
@@ -86,7 +121,7 @@ func HandlerForStores(config songya.ApplicationConfiguration) *StoreApplication 
 			http.Redirect(w, r, r.URL.Path+"/", http.StatusSeeOther)
 			return
 		}
-		request := r.Clone(context.WithValue(r.Context(), storeNavigationKey{}, storeNavigation{name, names}))
+		request := r.Clone(context.WithValue(r.Context(), storeNavigationKey{}, storeNavigation{Selected: name, Stores: visible, Mobile: access.Device != ""}))
 		request.URL.Path = "/" + suffix
 		request.URL.RawPath = ""
 		app.ServeHTTP(w, request)

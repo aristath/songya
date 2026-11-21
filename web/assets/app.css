@@ -1583,3 +1583,26 @@ blockquote {
   max-block-size: 24rem;
   object-fit: contain;
 }
+
+.mobile-dialog {
+  max-inline-size: min(36rem, calc(100% - 2rem));
+  padding: 1.25rem;
+}
+.mobile-content {
+  display: grid;
+  gap: 1rem;
+}
+.mobile-heading,
+.mobile-device {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.mobile-qr {
+  display: block;
+  width: min(100%, 20rem);
+  height: auto;
+  background: white;
+  margin-block: 1rem;
+}

@@ -6,6 +6,7 @@ require (
 	github.com/gofrs/flock v0.13.1
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/openai/openai-go/v3 v3.96.0
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	go.yaml.in/yaml/v3 v3.0.6
 )
 

@@ -1,2 +1,9 @@
 /web/node_modules/
 /songya-web
+
+android/.gradle/
+android/.kotlin/
+android/local.properties
+android/**/build/
+android/signing/
+android/Songya.apk

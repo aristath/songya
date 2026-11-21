@@ -314,9 +314,9 @@ between records; failed operations retain it. Closing the tab discards drafts
 after the browser's unsaved-work warning. This is not a durable draft/history store.
 
 The loopback default is intended for a trusted local operator. The listening
-address is configurable, but the application has no login system. Cross-origin
-browser mutations are rejected. No account-management or deployment system is
-included.
+address is configurable. The administrator uses HTTP Basic authentication; paired
+Android devices use revocable store-scoped browser sessions. Cross-origin browser
+mutations are rejected. There is no per-user account-management system.
 
 A file containing invalid UTF-8 bytes cannot be safely round-tripped through a
 text editor. Opening it reports an encoding problem and leaves its bytes intact;
@@ -487,3 +487,21 @@ the web process are detected on its roughly one-second scan. Cached sizes remain
 visible during refreshes. The chart shows progress during its initial pass.
 Cache writes use synced atomic replacement and retry after failures; failures do
 not block record access. No memory files or client protocols are changed.
+
+
+## Android connections
+
+**Connect phone** pairs a phone to the current store using a public HTTPS origin.
+The phone receives the same store UI with a one-store selector. The server enforces
+that scope on every store route, including files, chat, settings and event streams.
+The connection dialog lists that store's paired devices and offers revocation.
+A phone's Log out action revokes its key and sessions; the browser administrator
+continues using its existing password.
+
+Global mobile routes are `/api/mobile` (status), `/api/mobile/pair`,
+`/api/mobile/challenge`, `/api/mobile/authenticate`, `/api/mobile/session`,
+`/api/mobile/devices/{id}` and `/api/logout`. JSON mutations reject unrelated
+Origins. The one-use native form handoff also accepts absent/null Origin. Its
+cookie is Secure, HttpOnly and SameSite=Lax; credentials never appear in web URLs.
+`/android.apk` downloads the separately built signed release after authentication.
+The QR link contains only a short-lived pairing capability, never the password.

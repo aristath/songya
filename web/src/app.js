@@ -1,4 +1,5 @@
 import Alpine from "alpinejs";
+import { mobileUI } from "./mobile.js";
 import { portraitsUI } from "./portraits.js";
 import { filesUI, recordFiles } from "./files.js";
 import { codeEditor, richEditor } from "./editors.js";
@@ -44,6 +45,7 @@ Alpine.data("songya", () => {
   let listingFailure = "";
   const drafts = new Map();
   return {
+    ...mobileUI(request),
     ...chatUI(request),
     ...filesUI(request),
     ...portraitsUI(),

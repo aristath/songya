@@ -76,6 +76,32 @@ CommonMark controls. Merely switching views does not rewrite the document.
 Build from a checkout with `go build -o songya-web ./cmd/songya-web`.
 See [UI development](docs/ui.md) for asset builds and browser tests.
 
+## Android app and remote pairing
+
+Songya includes a thin Android wrapper with QR pairing. In the selected store,
+open **Connect phone** to download the APK, create a pairing code or revoke a
+phone. Paired phones can read and edit only that store; administrator HTTP Basic
+authentication continues to access all configured stores.
+
+Add these fields to the private web configuration:
+
+```json
+{
+  "public_url": "https://songya.example.com",
+  "mobile_state": "/private/path/songya.mobile.json",
+  "android_apk": "/path/to/songya/android/Songya.apk"
+}
+```
+
+Keep the existing `stores` and `password` fields. Route the public HTTPS hostname
+to the web listener with a tunnel or reverse proxy. The phone then works away
+from the local network. `mobile_state` is optional and defaults beside the web
+configuration; its public keys and hashed tokens are separate from memory files.
+The app stores no administrator password. Codes expire after five minutes and
+can be used once; returning phones use Android Keystore signatures to reconnect.
+
+See [android/README.md](android/README.md) for signed release builds and deployment.
+
 ## Start with MCP
 
 Install Go at the version required by [go.mod](go.mod) or newer. Go's automatic
