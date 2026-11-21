@@ -14,7 +14,7 @@ export function mobileUI(request) {
       this.$refs.mobileDialog.showModal();
       try {
         this.mobileStatus = await request(
-          "/api/mobile?store=" + encodeURIComponent(store()),
+          "api/mobile?store=" + encodeURIComponent(store()),
         );
       } catch (error) {
         this.mobileError = error.message;
@@ -29,7 +29,7 @@ export function mobileUI(request) {
       this.mobileBusy = true;
       this.mobileError = "";
       try {
-        this.mobilePairing = await request("/api/mobile/pair", {
+        this.mobilePairing = await request("api/mobile/pair", {
           method: "POST",
           body: JSON.stringify({ store: store() }),
         });
@@ -50,11 +50,11 @@ export function mobileUI(request) {
       if (!confirm("Revoke this phone's access to this memory store?")) return;
       this.mobileError = "";
       try {
-        await request("/api/mobile/devices/" + encodeURIComponent(id), {
+        await request("api/mobile/devices/" + encodeURIComponent(id), {
           method: "DELETE",
         });
         this.mobileStatus = await request(
-          "/api/mobile?store=" + encodeURIComponent(store()),
+          "api/mobile?store=" + encodeURIComponent(store()),
         );
       } catch (error) {
         this.mobileError = error.message;
@@ -62,7 +62,7 @@ export function mobileUI(request) {
     },
     async logoutMobile() {
       try {
-        await request("/api/logout", { method: "POST" });
+        await request("api/logout", { method: "POST" });
         location.reload();
       } catch (error) {
         this.failure = error.message;

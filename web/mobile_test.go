@@ -308,3 +308,20 @@ func TestMobileRecoversInterruptedAuthorizationPublication(t *testing.T) {
 		t.Fatal("completed write not published")
 	}
 }
+
+func TestBrowserMobileManagementKeepsTheSelectedBasicAuthDirectory(t *testing.T) {
+	app, _ := mobileFixture(t)
+	if mobileRequest(app, "GET", "/stores/ari/api/mobile?store=ari", nil, true, nil).Code != 200 {
+		t.Fatal("scoped status failed")
+	}
+	response := mobileJSON(t, mobileRequest(app, "POST", "/stores/ari/api/mobile/pair", map[string]string{"store": "ari"}, true, nil), 201)
+	uri, _ := url.Parse(response["uri"].(string))
+	phone := newMobilePhone(t)
+	cookie := redeemMobileFixture(t, app, phone.handoff(t, app, uri.Query().Get("token")))
+	if mobileRequest(app, "GET", "/stores/other/api/mobile?store=other", nil, false, cookie).Code != 404 {
+		t.Fatal("scoped mobile alias bypassed store isolation")
+	}
+	if mobileRequest(app, "POST", "/stores/ari/api/logout", nil, false, cookie).Code != 200 || phone.challenge(app, "").Code != 401 {
+		t.Fatal("scoped logout did not revoke phone")
+	}
+}

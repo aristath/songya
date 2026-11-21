@@ -54,6 +54,11 @@ test(
       const page = await context.newPage();
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
+      const mobileRequests = [];
+      page.on("request", (request) => {
+        if (request.url().includes("/api/mobile"))
+          mobileRequests.push(request.url());
+      });
       await page.goto(origin + "/stores/ari/");
       await page
         .getByRole("button", { name: "Connect phone", exact: true })
@@ -69,6 +74,12 @@ test(
       const uri = await dialog
         .getByRole("link", { name: "Open in Songya on this phone" })
         .getAttribute("href");
+      assert.ok(
+        mobileRequests.length >= 2 &&
+          mobileRequests.every((url) =>
+            new URL(url).pathname.startsWith("/stores/ari/api/mobile"),
+          ),
+      );
       assert.match(uri, /^songya:\/\/pair\?/);
       assert.equal(
         new URL(uri).searchParams.get("url"),

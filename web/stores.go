@@ -117,6 +117,24 @@ func HandlerForStores(config songya.ApplicationConfiguration) *StoreApplication 
 			http.NotFound(w, r)
 			return
 		}
+		// Keep browser operations under the Basic-auth directory that was opened.
+		if suffix == "api/mobile" || strings.HasPrefix(suffix, "api/mobile/") || suffix == "api/logout" || suffix == "android.apk" {
+			request := r.Clone(r.Context())
+			request.URL.Path = "/" + suffix
+			request.URL.RawPath = ""
+			if suffix == "android.apk" {
+				if config.AndroidAPK == "" {
+					http.NotFound(w, r)
+					return
+				}
+				w.Header().Set("Content-Type", "application/vnd.android.package-archive")
+				w.Header().Set("Content-Disposition", `attachment; filename="Songya.apk"`)
+				http.ServeFile(w, request, config.AndroidAPK)
+				return
+			}
+			application.mobile.serve(w, request, access, admin)
+			return
+		}
 		if !strings.Contains(path, "/") {
 			http.Redirect(w, r, r.URL.Path+"/", http.StatusSeeOther)
 			return

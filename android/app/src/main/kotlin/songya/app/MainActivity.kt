@@ -217,7 +217,7 @@ class MainActivity : ComponentActivity() {
                 override fun onPageFinished(view: WebView, url: String) {
                     if (web !== view) return
                     CookieManager.getInstance().flush()
-                    if (credentials?.owns(url) == true && Uri.parse(url).path == "/") {
+                    if (credentials?.owns(url) == true && (Uri.parse(url).path == "/" || Uri.parse(url).path?.matches(Regex("/stores/[^/]+/")) == true)) {
                         val path = returnPath; returnPath = null
                         if (path != null && path.startsWith("/") && !path.startsWith("//") && !path.startsWith("/api/") && requireNotNull(credentials).url(path) != url)
                             view.loadUrl(requireNotNull(credentials).url(path))
@@ -249,7 +249,7 @@ class MainActivity : ComponentActivity() {
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                     if (web !== view) return null
                     val target = credentials ?: return null
-                    if (!target.owns(request.url.toString()) || request.url.path != "/api/logout" || request.method != "POST") return null
+                    if (!target.owns(request.url.toString()) || !(request.url.path == "/api/logout" || request.url.path?.matches(Regex("/stores/[^/]+/api/logout")) == true) || request.method != "POST") return null
                     val origin = request.requestHeaders.entries.find { it.key.equals("Origin", true) }?.value
                     if (origin != target.origin || loggingOut) return null
                     loggingOut = true

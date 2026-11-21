@@ -505,3 +505,7 @@ Origins. The one-use native form handoff also accepts absent/null Origin. Its
 cookie is Secure, HttpOnly and SameSite=Lax; credentials never appear in web URLs.
 `/android.apk` downloads the separately built signed release after authentication.
 The QR link contains only a short-lived pairing capability, never the password.
+
+The browser connection dialog uses these management routes under the selected
+`/stores/<name>/` prefix, so its existing HTTP Basic login covers them. Native
+challenge/proof/handoff endpoints remain at the origin root.
